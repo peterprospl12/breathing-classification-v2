@@ -1,2 +1,7 @@
 # breathing-classification-v2
-TODO
+
+### /data 
+Training, test and validation data and README.md file
+
+### /scripts
+Additional scripts for data processing and automation

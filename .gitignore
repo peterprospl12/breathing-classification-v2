@@ -246,3 +246,7 @@ fabric.properties
 
 # PyPI configuration file
 .pypirc
+
+data/inhale
+data/exhale
+data/silence
