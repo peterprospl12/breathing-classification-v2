@@ -2,6 +2,7 @@
 ### Dataset consists of:
 - recordings recorded by repository contributors
 - recordings from master thesis repository: https://github.com/FakkuGemu/masters_thesis
+- recordings from public dataset: https://github.com/hassamwazir/EMBC-Breathing-Paper-2024
 ### Dataset is divided into 3 folders:
 - 'train' with training data
 - 'validation' with validation data
@@ -12,5 +13,6 @@
 - silences are in 'silence' folder
 
 ### The dataset can be downloaded from Google Drive at following link:
-- https://drive.google.com/file/d/11WARmE2d1I70qIRCWT6ZQWEjR0FnPDTo/view?usp=sharing
+- https://drive.google.com/file/d/11WARmE2d1I70qIRCWT6ZQWEjR0FnPDTo/view?usp=sharing (first part)
+- https://drive.google.com/file/d/1YtD3NY8yUwHiZXptZxQ6DvnJoGR1DrBt/view?usp=sharing (second part)
 ### Next copy the dataset content to 'data' folder in the repository.
