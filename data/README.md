@@ -1,8 +1,8 @@
 ## Dataset
 ### Dataset consists of:
-- recordings recorded by repository contributors
-- recordings from master thesis repository: https://github.com/FakkuGemu/masters_thesis
-- recordings from public dataset: https://github.com/hassamwazir/EMBC-Breathing-Paper-2024
+- recordings recorded by repository contributors (recordings starting with self)
+- recordings from master thesis repository: https://github.com/FakkuGemu/masters_thesis (recordings starting with master)
+- recordings from public dataset: https://github.com/hassamwazir/EMBC-Breathing-Paper-2024 (recordings starting with repo)
 ### Dataset is divided into 3 folders:
 - 'train' with training data
 - 'validation' with validation data

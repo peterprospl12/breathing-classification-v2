@@ -22,13 +22,13 @@ PLOT_CHUNK = 1024
 FORMAT = pyaudio.paInt16
 CHANNELS = 2
 RATE = 44100
-INPUT_DEVICE_INDEX = 0
+INPUT_DEVICE_INDEX = 4
 
 # Paths for saving WAV files
 WAV_PATHS = {
-    "inhale": "../data/raw/manual/inhale/",
-    "exhale": "../data/raw/manual/exhale/",
-    "silence": "../data/raw/manual/silence/",
+    "inhale": "../data/raw/inhale/",
+    "exhale": "../data/raw/exhale/",
+    "silence": "../data/raw/silence/",
 }
 
 
