@@ -5,3 +5,6 @@ Training, test and validation data and README.md file
 
 ### /scripts
 Additional scripts for data processing and automation
+
+### /generators
+Scripts for data gathering
