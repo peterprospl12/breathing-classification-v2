@@ -13,6 +13,5 @@
 - silences are in 'silence' folder
 
 ### The dataset can be downloaded from Google Drive at following link:
-- https://drive.google.com/file/d/11WARmE2d1I70qIRCWT6ZQWEjR0FnPDTo/view?usp=sharing (first part)
-- https://drive.google.com/file/d/1YtD3NY8yUwHiZXptZxQ6DvnJoGR1DrBt/view?usp=sharing (second part)
+- https://drive.google.com/file/d/1hK2rcYywPaTv6HoJVqwOXutKyCHjiJ-7/view?usp=sharing
 ### Next copy the dataset content to 'data' folder in the repository.
