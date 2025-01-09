@@ -1,6 +1,10 @@
 pipreqs==0.5.0
 matplotlib==3.10.0
-numpy==2.2.1
+numpy~=2.0.2
 PyAudio==0.2.14
 pygame==2.6.1
 scipy~=1.14.1
+tqdm~=4.67.1
+scikit-learn~=1.6.0
+librosa~=0.10.0
+torch~=2.5.1
