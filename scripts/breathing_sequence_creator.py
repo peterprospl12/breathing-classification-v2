@@ -4,8 +4,8 @@ from pydub import AudioSegment
 import csv
 from collections import deque
 
-NUM_SEQUENCES = 10 # Num of sequences to generate
-NUM_SEGMENTS = 12  # Num of PHASES in each sequence
+NUM_SEQUENCES = 160 # Num of sequences to generate
+NUM_SEGMENTS = 15  # Num of PHASES in each sequence
 
 # Silence duration range
 MIN_SILENCE = 300  # 0.3 sec (in ms)
@@ -13,9 +13,9 @@ MAX_SILENCE = 1500  # 1.5 sec (in ms)
 PHASES = ['inhale', 'exhale', 'silence']
 
 # Path to recordings
-exhale_folder = '../data/raw/person1/manual/nose/exhale'
-inhale_folder = '../data/raw/person1/manual/nose/inhale'
-silence_folder = '../data/raw/person1/manual/nose/silence'
+exhale_folder = '../data-ours/exhale'
+inhale_folder = '../data-ours/inhale'
+silence_folder = '../data-ours/silence'
 
 
 def load_recordings(folder, min_duration=0):
@@ -99,7 +99,13 @@ def create_sequence_with_rules(num_segments):
             clip = random.choice(silence_recordings)[:random.randint(MIN_SILENCE, MAX_SILENCE)]
 
         sequence += clip
-        labels.append((phase, len(clip)))
+
+        if phase == 'exhale':
+            labels.append((0, len(clip)))
+        elif phase == 'inhale':
+            labels.append((1, len(clip)))
+        else:
+            labels.append((2, len(clip)))
 
         # Update consecutive count
         if phase == prev_phase:
@@ -114,7 +120,7 @@ def create_sequence_with_rules(num_segments):
 
 
 # Save sequence and labels
-def save_sequence_and_labels(sequence, labels, sequence_id, output_folder="output"):
+def save_sequence_and_labels(sequence, labels, sequence_id, output_folder="data-sequences"):
     """
     Save sequence and labels to output folder
     Args:
@@ -130,14 +136,13 @@ def save_sequence_and_labels(sequence, labels, sequence_id, output_folder="outpu
         os.makedirs(output_folder)
 
     # Save sequence
-    audio_path = os.path.join(output_folder, f"seq_{sequence_id}.wav")
+    audio_path = os.path.join(output_folder, f"ours{sequence_id}.wav")
     sequence.export(audio_path, format="wav")
 
     # Save labels
-    csv_path = os.path.join(output_folder, f"seq_{sequence_id}_labels.csv")
+    csv_path = os.path.join(output_folder, f"ours{sequence_id}.csv")
     with open(csv_path, 'w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(["Phase", "Duration (ms)"])
         for phase, duration in labels:
             writer.writerow([phase, duration])
 

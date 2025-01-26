@@ -259,3 +259,9 @@ data-master-thesis
 data-ours
 
 data-repo
+
+data-sequences
+
+data/train
+
+data/small-train

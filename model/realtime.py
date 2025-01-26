@@ -44,7 +44,7 @@ FORMAT = pyaudio.paInt16
 INHALE_COUNTER = 0
 EXHALE_COUNTER = 0
 
-CHANNELS = 1
+CHANNELS = 2
 RATE = 44100
 DEVICE_INDEX = 4
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
@@ -53,7 +53,7 @@ running = True
 
 # Model path
 
-CLASSIFIER_MODEL_PATH = 'audio_rnn_classifier_975.pth'
+CLASSIFIER_MODEL_PATH = 'audio_rnn_classifier.pth'
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
