@@ -44,9 +44,9 @@ FORMAT = pyaudio.paInt16
 INHALE_COUNTER = 0
 EXHALE_COUNTER = 0
 
-CHANNELS = 2
+CHANNELS = 1
 RATE = 44100
-DEVICE_INDEX = 0
+DEVICE_INDEX = 4
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
 
 running = True
@@ -230,7 +230,7 @@ if __name__ == "__main__":
         print(np.argmax(prediction))
 
         # Update plot
-        update_plot(buffer[::2], np.argmax(prediction))
+        update_plot(buffer[::CHANNELS], np.argmax(prediction))
 
         # Print time needed for this loop iteration
 

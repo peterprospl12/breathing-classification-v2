@@ -252,3 +252,10 @@ data/exhale
 data/silence
 
 model/small-data
+
+# Moje dane już przeprocesowane na format tompio
+data-master-thesis
+
+data-ours
+
+data-repo

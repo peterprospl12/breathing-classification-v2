@@ -1,4 +1,5 @@
 """
+    UNUSED!
     Script for separating the audio recordings into
     inhale, exhale, and silence segments.
     Each recording is corresponding for single inhale/exhale/silence.
@@ -9,7 +10,7 @@ from scipy.io import wavfile
 import numpy as np
 
 # Path to the folder containing audio files
-folder_path = "../data-magisterka"  # Change this to the appropriate path if needed
+folder_path = "../data-master-thesis"  # Change this to the appropriate path if needed
 
 # Create directories for inhale, exhale, and silence segments
 os.makedirs(os.path.join(folder_path, "inhale"), exist_ok=True)
