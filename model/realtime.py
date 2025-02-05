@@ -35,6 +35,9 @@ Have fun!
 
 """
 
+mean = np.load('mean.npy')
+std = np.load('std.npy')
+
 # Constants
 
 REFRESH_TIME = 0.25
@@ -44,7 +47,7 @@ FORMAT = pyaudio.paInt16
 INHALE_COUNTER = 0
 EXHALE_COUNTER = 0
 
-CHANNELS = 2
+CHANNELS = 1
 RATE = 44100
 DEVICE_INDEX = 4
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
@@ -98,6 +101,8 @@ class RealTimeAudioClassifier:
         mfcc = librosa.feature.mfcc(y=frames, sr=sr)
 
         mfcc_mean = np.mean(mfcc, axis=1)
+
+        mfcc_mean = (mfcc_mean - mean) / std
 
         single_data = torch.tensor(mfcc_mean, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
 
@@ -175,7 +180,7 @@ def update_plot(frames, current_prediction):
         else:  # Silence
             color = 'blue'
         ax.plot(x_line_space[PLOT_CHUNK_SIZE * i:PLOT_CHUNK_SIZE * (i + 1)],
-                plot_data[PLOT_CHUNK_SIZE * i:PLOT_CHUNK_SIZE * (i + 1)], color=color)
+                plot_data[PLOT_CHUNK_SIZE * i:PLOT_CHUNK_SIZE * (i + 1)]/ 4, color=color)
 
     # Set plot properties and show it
 

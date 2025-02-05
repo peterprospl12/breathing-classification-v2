@@ -265,3 +265,9 @@ data-sequences
 data/train
 
 data/small-train
+
+train-sequences/*
+
+scripts/data-seq
+
+model/*.pth

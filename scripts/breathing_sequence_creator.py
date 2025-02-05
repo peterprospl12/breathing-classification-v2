@@ -120,7 +120,7 @@ def create_sequence_with_rules(num_segments):
 
 
 # Save sequence and labels
-def save_sequence_and_labels(sequence, labels, sequence_id, output_folder="data-sequences"):
+def save_sequence_and_labels(sequence, labels, sequence_id, output_folder="data-seq"):
     """
     Save sequence and labels to output folder
     Args:
