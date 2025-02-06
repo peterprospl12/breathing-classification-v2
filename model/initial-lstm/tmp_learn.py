@@ -51,9 +51,9 @@ if __name__ == '__main__':
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
-    exhale_dir = '../data/raw/person1/manual/nose/exhale'
-    inhale_dir = '../data/raw/person1/manual/nose/inhale'
-    silence_dir = '../data/raw/person1/manual/nose/silence'
+    exhale_dir = '../../data/raw/person1/manual/nose/exhale'
+    inhale_dir = '../../data/raw/person1/manual/nose/inhale'
+    silence_dir = '../../data/raw/person1/manual/nose/silence'
 
     exhale_files = [os.path.join(exhale_dir, file) for file in os.listdir(exhale_dir)]
     inhale_files = [os.path.join(inhale_dir, file) for file in os.listdir(inhale_dir)]
