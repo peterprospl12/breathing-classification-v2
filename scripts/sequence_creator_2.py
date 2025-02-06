@@ -6,14 +6,14 @@ from scipy.io.wavfile import read, write
 from scipy.signal import resample
 
 # Define the folder for sequences
-sequence_folder = '../train-sequences'
+sequence_folder = '../train-sequences-piter'
 os.makedirs(sequence_folder, exist_ok=True)
 
 # Directories with audio files
 folders = {
-    'inhale': '../data-ours/inhale',
-    'exhale': '../data-ours/exhale',
-    'silence': '../data-ours/silence'
+    'inhale': '../dane_pitera/inhale',
+    'exhale': '../dane_pitera/exhale',
+    'silence': '../dane_pitera/silence'
 }
 
 # Sequence length and max length of a single class (in seconds)

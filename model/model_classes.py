@@ -11,7 +11,7 @@ class AudioClassifierLSTM(nn.Module):
         super(AudioClassifierLSTM, self).__init__()
 
         # input_size - number of features in the input (20 MFCC coefficients)
-        self.lstm = nn.LSTM(input_size=20, hidden_size=256, num_layers=3, batch_first=True, dropout=0.2)
+        self.lstm = nn.LSTM(input_size=20, hidden_size=256, num_layers=1, batch_first=True, dropout=0.2)
 
         # Couple of fully connected layers
         self.fc1 = nn.Linear(256, 128)
@@ -19,16 +19,33 @@ class AudioClassifierLSTM(nn.Module):
         self.fc3 = nn.Linear(64, 3)
 
     # x - input tensor of shape [batch_size, max_length, num_features]
-    def forward(self, x, long_hidden_state=None, short_cell_state=None):
-        if long_hidden_state is None or short_cell_state is None:
-            long_hidden_state = torch.zeros(3, x.size(0), 256).to(x.device)
-            short_cell_state = torch.zeros(3, x.size(0), 256).to(x.device)
-
-        x, (hidden_state, cell_state) = self.lstm(x, (long_hidden_state, short_cell_state))
+    def forward(self, x):
+        x, _ = self.lstm(x)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
-        return x, (hidden_state, cell_state)
+        return x
+
+class AudioClassifierGRU(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.gru = nn.GRU(
+            input_size=20,
+            hidden_size=128,
+            num_layers=1,
+            batch_first=True,
+            dropout=0.1
+        )
+        self.fc1 = nn.Linear(128, 64)
+        self.fc2 = nn.Linear(64, 3)
+
+    def forward(self, x):
+        x, _ = self.gru(x)
+        x = x[:, -1, :]
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
 
 class AudioDataset(Dataset):
     def __init__(self, data):
@@ -52,21 +69,3 @@ class AudioDataset(Dataset):
 
         # Return lists of MFCC coefficients and labels
         return mfcc_sequence, labels
-
-# Model that use GRU network
-class AudioClassifierGRU(nn.Module):
-    def __init__(self):
-        super(AudioClassifierGRU, self).__init__()
-        self.gru = nn.GRU(input_size=20, hidden_size=256, num_layers=3, batch_first=True, dropout=0.2)
-        self.fc1 = nn.Linear(256, 128)
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, 3)
-
-    def forward(self, x):
-        x = x.permute(0, 2, 1)  # Swap the dimensions for GRU (batch, seq, feature)
-        _, hn = self.gru(x)  # hn contains the last hidden state
-        x = hn[-1]  # Take the last hidden state
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
