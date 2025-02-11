@@ -1,0 +1,7 @@
+class,start_sample,end_sample
+exhale,0,52020
+exhale,52020,159540
+inhale,159540,247604
+exhale,247604,338740
+inhale,338740,413492
+exhale,413492,441000
