@@ -1,5 +1,3 @@
-import wave
-
 import numpy as np
 import pyaudio
 import matplotlib.pyplot as plt
@@ -35,9 +33,13 @@ Have fun!
 
 """
 
+# Model path
+
+CLASSIFIER_MODEL_PATH = 'model_lstm.pth'
+
 # Constants
 
-REFRESH_TIME = 0.1
+REFRESH_TIME = 0.25
 
 FORMAT = pyaudio.paInt16
 
@@ -51,12 +53,7 @@ CHUNK_SIZE = int(RATE * REFRESH_TIME)
 
 running = True
 
-# Model path
-
-CLASSIFIER_MODEL_PATH = 'audio_lstm_classifier_lstm_01.pth'
-
 state = torch.load(CLASSIFIER_MODEL_PATH, map_location=torch.device('cpu'))
-print("Klucze w zapisanym state_dict:", list(state.keys()))
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -95,21 +92,44 @@ class RealTimeAudioClassifier:
         self.hidden = None
 
     def predict(self, y, sr=RATE):
-        frames = y  # mono
-        frames = frames[:CHUNK_SIZE]
+        if y.dtype != np.int16:
+            raise Exception("Data type is not int16. Make sure you have used right sequence creator.")
+        frames_float32 = y.astype(np.float32) / np.iinfo(np.int16).max
 
-        frames = frames.astype(np.float32)
-        frames /= np.iinfo(np.int16).max
-        mfcc = librosa.feature.mfcc(y=frames, sr=sr)
+        # Make sure that frame is mono, 44100 Hz and converted to float32
+        if frames_float32.ndim != 1:
+            raise Exception("Audio is not mono. Make sure you have used right sequence creator.")
+        if frames_float32.dtype != np.float32:
+            raise Exception("Data type is not float32. Make sure you have used right sequence creator.")
+        if sr != 44100:
+            raise Exception("Sampling rate is not 44100. Make sure you have used right sequence creator.")
 
-        mfcc_mean = np.mean(mfcc, axis=1)
+        # Calculate MFCCs
+        mfcc = librosa.feature.mfcc(
+            y=frames_float32,
+            sr=sr,
+            n_mfcc=20,
+            n_mels=40,
+            fmin=20,
+            fmax=8000,
+            lifter=22,
+            norm="ortho"
+        )
 
-        single_data = torch.tensor(mfcc_mean, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+        delta_mfcc = librosa.feature.delta(mfcc)
+
+        delta2_mfcc = librosa.feature.delta(mfcc, order=2)
+
+        combined_features = np.vstack([mfcc, delta_mfcc, delta2_mfcc])
+
+        # Because function will return x times 13 MFCCs, we will calculate mean of them (size of mfcc above is [13, x])
+        features = combined_features.mean(axis=1)
+
+        single_data = torch.tensor(features, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
 
         outputs, self.hidden = self.model(single_data, self.hidden)
 
         predicted = outputs[0, 0].detach().cpu().numpy()
-        print(predicted)
         return predicted
 
 
@@ -221,7 +241,7 @@ if __name__ == "__main__":
         prediction = classifier.predict(buffer)
 
         # Determine the class of the prediction
-        print(np.argmax(prediction))
+        print(prediction)
 
         # Update plot
         update_plot(buffer, np.argmax(prediction))
