@@ -6,18 +6,18 @@ from scipy.io.wavfile import read, write
 from scipy.signal import resample
 
 # Define the folder for sequences
-sequence_folder = '../train-sequences-piter'
+sequence_folder = '../train-sequences'
 os.makedirs(sequence_folder, exist_ok=True)
 
 # Directories with audio files
 folders = {
-    'inhale': '../dane_pitera/inhale',
-    'exhale': '../dane_pitera/exhale',
-    'silence': '../dane_pitera/silence'
+    'inhale': '../data-ours/inhale',
+    'exhale': '../data-ours/exhale',
+    'silence': '../data-ours/silence'
 }
 
 # Sequence length and max length of a single class (in seconds)
-MAX_LENGTH = 30  # Full sequence: 30 seconds
+MAX_LENGTH = 10  # Full sequence: 30 seconds
 MAX_CLASS_LENGTH = 3  # Single fragment: 3 seconds
 
 
@@ -62,6 +62,15 @@ for cls, folder in folders.items():
             fragments = split_audio(samples, MAX_CLASS_LENGTH * 44100)
             audio_fragments[cls].extend(fragments)
 
+# Cut the number of fragments to the minimum number of fragments in any class
+min_fragments = min(len(fragments) for fragments in audio_fragments.values())
+for cls in audio_fragments:
+    audio_fragments[cls] = audio_fragments[cls][:min_fragments]
+
+print(len(audio_fragments['inhale']))
+print(len(audio_fragments['exhale']))
+print(len(audio_fragments['silence']))
+
 # Randomly shuffle the fragments
 for cls in audio_fragments:
     random.shuffle(audio_fragments[cls])
@@ -103,8 +112,10 @@ while any(len(fragments) > 0 for fragments in audio_fragments.values()):
 
     # Concatenate fragments into a single sequence
     output_audio = concatenate_audios(combined_audio_list)
+    output_audio = output_audio[:MAX_LENGTH * 44100]
     output_file = os.path.join(sequence_folder, f'sequence_{seq_num}.wav')
     save_wav(output_file, output_audio)
+    print(output_audio.shape)
 
     # Save label information to a CSV file
     csv_file = os.path.join(sequence_folder, f'sequence_{seq_num}.csv')

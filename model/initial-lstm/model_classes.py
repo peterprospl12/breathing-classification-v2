@@ -19,12 +19,12 @@ class AudioClassifierLSTM(nn.Module):
         self.fc3 = nn.Linear(64, 3)
 
     # x - input tensor of shape [batch_size, max_length, num_features]
-    def forward(self, x):
-        x, _ = self.lstm(x)
+    def forward(self, x, hidden=None):
+        x, hidden = self.lstm(x)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
-        return x
+        return x, hidden
 
 class AudioClassifierGRU(nn.Module):
     def __init__(self):

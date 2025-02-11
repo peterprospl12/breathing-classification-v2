@@ -269,3 +269,4 @@ train-sequences/*
 scripts/data-seq
 
 model/*.pth
+

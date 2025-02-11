@@ -35,9 +35,6 @@ Have fun!
 
 """
 
-mean = np.load('mean.npy')
-std = np.load('std.npy')
-
 # Constants
 
 REFRESH_TIME = 0.25
@@ -56,7 +53,10 @@ running = True
 
 # Model path
 
-CLASSIFIER_MODEL_PATH = 'audio_rnn_classifier.pth'
+CLASSIFIER_MODEL_PATH = 'audio_lstm_classifier_test.pth'
+
+state = torch.load(CLASSIFIER_MODEL_PATH, map_location=torch.device('cpu'))
+print("Klucze w zapisanym state_dict:", list(state.keys()))
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -95,20 +95,18 @@ class RealTimeAudioClassifier:
         self.hidden = None
 
     def predict(self, y, sr=RATE):
-        frames = y[::CHANNELS]  # mono
+        frames = y  # mono
         frames = frames[:CHUNK_SIZE]
 
+        frames = frames.astype(np.float32)
+        frames /= np.iinfo(np.int16).max
         mfcc = librosa.feature.mfcc(y=frames, sr=sr)
 
         mfcc_mean = np.mean(mfcc, axis=1)
 
-        mfcc_mean = (mfcc_mean - mean) / std
-
         single_data = torch.tensor(mfcc_mean, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
 
-        outputs, self.hidden = self.model(single_data, self.hidden)
-
-        self.hidden = tuple([h.detach() for h in self.hidden])
+        outputs, self.hidden = self.model(single_data, None)
 
         predicted = outputs[0, 0].detach().cpu().numpy()
         print(predicted)
@@ -219,23 +217,14 @@ if __name__ == "__main__":
         if buffer is None:
             continue
 
-        wf = wave.open("temp.wav", 'wb')
-        wf.setnchannels(CHANNELS)
-        wf.setsampwidth(audio.p.get_sample_size(FORMAT))
-        wf.setframerate(RATE)
-        wf.writeframes(b''.join(buffer))
-        wf.close()
-
-        y, sr = librosa.load('temp.wav', mono=True)
-
         # Make prediction
-        prediction = classifier.predict(y)
+        prediction = classifier.predict(buffer)
 
         # Determine the class of the prediction
         print(np.argmax(prediction))
 
         # Update plot
-        update_plot(buffer[::CHANNELS], np.argmax(prediction))
+        update_plot(buffer, np.argmax(prediction))
 
         # Print time needed for this loop iteration
 
