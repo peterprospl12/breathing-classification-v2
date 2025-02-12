@@ -4,22 +4,22 @@ from pydub import AudioSegment
 import csv
 from collections import deque
 
-NUM_SEQUENCES = 300  # Number of sequences to generate
-NUM_SEGMENTS = 20  # Number of phases in each sequence
+NUM_SEQUENCES = 900  # Number of sequences to generate
+NUM_SEGMENTS = 7  # Number of phases in each sequence
 
 # Silence duration range (in ms)
 MIN_SILENCE = 300  # 0.3 sec
-MAX_SILENCE = 1500  # 1.5 sec
+MAX_SILENCE = 2500  # 1.5 sec
 PHASES = ['inhale', 'exhale', 'silence']
 
 # Desired final sequence duration in milliseconds and calculated sample count
-FINAL_DURATION_MS = 30000  # 30 seconds
+FINAL_DURATION_MS = 10000  # 30 seconds
 TARGET_FRAME_RATE = 44100
 FINAL_SAMPLES = int((FINAL_DURATION_MS / 1000.0) * TARGET_FRAME_RATE)
 
 # Paths to recordings
-exhale_folder = '../data/raw/person1/manual/nose/exhale'
-inhale_folder = '../data/raw/person1/manual/nose/inhale'
+exhale_folder = '../data-ours/exhale'
+inhale_folder = '../data-ours/inhale'
 silence_folder = '../data-ours/silence'
 
 
