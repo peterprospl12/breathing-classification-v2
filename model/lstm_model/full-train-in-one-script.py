@@ -1,6 +1,17 @@
-import os
-from datetime import datetime
+"""
+This script preprocess the data into MFCCs and labels. It also creates a DataLoader object for training and validation sets.
 
+The script divides sequences into 0.25s chunks and calculates MFCCs for every chunk. Then, it assigns a label to every chunk based on the labels from the CSV file. If a chunk has both sample from two different classes, the label is assigned based on the majority of samples in the chunk.
+
+The goal is to create a dataset, and final shape of output is a list of sequences. Every sequence is a list of tuples (MFCCs, label). The DataLoader object will be used to iterate through the dataset during training.
+
+Most important parameters of this script is:
+REFRESH_TIME - length of one classification window in seconds
+BATCH_SIZE - batch size for DataLoader
+data_dir - directory with training and validation data (there must be sequences in directories, ideally created with create_sequences.py script)
+"""
+from model_classes import AudioDataset
+import os
 from scipy.io.wavfile import read
 import csv
 from sklearn.model_selection import train_test_split
@@ -8,34 +19,34 @@ from torch.utils.data import DataLoader
 import numpy as np
 import librosa
 import time
+import torch
 import torch.optim as optim
-from tqdm import tqdm
-from sklearn.metrics import accuracy_score
-from model_classes import AudioClassifierLSTM as AudioClassifier
 import torch.nn as nn
+from model_classes import AudioClassifierLSTM as AudioClassifier
 
-REFRESH_TIME = 0.1  # seconds
+REFRESH_TIME = 0.25  # seconds
 BATCH_SIZE = 16
 
 # Directories with data
-data_dir = '../../train-sequences-test'
+data_dir = '../../sequences'
+model_file_name = 'model_lstm.pth'
 
-# Function to load labels from csv file
+# Function to load labels from csv file to list of tuples (label, start_frame, end_frame)
 def load_labels(csv_file_v):
     labels_v = []
     with open(csv_file_v, 'r') as file:
         reader = csv.reader(file)
-        next(reader)  # Pomijamy nagłówek
+        next(reader)  # Skip the header
         for row in reader:
             if row[0] == 'silence':
-                labels_v.append((2, int(row[1]), int(row[2])))
+                labels_v.append((2, int(row[1]), int(row[2])))  # 2: silence
             elif row[0] == 'inhale':
-                labels_v.append((1, int(row[1]), int(row[2])))
+                labels_v.append((1, int(row[1]), int(row[2])))  # 1: inhale
             elif row[0] == 'exhale':
-                labels_v.append((0, int(row[1]), int(row[2])))
+                labels_v.append((0, int(row[1]), int(row[2])))  # 0: exhale
     return labels_v
 
-# Function to get the label for a given time
+# Function to get the label for a given part of recording (from start_frame to end_frame)
 def get_label_for_time(labels_v, start_frame, end_frame):
     label_counts = [0, 0, 0]  # 0: exhale, 1: inhale, 2: silence
 
@@ -55,16 +66,23 @@ train_data = []
 # Main loop to preprocess data into MFCCs
 for wav_file in wav_files:
     csv_file = wav_file.replace('.wav', '.csv')
+
+    # Ensure that there is a corresponding CSV file
     if not os.path.exists(csv_file):
         continue
 
     # Load audio and labels
     sr, y = read(wav_file)
 
+    # Throw error if sampling rate is not 44100, recording is not in mono or dtype is not int16
     if sr != 44100:
-        # raise Exception("Sampling rate is not 44100 its {}".format(sr))
-        print("Sampling rate is not 44100 its {}".format(sr))
+        raise Exception("Sampling rate is not 44100. Make sure you have used right sequence creator.")
+    if y.dtype != np.int16:
+        raise Exception("Data type is not int16. Make sure you have used right sequence creator.")
+    if y.ndim > 1 and y.shape[1] > 1:
+        raise Exception("Audio is not mono. Make sure you have used right sequence creator.")
 
+    # Load labels from CSV file
     labels = load_labels(csv_file)
 
     # Calculate chunk size
@@ -75,194 +93,180 @@ for wav_file in wav_files:
 
     # Iterate through every 0.25s audio chunk
     for i in range(0, len(y), chunk_size):
+        # Get frame's samples
         frame = y[i:i + chunk_size]
+
+        # Ensure that the frame has the right size
         if len(frame) == chunk_size:
-            frame = frame.astype(np.float32)
-            frame /= np.iinfo(np.int16).max
-            mfcc = librosa.feature.mfcc(y=frame, sr=sr)
-            mfcc_mean = mfcc.mean(axis=1)
+            # Make sure that frame is mono, 44100 Hz and in int16 format
+            if frame.dtype != np.int16:
+                raise Exception("Data type is not int16. Make sure you have used right sequence creator.")
+            if sr != 44100:
+                raise Exception("Sampling rate is not 44100. Make sure you have used right sequence creator.")
+            if frame.ndim > 1 and frame.shape[1] > 1:
+                raise Exception("Audio is not mono. Make sure you have used right sequence creator.")
+
+            # Conversion to float32 from int16
+            frames_float32 = frame.astype(np.float32) / np.iinfo(np.int16).max
+
+            # Make sure that frame is mono, 44100 Hz and converted to float32
+            if frames_float32.ndim > 1 and frames_float32.shape[1] > 1:
+                raise Exception("Audio is not mono. Make sure you have used right sequence creator.")
+            if frames_float32.dtype != np.float32:
+                raise Exception("Data type is not float32. Make sure you have used right sequence creator.")
+            if sr != 44100:
+                raise Exception("Sampling rate is not 44100. Make sure you have used right sequence creator.")
+
+            # Calculate MFCCs
+            mfcc = librosa.feature.mfcc(
+                y=frames_float32,
+                sr=sr,
+                n_mfcc=13
+            )
+
+            # Because function will return x times 20 MFCCs, we will calculate mean of them (size of mfcc above is [20, x])
+            features = mfcc.mean(axis=1)
+
+            # Get label for the frame
             label = get_label_for_time(labels, i, i + chunk_size)
-            mfcc_sequence.append((mfcc_mean, label))
 
-    if mfcc_sequence:
-        train_data.append(mfcc_sequence)
+            # Append MFCCs and label to the sequence (we append tuple of a ndarray of length 20 and a label)
+            mfcc_sequence.append((features, label))
 
-# Check length of every sequence
+    train_data.append(mfcc_sequence)  # Append sequence to the list of sequences
 
-lengths = [len(seq) for seq in train_data]
-print("Min length: ", min(lengths))
-print("Max length: ", max(lengths))
-print(lengths)
+# Ensure that all sequences have the same length
+length = len(train_data[0])
+for sequence in train_data:
+    if len(sequence) != length:
+        raise Exception("Sequences have different lengths")
 
 # Split data into train and validation sets
 train_data, val_data = train_test_split(train_data, test_size=0.2)
 
-# DataLoader and collate function
-from model_classes import AudioDataset
-import torch
-
 train_dataset = AudioDataset(train_data)
 val_dataset = AudioDataset(val_data)
 
-def collate_fn(batch):
-    sequences, labels_t = zip(*batch)
-    lengths_t = [seq.size(0) for seq in sequences]
-    max_length = max(lengths_t)
-    padded_sequences = torch.zeros(len(sequences), max_length, 20)
-    padded_labels = torch.zeros(len(sequences), max_length, dtype=torch.long)
-    for j, seq in enumerate(sequences):
-        padded_sequences[j, :seq.size(0), :] = seq
-        padded_labels[j, :len(labels_t[j])] = labels_t[j]
-    return padded_sequences, padded_labels
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
+architecture = 'LSTM'
 
-REFRESH_TIME = 0.25  # Refresh time in seconds in future realtime
-NUM_EPOCHS = 100  # Number of epochs (the more epoch the better model, but it takes more time)
-PATIENCE_TIME = 10  # Number of epochs without improvement in validation accuracy that will stop training
-LEARNING_RATE = 0.001  # Learning rate
-BATCH_SIZE = 16  # Batch size (amount of sequences in one batch)
+NUM_EPOCHS = 100
+PATIENCE_TIME = 10
+LEARNING_RATE = 0.001
 
-# Check if CUDA is available (learning on GPU is much faster)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("Device: ", device)
 
-total_time = time.time()
-start_time = time.time()
-
-# Create model object
-print("Creating model...")
-model = AudioClassifier()
-model = model.to(device)
-print("Model created, time: ", time.time() - start_time)
-
-# Define loss function and optimizer (network parameters)
+model = AudioClassifier().to(device)
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters())
+optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
-# These are just for early stopping
 best_val_accuracy = 0.0
+val_loss_on_best_val_acc = 0.0
+train_loss_on_best_val_acc = 0.0
+train_acc_on_best_val_acc = 0.0
+
 early_stopping_counter = 0
 
-print("Training model...")
-start_time = time.time()
+total_start_time = time.time()
 
-# Iterate through epochs
 for epoch in range(NUM_EPOCHS):
+    epoch_start_time = time.time()
 
-    # Enable training on model object
     model.train()
+    train_loss, train_correct, train_total = 0.0, 0, 0
 
-    # Initialize running loss and accuracy
-    running_loss = 0.0
-    running_accuracy = 0.0
-    # It's just a fancy progress bar in console
-    progress_bar = tqdm(train_loader, desc=f'Epoch {epoch + 1}/{NUM_EPOCHS}', unit='batch')
+    for inputs, labels in train_loader:
+        inputs = inputs.to(device)  # Shape: [batch, time_steps, features]
+        labels = labels.to(device)  # Shape: [batch, time_steps]
 
-    # Iterate through batches
-    for inputs, labels in progress_bar:
-
-        # Move inputs and labels to the device (GPU or CPU)
-        inputs = inputs.to(device)
-        labels = labels.to(device)
-
-        # Zero the gradients
         optimizer.zero_grad()
+        outputs, _ = model(inputs)  # outputs.shape: [batch, time_steps, num_classes]
 
-        # Forward pass
-        outputs = model(inputs)
+        # Flattening to [batch * time_steps, num_classes]
+        outputs_flat = outputs.view(-1, outputs.size(-1))
+        labels_flat = labels.view(-1)  # [batch * time_steps]
 
-        # Jeśli model zwraca więcej niż jedną wartość, przypisz odpowiednią wartość do outputs
-        if isinstance(outputs, tuple):
-            outputs = outputs[0]
-
-        # Flattening outputs and labels from [batch_size, max_length, num_classes]
-        outputs = outputs.view(-1, outputs.size(-1))  # Flattening to [batch_size * max_length, num_classes]
-        labels = labels.view(-1)  # Flattening to [batch_size * max_length]
-
-        # Calculate loss
-        loss = criterion(outputs, labels)
-
-        # Backward pass (calculate gradients)
+        loss = criterion(outputs_flat, labels_flat)
         loss.backward()
-
-        # Update weights according to the calculated gradients
         optimizer.step()
 
-        # Calculate running loss and accuracy
-        running_loss += loss.item()
-        _, predicted = torch.max(outputs, 1)
-        running_accuracy += accuracy_score(labels.cpu(), predicted.cpu())
+        # Calculate loss and accuracy
+        _, predicted = torch.max(outputs_flat, 1)  # Get the predicted class (index of the maximum logit) for each audio segment
+        train_correct += (predicted == labels_flat).sum().item()  # Count how many predictions match the true labels in this batch
+        train_total += labels_flat.size(0)  # Update the total number of audio segments processed so far
+        train_loss += loss.item()  # Accumulate the loss for this batch to calculate the average loss later
 
-        # Update progress bar
-        progress_bar.set_postfix(loss=running_loss / len(progress_bar),
-                                  accuracy=running_accuracy / len(progress_bar))
+    avg_train_loss = train_loss / len(train_loader)
+    train_acc = train_correct / train_total
 
-    # Print the loss and accuracy for the epoch
-    # print('Train Loss: {:.4f}, Train Accuracy: {:.4f}'.format(running_loss / len(train_loader),
-    #                                                           running_accuracy / len(train_loader)))
-
-    # After training on the whole training set, we can evaluate the model on the validation set
+    # Switch the model to evaluation mode (turns off dropout, batch norm, etc.)
     model.eval()
-    val_running_loss = 0.0
-    val_running_accuracy = 0.0
 
-    # We don't need to calculate gradients during validation
+    # Initialize variables to track total correct predictions, total samples, and accumulated loss for validation
+    val_loss, val_correct, val_total = 0.0, 0, 0
+
+    # Disable gradient calculation for validation (saves memory and speeds up computation)
     with torch.no_grad():
-
-        # Iterate through validation set
+        # Iterate through batches in the validation set
         for inputs, labels in val_loader:
+            inputs = inputs.to(device)  # Shape: [batch, time_steps, features]
+            labels = labels.to(device)  # Shape: [batch, time_steps]
 
-            # Move inputs and labels to the device
-            inputs = inputs.to(device)
-            labels = labels.to(device)
+            # Forward pass: compute model predictions
+            outputs, _ = model(inputs)  # outputs.shape: [batch, time_steps, num_classes]
 
-            # Forward pass
-            outputs = model(inputs)
+            # Flattening to [batch * time_steps, num_classes]
+            outputs_flat = outputs.view(-1, outputs.size(-1))
+            labels_flat = labels.view(-1)  # [batch * time_steps]
 
-            # Jeśli model zwraca więcej niż jedną wartość, przypisz odpowiednią wartość do outputs
-            if isinstance(outputs, tuple):
-                outputs = outputs[0]
+            # Calculate loss (how far the model's predictions are from the correct answers)
+            loss = criterion(outputs_flat, labels_flat)
+            val_loss += loss.item()  # Accumulate the loss to calculate the average loss later
 
-            # As previous, we need to flatten outputs and labels
-            outputs = outputs.view(-1, outputs.size(-1)) # Flattening to [batch_size * max_length, num_classes]
-            labels = labels.view(-1) # Flattening to [batch_size * max_length]
+            # Calculate accuracy for this batch
+            _, predicted = torch.max(outputs_flat, 1)  # Get the predicted class (index of the maximum logit) for each audio segment
+            val_correct += (predicted == labels_flat).sum().item()  # Count how many predictions match the true labels in this batch
+            val_total += labels_flat.size(0)  # Update the total number of audio segments processed so far
 
-            # Calculate loss
-            loss = criterion(outputs, labels)
+    # Calculate the average validation loss and accuracy for the entire epoch
+    avg_val_loss = val_loss / len(val_loader)  # Average loss = total loss / number of batches
+    val_acc = val_correct / val_total  # Accuracy = correct predictions / total samples
 
-            # Calculate running loss (cumulative loss over batches) and add current epoch's accuracy to the running (cumulative) accuracy
-            val_running_loss += loss.item()
-            _, predicted = torch.max(outputs, 1)
-            val_running_accuracy += accuracy_score(labels.cpu(), predicted.cpu())
 
-    # Calculate cumulative loss and accuracy for the validation set
-    avg_val_loss = val_running_loss / len(val_loader)
-    avg_val_accuracy = val_running_accuracy / len(val_loader)
-
-    # And print it
-    print('Val Loss: {:.4f}, Val Accuracy: {:.4f}'.format(avg_val_loss, avg_val_accuracy))
-
-    # Learning rate scheduler (changing learning rate during training)
+    # Update and early stopping
     scheduler.step()
 
-    # Early stopping (if there is no improvement in validation accuracy for PATIENCE_TIME epochs, we stop training)
-    if avg_val_accuracy > best_val_accuracy:
-        best_val_accuracy = avg_val_accuracy
+    if val_acc > best_val_accuracy:
+        best_val_accuracy = val_acc
+        train_acc_on_best_val_acc = train_acc
+        val_loss_on_best_val_acc = avg_val_loss
+        train_loss_on_best_val_acc = avg_train_loss
         early_stopping_counter = 0
+        torch.save(model.state_dict(), model_file_name)
     else:
         early_stopping_counter += 1
-        if early_stopping_counter >= PATIENCE_TIME:
-            print("Early stopping triggered. No improvement in validation accuracy.")
-            break
 
-# And print final results
-print('Finished Training, time: ', time.time() - start_time)
-print('Saving model...')
-start_time = time.time()
-#TODO
-torch.save(model.state_dict(), f'audio_lstm_classifier_{datetime.now()}.pth')
-print("Model saved, time: ", time.time() - start_time)
-print("Finished, Total time: ", time.time() - total_time)
+    epoch_time = time.time() - epoch_start_time
+    print(f'Epoch {epoch+1}/{NUM_EPOCHS} [{epoch_time:.2f}s]')
+    print(f' Train Loss: {avg_train_loss:.4f}, Acc: {train_acc:.4f}')
+    print(f' Val Loss: {avg_val_loss:.4f}, Acc: {val_acc:.4f}\n')
+
+    if early_stopping_counter >= PATIENCE_TIME:
+        print("Early stopping!")
+        break
+
+# Save the final model after training completes
+
+print(model_file_name)
+
+# Print metrics for the final model
+print("\nFinal Model Metrics:")
+print(f' Train Loss: {train_loss_on_best_val_acc:.4f}, Train Acc: {train_acc_on_best_val_acc:.4f}')
+print(f' Val Loss: {val_loss_on_best_val_acc:.4f}, Val Acc: {best_val_accuracy:.4f}')
+
+total_time = time.time() - total_start_time
+print(f'Total training time: {total_time:.2f}s')

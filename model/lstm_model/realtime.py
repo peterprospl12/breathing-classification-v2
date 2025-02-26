@@ -1,5 +1,3 @@
-import wave
-
 import numpy as np
 import pyaudio
 import matplotlib.pyplot as plt
@@ -35,35 +33,31 @@ Have fun!
 
 """
 
+# Model path
+
+CLASSIFIER_MODEL_PATH = 'model_lstm.pth'
+
 # Constants
 
-REFRESH_TIME = 0.1
-
-FORMAT = pyaudio.paInt16
+REFRESH_TIME = 0.25
 
 INHALE_COUNTER = 0
 EXHALE_COUNTER = 0
 
 CHANNELS = 1
 RATE = 44100
-DEVICE_INDEX = 4
+DEVICE_INDEX = 5
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
 
 running = True
 
-# Model path
-
-CLASSIFIER_MODEL_PATH = 'audio_lstm_classifier_lstm_01.pth'
-
 state = torch.load(CLASSIFIER_MODEL_PATH, map_location=torch.device('cpu'))
-print("Klucze w zapisanym state_dict:", list(state.keys()))
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Audio resource class
 
 class SharedAudioResource:
-    buffer = None
 
     def __init__(self):
         self.p = pyaudio.PyAudio()
@@ -76,7 +70,11 @@ class SharedAudioResource:
 
     def read(self):
         self.buffer = self.stream.read(self.buffer_size, exception_on_overflow=False)
-        return np.frombuffer(self.buffer, dtype=np.int16)
+        audio_data = np.frombuffer(self.buffer, dtype=np.int16)
+        if CHANNELS == 2:
+            audio_data = audio_data.reshape(-1, 2)
+            audio_data = audio_data.mean(axis=1).astype(np.int16)
+        return audio_data
 
     def close(self):
         self.stream.stop_stream()
@@ -85,7 +83,6 @@ class SharedAudioResource:
 
 
 # Class for prediction
-
 class RealTimeAudioClassifier:
     def __init__(self, model_path):
         self.model = AudioClassifier()
@@ -94,22 +91,38 @@ class RealTimeAudioClassifier:
         self.model.eval()
         self.hidden = None
 
-    def predict(self, y, sr=RATE):
-        frames = y  # mono
-        frames = frames[:CHUNK_SIZE]
+    def predict(self, y):
+        # Make sure that frame is mono, 44100 Hz and in int16 format
+        if y.dtype != np.int16:
+            raise Exception("Data type is not int16.")
+        if y.ndim > 1 and y.shape[1] > 1:
+            raise Exception("Audio is not mono.")
 
-        frames = frames.astype(np.float32)
-        frames /= np.iinfo(np.int16).max
-        mfcc = librosa.feature.mfcc(y=frames, sr=sr)
+        # Conversion to float32 from int16
+        frames_float32 = y.astype(np.float32) / np.iinfo(np.int16).max
 
-        mfcc_mean = np.mean(mfcc, axis=1)
+        # Make sure that frame is mono, 44100 Hz and converted to float32
+        if frames_float32.ndim > 1 and frames_float32.shape[1] > 1:
+            raise Exception("Audio is not mono.")
+        if frames_float32.dtype != np.float32:
+            raise Exception("Data type is not float32.")
 
-        single_data = torch.tensor(mfcc_mean, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+        # Calculate MFCCs
+        mfcc = librosa.feature.mfcc(
+            y=frames_float32,
+            sr=RATE,
+            n_mfcc=13
+        )
 
-        outputs, self.hidden = self.model(single_data, self.hidden)
+        # Because function will return x times 20 MFCCs, we will calculate mean of them (size of mfcc above is [20, x])
+        features = mfcc.mean(axis=1)
 
-        predicted = outputs[0, 0].detach().cpu().numpy()
-        print(predicted)
+        single_data = torch.tensor(features, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            outputs, self.hidden = self.model(single_data, self.hidden)
+            predicted = outputs[0, 0].detach().cpu().numpy()
+
         return predicted
 
 
@@ -221,6 +234,7 @@ if __name__ == "__main__":
         prediction = classifier.predict(buffer)
 
         # Determine the class of the prediction
+        print(prediction)
         print(np.argmax(prediction))
 
         # Update plot

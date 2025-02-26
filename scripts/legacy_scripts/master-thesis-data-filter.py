@@ -7,7 +7,7 @@
 import os
 
 # Path to the folder containing files
-folder_path = "../data-master-thesis"  # Change this to the appropriate path if needed
+folder_path = "../../data-master-thesis"  # Change this to the appropriate path if needed
 
 # Get all files in the directory
 files = os.listdir(folder_path)
