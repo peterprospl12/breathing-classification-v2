@@ -3,14 +3,12 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 import numpy as np
 from torchinfo import summary
-import torch.nn.functional as F
-
 
 class AudioClassifierLSTM(nn.Module):
     def __init__(self):
         super().__init__()
         self.lstm = nn.LSTM(
-            input_size=13,
+            input_size=128,  #257,
             hidden_size=256,
             num_layers=2,
             batch_first=True
@@ -53,55 +51,3 @@ if __name__ == '__main__':
     print("LSTM summary")
     model = AudioClassifierLSTM()
     summary(model, input_size=(1, 1, 20))
-'''
-    print("RNN summary")
-    model = AudioClassifierRNN()
-    summary(model, input_size=(1, 1, 20))
-
-    print("GRU summary")
-    model = AudioClassifierGRU()
-    summary(model, input_size=(1, 1, 20))
-
-class AudioClassifierGRU(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.gru = nn.GRU(
-            input_size=60,
-            hidden_size=256,
-            num_layers=2,
-            batch_first=True,
-            dropout=0.2
-        )
-        self.fc = nn.Sequential(
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 3)
-        )
-
-    def forward(self, x, hidden=None):
-        outputs, hidden = self.gru(x, hidden)
-        outputs = self.fc(outputs)
-        return outputs, hidden
-
-class AudioClassifierRNN(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.rnn = nn.RNN(
-            input_size=60,
-            hidden_size=256,
-            num_layers=2,
-            batch_first=True,
-            nonlinearity='tanh',
-            dropout=0.2
-        )
-        self.fc = nn.Sequential(
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 3)
-        )
-
-    def forward(self, x, hidden=None):
-        outputs, hidden = self.rnn(x, hidden)
-        outputs = self.fc(outputs)
-        return outputs, hidden
-        '''

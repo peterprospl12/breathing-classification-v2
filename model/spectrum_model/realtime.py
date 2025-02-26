@@ -35,7 +35,7 @@ Have fun!
 
 # Model path
 
-CLASSIFIER_MODEL_PATH = 'model_lstm_all.pth'
+CLASSIFIER_MODEL_PATH = 'model_lstm.pth'
 
 # Constants
 
@@ -46,7 +46,7 @@ EXHALE_COUNTER = 0
 
 CHANNELS = 1
 RATE = 44100
-DEVICE_INDEX = 4
+DEVICE_INDEX = 5
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
 
 running = True
@@ -107,15 +107,30 @@ class RealTimeAudioClassifier:
         if frames_float32.dtype != np.float32:
             raise Exception("Data type is not float32.")
 
-        # Calculate MFCCs
-        mfcc = librosa.feature.mfcc(
+        # # Perform Short-Time Fourier Transform (STFT) to get spectrogram
+        # stft = librosa.stft(frames_float32, n_fft=512, hop_length=256)
+        # spectrogram = np.abs(stft)
+        #
+        # # Convert spectrogram to decibels
+        # log_spectrogram = librosa.amplitude_to_db(spectrogram, ref=np.max)
+        #
+        # # Convert amplitude to dB
+        # features = log_spectrogram.mean(axis=1)
+
+        # Calculate mel-spectrogram with larger n_fft (e.g., 1024) and specify the number of mel bands (e.g., 128)
+        mel_spec = librosa.feature.melspectrogram(
             y=frames_float32,
-            sr=RATE,
-            n_mfcc=13
+            sr=44100,
+            n_fft=1024,  # Larger FFT window
+            hop_length=256,
+            n_mels=128  # Number of mel bands
         )
 
-        # Because function will return x times 20 MFCCs, we will calculate mean of them (size of mfcc above is [20, x])
-        features = mfcc.mean(axis=1)
+        # Convert amplitude to decibel scale
+        log_mel_spec = librosa.power_to_db(mel_spec, ref=np.max)
+
+        # Extract features as the mean value for each mel band
+        features = log_mel_spec.mean(axis=1)
 
         single_data = torch.tensor(features, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
 
