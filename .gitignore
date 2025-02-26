@@ -267,4 +267,3 @@ data/small-train
 scripts/data-seq
 
 model/*.pth
-
