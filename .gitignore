@@ -246,3 +246,24 @@ fabric.properties
 
 # PyPI configuration file
 .pypirc
+
+data/inhale
+data/exhale
+data/silence
+
+model/small-data
+
+# Moje dane już przeprocesowane na format tompio
+data-master-thesis
+
+data-repo
+
+data-sequences
+
+data/train
+
+data/small-train
+
+scripts/data-seq
+
+model/*.pth
