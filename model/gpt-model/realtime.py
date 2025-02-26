@@ -3,12 +3,11 @@ import pyaudio
 import matplotlib.pyplot as plt
 import time
 import torch
-import librosa
 import torchaudio
 import math
 
 #############################################
-# Model – CNN + Transformer (Twoja architektura)
+# Model – CNN + Transformer
 #############################################
 
 class PositionalEncoding(torch.nn.Module):
@@ -20,7 +19,7 @@ class PositionalEncoding(torch.nn.Module):
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0)/ d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)  # kształt: (1, max_len, d_model)
+        pe = pe.unsqueeze(0)  # shape: (1, max_len, d_model)
         self.register_buffer('pe', pe)
     
     def forward(self, x):
@@ -60,7 +59,7 @@ class BreathPhaseTransformerSeq(torch.nn.Module):
         x = self.pool2(x)
         x = torch.relu(self.bn3(self.conv3(x)))
         x = self.pool3(x)
-        # kształt: (batch, 128, out_freq, time_steps)
+        # shape: (batch, 128, out_freq, time_steps)
         x = x.permute(0, 3, 1, 2)  # (batch, time_steps, channels, out_freq)
         batch_size, time_steps, channels, freq = x.size()
         x = x.contiguous().view(batch_size, time_steps, channels * freq)  # (batch, time_steps, cnn_feature_dim)
@@ -72,18 +71,17 @@ class BreathPhaseTransformerSeq(torch.nn.Module):
         return logits
 
 #############################################
-# Ustawienia i stałe
+# Settings and constants
 #############################################
-MODEL_PATH = 'best_breath_seq_transformer_model.pth'  # Ścieżka do wytrenowanego modelu
+MODEL_PATH = 'best_breath_seq_transformer_model_CURR_BEST.pth'  # Path to the trained model
 
-REFRESH_TIME = 0.3      # czas w sekundach na odczyt audio (jak w przykładzie)
+REFRESH_TIME = 0.3      # time in seconds to read audio
 FORMAT = pyaudio.paInt16
-CHANNELS = 1           # mikrofon mono
-RATE = 44100           # częstotliwość próbkowania
-DEVICE_INDEX = 1       # zmień ten indeks na właściwy (z listy urządzeń)
+CHANNELS = 1           # 1 mono | 2 stereo
+RATE = 44100           # sampling rate
+DEVICE_INDEX = 1       # microphone device index (listed in the console output)
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
 
-# Liczniki faz oddechu
 INHALE_COUNTER = 0
 EXHALE_COUNTER = 0
 
@@ -92,13 +90,13 @@ running = True
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 #############################################
-# Klasa obsługi audio – analogicznie do przykładu
+# Audio handling class
 #############################################
 class SharedAudioResource:
     def __init__(self):
         self.p = pyaudio.PyAudio()
         self.buffer_size = CHUNK_SIZE
-        # Wypisujemy dostępne urządzenia
+        # Print available devices
         for i in range(self.p.get_device_count()):
             print(self.p.get_device_info_by_index(i))
         self.stream = self.p.open(format=FORMAT, channels=CHANNELS, rate=RATE,
@@ -113,14 +111,14 @@ class SharedAudioResource:
         self.p.terminate()
 
 #############################################
-# Klasa dokonująca predykcji – analogicznie do przykładu
+# Prediction class
 #############################################
 class RealTimeAudioClassifier:
     def __init__(self, model_path):
         self.model = BreathPhaseTransformerSeq(n_mels=40, num_classes=3, d_model=128, nhead=4, num_transformer_layers=2).to(device)
         self.model.load_state_dict(torch.load(model_path, map_location=device))
         self.model.eval()
-        # Transformacja spektrogramu Mel – używamy tych samych ustawień, co przy treningu
+        # Mel spectrogram transformation – using the same settings as during training
         self.mel_transform = torchaudio.transforms.MelSpectrogram(
             sample_rate=RATE,
             n_fft=1024,
@@ -128,32 +126,32 @@ class RealTimeAudioClassifier:
             n_mels=40
         )
     def predict(self, y, sr=RATE):
-        # y: sygnał int16; przeliczamy na float32 w zakresie [-1, 1]
+        # y: int16 signal; convert to float32 in the range [-1, 1]
         y = y.astype(np.float32) / 32768.0
-        # Upewniamy się, że sygnał jest mono
+        # Ensure the signal is mono
         if y.ndim != 1:
             raise Exception("Otrzymano sygnał nie-mono!")
-        # Konwertujemy do tensora (kształt: [1, num_samples])
+        # Convert to tensor (shape: [1, num_samples])
         waveform = torch.tensor(y, dtype=torch.float32).unsqueeze(0)
-        # Obliczamy spektrogram Mel – wynik: [1, n_mels, time_steps]
+        # Compute Mel spectrogram – result: [1, n_mels, time_steps]
         mel_spec = self.mel_transform(waveform)
         mel_spec = torch.log(mel_spec + 1e-9)
-        # Dodajemy wymiar kanału – oczekiwany kształt: (batch, 1, n_mels, time_steps)
+        # Add channel dimension – expected shape: (batch, 1, n_mels, time_steps)
         mel_spec = mel_spec.unsqueeze(0)
         mel_spec = mel_spec.to(device)
         with torch.no_grad():
-            logits = self.model(mel_spec)  # kształt: (1, time_steps, num_classes)
+            logits = self.model(mel_spec)  # shape: (1, time_steps, num_classes)
             probabilities = torch.softmax(logits, dim=2)
             probs_np = probabilities.squeeze(0).cpu().numpy()  # (time_steps, num_classes)
-            # Agregujemy predykcje po klatkach – wybieramy najczęściej występującą klasę
+            # Aggregate predictions by frames – choose the most frequent class
             preds = np.argmax(probs_np, axis=1)
             predicted_class = int(np.bincount(preds).argmax())
         return predicted_class
 
 #############################################
-# Konfiguracja wykresu (analogicznie do przykładu)
-#############################################
-PLOT_TIME_HISTORY = 5  # sekund
+# Plot configuration
+# #############################################
+PLOT_TIME_HISTORY = 5  # seconds
 PLOT_CHUNK_SIZE = CHUNK_SIZE
 plot_data = np.zeros((RATE * PLOT_TIME_HISTORY, 1))
 x_line_space = np.arange(0, RATE * PLOT_TIME_HISTORY, 1)
@@ -181,20 +179,19 @@ ax.set_ylim(y_lim)
 
 def update_plot(frames, current_prediction):
     global plot_data, predictions, ax, INHALE_COUNTER, EXHALE_COUNTER
-    # Aktualizacja bufora wykresu
+    # Update plot buffer
     plot_data = np.roll(plot_data, -len(frames))
     plot_data[-len(frames):] = frames.reshape(-1, 1)
     predictions = np.roll(predictions, -1)
     predictions[-1] = current_prediction
 
-    # Aktualizacja liczników (przykładowo, zwiększamy licznik w zależności od predykcji)
     if current_prediction == 0:
         EXHALE_COUNTER += 1
     elif current_prediction == 1:
         INHALE_COUNTER += 1
 
     ax.clear()
-    # Dla każdego segmentu (okna REFRESH_TIME) rysujemy sygnał z kolorem zależnym od predykcji
+    # For each segment (REFRESH_TIME window) plot the signal with color based on prediction
     for i in range(len(predictions)):
         if predictions[i] == 0:
             color = 'green'   # exhale
@@ -211,23 +208,22 @@ def update_plot(frames, current_prediction):
     plt.draw()
     plt.pause(0.01)
 
-#############################################
-# Pętla główna
-#############################################
 if __name__ == '__main__':
     audio = SharedAudioResource()
     classifier = RealTimeAudioClassifier(MODEL_PATH)
     
     while running:
         start_time = time.time()
-        # Odczytujemy CHUNK_SIZE próbek z mikrofonu
+
+        # Read CHUNK_SIZE samples from the microphone
         buffer = audio.read()
         if buffer is None:
             continue
-        # Predykcja (zwracana jest jedna klasa dla bieżącego okna audio)
+
+        # Prediction (one class is returned for the current audio window)
         prediction = classifier.predict(buffer)
         print("Prediction:", prediction)
-        # Aktualizujemy wykres
+
         update_plot(buffer, prediction)
         print("Iteration time:", time.time() - start_time)
     audio.close()

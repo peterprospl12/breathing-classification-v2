@@ -11,15 +11,15 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 
 #########################################
-# 1. Definicja datasetu dla sekwencyjnych nagrań
+# 1. Dataset definition for sequential recordings
 #########################################
 
 class BreathSeqDataset(Dataset):
     """
-    Dataset wczytujący nagrania audio oraz odpowiadające im etykiety zapisane w plikach CSV.
-    W folderze `data_dir` oczekujemy par plików: .wav oraz .csv o tej samej nazwie (np. recording1.wav i recording1.csv).
-    Plik CSV powinien zawierać kolumny: phase_code, start_sample, end_sample.
-    Każda faza jest oznaczona swoim kodem:
+    Dataset loading audio recordings and their corresponding labels stored in CSV files.
+    In the `data_dir` folder, we expect pairs of files: .wav and .csv with the same name (e.g., recording1.wav and recording1.csv).
+    The CSV file should contain columns: phase_code, start_sample, end_sample.
+    Each phase is marked with its code:
       0: exhale
       1: inhale
       2: silence
@@ -27,15 +27,15 @@ class BreathSeqDataset(Dataset):
     def __init__(self, data_dir, sample_rate=44100, n_mels=40, n_fft=1024, hop_length=512, transform=None):
         """
         Args:
-            data_dir (str): Ścieżka do folderu z danymi (np. "../../scripts/data-seq")
-            sample_rate (int): Docelowa częstotliwość próbkowania (tutaj ustawiona na 44100 Hz)
-            n_mels (int): Liczba filtrów mel
-            n_fft (int): Długość FFT
-            hop_length (int): Hop length przy obliczaniu spektrogramu
-            transform (callable, opcjonalnie): Dodatkowa transformacja dla spektrogramu
+            data_dir (str): Path to the data folder (e.g., "../../scripts/data-seq")
+            sample_rate (int): Target sampling rate (set to 44100 Hz here)
+            n_mels (int): Number of mel filters
+            n_fft (int): FFT length
+            hop_length (int): Hop length for spectrogram calculation
+            transform (callable, optional): Additional transformation for the spectrogram
         """
         self.data_dir = data_dir
-        # Wyszukujemy wszystkie pliki WAV w folderze
+        # Search for all WAV files in the folder
         self.audio_files = glob.glob(os.path.join(data_dir, "*.wav"))
         self.sample_rate = sample_rate
         self.n_mels = n_mels
@@ -53,34 +53,34 @@ class BreathSeqDataset(Dataset):
         return len(self.audio_files)
 
     def __getitem__(self, idx):
-        # Pobieramy ścieżkę do pliku audio
+        # Get the path to the audio file
         audio_path = self.audio_files[idx]
         base_name = os.path.splitext(os.path.basename(audio_path))[0]
         csv_path = os.path.join(self.data_dir, base_name + ".csv")
 
-        # Wczytujemy audio (waveform ma kształt (channels, num_samples))
+        # Load the audio (waveform has shape (channels, num_samples))
         waveform, sr = torchaudio.load(audio_path)
 
-        # Konwersja do mono, jeśli nagranie posiada więcej niż jeden kanał
+        # Convert to mono if the recording has more than one channel
         if waveform.shape[0] > 1:
-            print("konwersja na mono")
+            print("Warning: stereo audio converted to mono.")
             waveform = waveform.mean(dim=0, keepdim=True)
 
-        # Resampling do docelowego sample_rate (44100 Hz)
+        # Resample to the target sample_rate (44100 Hz)
         if sr != self.sample_rate:
             resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=self.sample_rate)
             waveform = resampler(waveform)
 
-        # Obliczamy mel spektrogram i stosujemy log transformację (zapobiega problemom numerycznym)
+        # Compute the mel spectrogram and apply log transformation (prevents numerical issues)
         mel_spec = self.mel_transform(waveform)  # kształt: (channels, n_mels, time_steps)
         mel_spec = torch.log(mel_spec + 1e-9)
 
-        # Wczytujemy etykiety z pliku CSV
+        # Load labels from the CSV file
         df = pd.read_csv(csv_path)
         time_steps = mel_spec.shape[-1]
-        # Inicjujemy sekwencję etykiet – dla każdego kroku spektrogramu (przyjmujemy, że etykiety pokrywają cały sygnał)
+        # Initialize the label sequence – for each spectrogram step (assuming labels cover the entire signal)
         label_seq = np.zeros(time_steps, dtype=np.int64)
-        # Dla każdego wiersza CSV określamy, które klatki spektrogramu (na podstawie hop_length) otrzymają daną etykietę
+        # For each row in the CSV, determine which spectrogram frames (based on hop_length) will receive the given label
         for _, row in df.iterrows():
             phase_code = str(row['class'])
             if phase_code == 'exhale':
@@ -91,7 +91,7 @@ class BreathSeqDataset(Dataset):
                 phase_code = 2
             start_sample = int(row['start_sample'])
             end_sample = int(row['end_sample'])
-            # Obliczamy numery klatek – przyjmujemy, że klatka odpowiada próbce: i * hop_length
+            # Calculate frame numbers – assuming a frame corresponds to a sample: i * hop_length
             start_frame = int(np.floor(start_sample / self.hop_length))
             end_frame = int(np.ceil(end_sample / self.hop_length))
             end_frame = min(end_frame, time_steps)  # zabezpieczenie, gdyby wykraczało poza liczbę klatek
@@ -101,16 +101,16 @@ class BreathSeqDataset(Dataset):
 
         if self.transform:
             mel_spec = self.transform(mel_spec)
-        # Upewniamy się, że mel_spec ma kształt (1, n_mels, time_steps)
+        # Ensure mel_spec has shape (1, n_mels, time_steps)
         return mel_spec, label_seq
 
 #########################################
-# 2. Kodowanie pozycyjne dla Transformera
+# 2. Positional encoding for Transformer
 #########################################
 
 class PositionalEncoding(nn.Module):
     """
-    Implementacja kodowania pozycyjnego według "Attention is All You Need".
+    Implementation of positional encoding according to "Attention is All You Need".
     """
     def __init__(self, d_model, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
@@ -127,29 +127,29 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         """
         Args:
-            x: Tensor o kształcie (batch_size, seq_len, d_model)
+            x: Tensor of shape (batch_size, seq_len, d_model)
         Returns:
-            Tensor z dodanym zakodowaniem pozycyjnym.
+            Tensor with added positional encoding.
         """
         x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)
 
 #########################################
-# 3. Model: CNN + Transformer z predykcją sekwencyjną
+# 3. Model: CNN + Transformer with sequential prediction
 #########################################
 
 class BreathPhaseTransformerSeq(nn.Module):
     def __init__(self, n_mels=40, num_classes=3, d_model=128, nhead=4, num_transformer_layers=2):
         """
         Args:
-            n_mels (int): Liczba współczynników mel
-            num_classes (int): Liczba klas (0: exhale, 1: inhale, 2: silence)
-            d_model (int): Wymiar przestrzeni wektorowej w Transformerze
-            nhead (int): Liczba głów w mechanizmie uwagi
-            num_transformer_layers (int): Liczba warstw Transformera
+            n_mels (int): Number of mel coefficients
+            num_classes (int): Number of classes (0: exhale, 1: inhale, 2: silence)
+            d_model (int): Dimension of the vector space in the Transformer
+            nhead (int): Number of heads in the attention mechanism
+            num_transformer_layers (int): Number of Transformer layers
         """
         super(BreathPhaseTransformerSeq, self).__init__()
-        # Część CNN – pooling wykonujemy tylko w osi częstotliwości, aby zachować rozdzielczość czasową
+        # CNN part – pooling is performed only in the frequency axis to preserve temporal resolution
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(3,3), stride=1, padding=1)
         self.bn1   = nn.BatchNorm2d(32)
         self.pool_freq1 = nn.MaxPool2d(kernel_size=(2,1), stride=(2,1))
@@ -162,30 +162,30 @@ class BreathPhaseTransformerSeq(nn.Module):
         self.bn3   = nn.BatchNorm2d(128)
         self.pool_freq3 = nn.MaxPool2d(kernel_size=(2,1), stride=(2,1))
         
-        # Po 3-krotnym pooling’u w osi częstotliwości: out_freq = n_mels // 2 // 2 // 2
+        # After 3 times pooling in the frequency axis: out_freq = n_mels // 2 // 2 // 2
         self.out_freq = n_mels // 8  
         cnn_feature_dim = 128 * self.out_freq  # cecha dla jednej klatki
         
-        # Projekcja do przestrzeni d_model
+        # Projection to d_model space
         self.fc_proj = nn.Linear(cnn_feature_dim, d_model)
         
-        # Transformer – używamy batch_first=True
+        # Transformer – using batch_first=True
         encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dropout=0.1, batch_first=True)
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_transformer_layers)
         self.pos_encoder = PositionalEncoding(d_model=d_model, dropout=0.1)
         
         self.dropout = nn.Dropout(0.3)
-        # Głowica wyjściowa – predykcja etykiety dla każdej klatki (sekwencyjnie)
+        # Output head – prediction of the label for each frame (sequentially)
         self.fc_out = nn.Linear(d_model, num_classes)
 
     def forward(self, x):
         """
         Args:
-            x: Tensor o kształcie (batch, 1, n_mels, time_steps)
+            x: Tensor of shape (batch, 1, n_mels, time_steps)
         Returns:
-            Logity o kształcie (batch, time_steps, num_classes)
+            Logits of shape (batch, time_steps, num_classes)
         """
-        # Część CNN
+        # CNN part
         x = F.relu(self.bn1(self.conv1(x)))
         x = self.pool_freq1(x)
         x = F.relu(self.bn2(self.conv2(x)))
@@ -193,23 +193,23 @@ class BreathPhaseTransformerSeq(nn.Module):
         x = F.relu(self.bn3(self.conv3(x)))
         x = self.pool_freq3(x)
         # x: (batch, 128, out_freq, time_steps)
-        # Przestawiamy: chcemy, aby oś czasu była drugą osią – (batch, time_steps, channels, out_freq)
+        # Permute: we want the time axis to be the second axis – (batch, time_steps, channels, out_freq)
         x = x.permute(0, 3, 1, 2)
         batch_size, time_steps, channels, freq = x.size()
-        # Spłaszczamy cechy dla każdej klatki
+        # Flatten features for each frame
         x = x.contiguous().view(batch_size, time_steps, channels * freq)  # (batch, time_steps, 128*out_freq)
         
-        # Projekcja do wymiaru d_model
+        # Projection to d_model dimension
         x = self.fc_proj(x)  # (batch, time_steps, d_model)
         x = self.pos_encoder(x)
-        # Transformer – przetwarzamy sekwencję
+        # Transformer – process the sequence
         x = self.transformer(x)  # (batch, time_steps, d_model)
         x = self.dropout(x)
         logits = self.fc_out(x)  # (batch, time_steps, num_classes)
         return logits
 
 #########################################
-# 4. Funkcja trenowania
+# 4. Training function
 #########################################
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=25):
@@ -223,26 +223,26 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device, n
         correct_frames = 0
         
         for inputs, labels in train_loader:
-            inputs = inputs.to(device)   # kształt: (B, 1, n_mels, time_steps)
-            labels = labels.to(device)   # kształt: (B, time_steps)
+            inputs = inputs.to(device)   # shape: (B, 1, n_mels, time_steps)
+            labels = labels.to(device)   # shape: (B, time_steps)
             optimizer.zero_grad()
-            outputs = model(inputs)      # kształt: (B, time_steps, num_classes)
+            outputs = model(inputs)      # shape: (B, time_steps, num_classes)
             
-            # Obliczamy stratę: przekształcamy predykcje i etykiety do kształtu (B*time_steps, num_classes)
+            # Calculate loss: reshape predictions and labels to shape (B*time_steps, num_classes)
             loss = criterion(outputs.view(-1, outputs.shape[-1]), labels.view(-1))
             loss.backward()
             optimizer.step()
             
             running_loss += loss.item() * inputs.size(0)
             
-            # Obliczamy dokładność klatkową
+            # Calculate frame accuracy
             _, predicted = torch.max(outputs, dim=-1)  # (B, time_steps)
             total_frames += labels.numel()
             correct_frames += (predicted == labels).sum().item()
         
         epoch_loss = running_loss / len(train_loader.dataset)
         epoch_acc = correct_frames / total_frames
-        print(f"Epoka {epoch+1}/{num_epochs} | Loss trening: {epoch_loss:.4f} | Frame Acc: {epoch_acc:.4f}")
+        print(f"Epoch {epoch+1}/{num_epochs} | Training Loss: {epoch_loss:.4f} | Frame Acc: {epoch_acc:.4f}")
         
         # Walidacja
         model.eval()
@@ -261,30 +261,30 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device, n
                 val_correct += (predicted == labels).sum().item()
         val_loss = val_loss / len(val_loader.dataset)
         val_acc = val_correct / val_total
-        print(f"Epoka {epoch+1}/{num_epochs} | Loss walidacja: {val_loss:.4f} | Frame Acc: {val_acc:.4f}")
+        print(f"Epoch {epoch+1}/{num_epochs} | Validation Loss: {val_loss:.4f} | Frame Acc: {val_acc:.4f}")
         
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), "best_breath_seq_transformer_model.pth")
-            print("Zapisano najlepszy model.")
+            torch.save(model.state_dict(), "best_breath_seq_transformer_model_CURR_BEST.pth")
+            print("Saved the best model.")
     
-    print("Trening zakończony.")
+    print("Training completed.")
 
 #########################################
-# 5. Funkcja inferencyjna
+# 5. Inference function
 #########################################
 
 def infer(model, input_tensor, device):
     """
     Args:
-        model (nn.Module): Wytrenowany model.
-        input_tensor (torch.Tensor): Pojedynczy spektrogram o wymiarach (1, n_mels, time_steps)
-        device: Urządzenie ("cuda" lub "cpu")
+        model (nn.Module): Trained model.
+        input_tensor (torch.Tensor): Single spectrogram with dimensions (1, n_mels, time_steps)
+        device: Device ("cuda" or "cpu")
     Returns:
-        predicted_seq (numpy.ndarray): Predykcja etykiet dla każdej klatki (kształt: (time_steps,))
+        predicted_seq (numpy.ndarray): Predicted labels for each frame (shape: (time_steps,))
     """
     model.eval()
-    # Dodajemy wymiar batch, jeśli potrzeba
+    # Add batch dimension if needed
     if input_tensor.dim() == 3:
         input_tensor = input_tensor.unsqueeze(0)  # (1, 1, n_mels, time_steps)
     input_tensor = input_tensor.to(device)
@@ -294,19 +294,19 @@ def infer(model, input_tensor, device):
     return predicted.squeeze(0).cpu().numpy()
 
 #########################################
-# 6. Przykładowe użycie
+# 6. Example usage
 #########################################
 
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    num_epochs = 50
-    batch_size = 4   # Wartość dobrana przykładowo – zależy od ilości danych i mocy GPU/CPU
+    num_epochs = 100
+    batch_size = 4   # Value chosen as an example – depends on the amount of data and GPU/CPU power
     learning_rate = 1e-3
 
-    # Ścieżka do folderu z danymi sekwencyjnymi
+    # Path to the folder with sequential data
     data_dir = "../../sequences"
     
-    # Tworzymy dataset i DataLoader (przykładowy podział na trening i walidację)
+    # Create dataset and DataLoader (example split into training and validation)
     full_dataset = BreathSeqDataset(data_dir, sample_rate=44100, n_mels=40, n_fft=1024, hop_length=512)
     
     num_samples = len(full_dataset)
@@ -321,22 +321,21 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     
-    # Inicjalizacja modelu, funkcji straty i optymalizatora
+    # Initialize the model, loss function, and optimizer
     model = BreathPhaseTransformerSeq(n_mels=40, num_classes=3, d_model=128, nhead=4, num_transformer_layers=2)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     
-    # Trening modelu
+    # Train the model
     train_model(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=num_epochs)
     
-    # Przykład inferencji: wczytujemy jeden plik i wyświetlamy predykcje dla każdej klatki
+    # Example inference: load one file and display predictions for each frame
     example_audio = full_dataset.audio_files[0]
     mel_spec, true_labels = full_dataset[0]
     predicted_seq = infer(model, mel_spec, device)
     
-    # Zaktualizowany słownik etykiet zgodnie z nową mapą
+    # Updated label dictionary according to the new map
     label_names = {0: "exhale", 1: "inhale", 2: "silence"}
-    print("Predykcje dla kolejnych klatek:")
+    print("Predictions for each frame:")
     print(predicted_seq)
-    # Możesz również wyświetlić etykiety tekstowo:
-    print("Predykcje (tekstowo):", [label_names[label] for label in predicted_seq])
+    print("Predictions (text):", [label_names[label] for label in predicted_seq])

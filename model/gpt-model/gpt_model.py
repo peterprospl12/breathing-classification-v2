@@ -2,65 +2,47 @@ import os
 import csv
 import random
 import torch
-import torch.nn as nn
-import torch.optim as optim
 import torchaudio
+from torch import optim
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
+import torch.nn as nn
+import torchaudio
 
 # -------------------------------
 # Global constants and parameters
 # -------------------------------
-DATA_SEQ_FOLDER = "../scripts/data-seq"  # Folder where generated sequences (.wav and .csv) are stored
+DATA_SEQ_FOLDER = "../../scripts/data-seq"  # Folder with generated sequences (.wav and .csv)
 SAMPLE_RATE = 44100  # All audio is in 44.1 kHz
-SNIPPET_DURATION = 0.5  # Duration of snippet to classify (seconds)
-SNIPPET_SAMPLES = int(SAMPLE_RATE * SNIPPET_DURATION)  # 22050 samples
-
-# Training hyperparameters
-BATCH_SIZE = 16
-NUM_EPOCHS = 10
-LEARNING_RATE = 1e-3
-
-# Device configuration
+SNIPPET_DURATION = 10
+SNIPPET_SAMPLES = int(SAMPLE_RATE * SNIPPET_DURATION)  # For 30 s, e.g., 30 * 44100 = 1,323,000 samples
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-# -------------------------------
-# Custom Dataset
-# -------------------------------
+BATCH_SIZE = 16
+NUM_EPOCHS = 40
+LEARNING_RATE = 1e-3
 class BreathDataset(Dataset):
     """
-    A PyTorch Dataset that loads the generated 30-second sequences and their label CSV files.
-    For each labeled phase (with start and end sample indices), it extracts a fixed-length snippet.
-
-    If the phase segment is longer than SNIPPET_SAMPLES, a random contiguous snippet is cropped.
-    If it is shorter, the snippet is padded with silence (zeros) to reach SNIPPET_SAMPLES.
+    Dataset that loads x-second sequences and their corresponding labels.
+    For each segment (specified by CSV), it extracts exactly SNIPPET_SAMPLES samples:
+      - If the segment is longer – randomly selects a x s fragment.
+      - If it is shorter – pads with zeros (silence).
+    Finally, normalization (zero-mean and unit variance) is applied.
     """
-
     def __init__(self, data_folder):
-        """
-        Args:
-            data_folder (str): Path to the folder containing the generated .wav and .csv files.
-        """
         self.data_folder = data_folder
-        # List to store tuples: (wav_path, phase_code, start_sample, end_sample)
-        self.segments = []
-        # Cache to hold loaded audio so that we don't re-read the same file multiple times
+        self.segments = []  # List of tuples: (wav_path, phase_code, start_sample, end_sample)
         self.audio_cache = {}
-        # Assume files are named ours{i}.wav and ours{i}.csv
+        # Assume files are named e.g., ours0.wav and ours0.csv
         for filename in os.listdir(data_folder):
             if filename.endswith('.csv'):
-                base = filename[:-4]  # e.g., "ours0"
+                base = filename[:-4]
                 csv_path = os.path.join(data_folder, filename)
                 wav_path = os.path.join(data_folder, base + ".wav")
-                # Check that both files exist
                 if not os.path.exists(wav_path):
                     continue
-                # Read CSV file (skip header if present)
                 with open(csv_path, 'r') as f:
                     reader = csv.reader(f)
                     rows = list(reader)
-                    # If header row is detected, remove it
                     if rows and rows[0] == ["phase_code", "start_sample", "end_sample"]:
                         rows = rows[1:]
                     for row in rows:
@@ -73,117 +55,88 @@ class BreathDataset(Dataset):
         return len(self.segments)
 
     def __getitem__(self, idx):
-        """
-        Returns:
-            snippet: Tensor of shape (SNIPPET_SAMPLES,) containing the audio snippet (normalized)
-            label: int (0: exhale, 1: inhale, 2: silence)
-        """
         wav_path, phase_code, seg_start, seg_end = self.segments[idx]
-
-        # Load audio for this wav file if not already in cache.
         if wav_path not in self.audio_cache:
-            # torchaudio.load returns waveform of shape (channels, samples)
             waveform, sr = torchaudio.load(wav_path)
-            # Since our audio is mono, squeeze channel dimension
-            waveform = waveform.squeeze(0)  # shape: (num_samples,)
+            waveform = waveform.squeeze(0)  # Assume audio is mono.
             self.audio_cache[wav_path] = waveform
         else:
             waveform = self.audio_cache[wav_path]
 
-        # Extract the segment from the full sequence
-        # Ensure that indices are within bounds
+        # Ensure indices are correct:
         seg_start = max(0, seg_start)
         seg_end = min(waveform.size(0) - 1, seg_end)
         segment = waveform[seg_start:seg_end + 1]  # shape: (segment_length,)
         segment_length = segment.size(0)
 
-        # Decide how to get a fixed-length snippet (SNIPPET_SAMPLES)
+        # Extract or pad to a fixed length (30 seconds)
         if segment_length >= SNIPPET_SAMPLES:
-            # Randomly crop a window of SNIPPET_SAMPLES from the segment
             max_start = segment_length - SNIPPET_SAMPLES
             crop_start = random.randint(0, max_start)
             snippet = segment[crop_start: crop_start + SNIPPET_SAMPLES]
         else:
-            # If segment is too short, pad with zeros (silence) at the end
             pad_length = SNIPPET_SAMPLES - segment_length
             snippet = torch.cat([segment, torch.zeros(pad_length)])
 
-        # Normalize the snippet: zero-mean and unit variance.
-        snippet = snippet - snippet.mean()
-        std = snippet.std()
-        snippet = snippet / (std + 1e-9)
+        # Data augmentation: add noise
+        noise = torch.randn_like(snippet) * 0.005
+        snippet = snippet + noise
 
+        # Data augmentation: pitch shift
+        pitch_shift = random.uniform(-2, 2)
+        snippet = torchaudio.transforms.Resample(orig_freq=SAMPLE_RATE, new_freq=SAMPLE_RATE * (2 ** (pitch_shift / 12)))(snippet)
+
+        # Normalization (zero-mean, unit variance)
+        snippet = snippet - snippet.mean()
+        snippet = snippet / (snippet.std() + 1e-9)
         return snippet, phase_code
+
 
 
 # -------------------------------
 # Model Definition
 # -------------------------------
 class BreathClassifier(nn.Module):
-    def __init__(self, hidden_size=128, num_layers=2, num_classes=3):
-        """
-        Initializes the BreathClassifier model.
-
-        Args:
-            hidden_size (int): Number of hidden units in the LSTM.
-            num_layers (int): Number of LSTM layers.
-            num_classes (int): Number of output classes (0: exhale, 1: inhale, 2: silence).
-        """
+    def __init__(self, hidden_size=256, num_layers=3, num_classes=3):
         super(BreathClassifier, self).__init__()
-
-        # MelSpectrogram transform:
-        # Use 64 Mel bins, FFT size of 1024 and hop length of 512.
         self.mel_transform = torchaudio.transforms.MelSpectrogram(
             sample_rate=SAMPLE_RATE,
             n_fft=1024,
             hop_length=512,
             n_mels=64
         )
-
-        # LSTM network to model the temporal evolution of the Mel spectrogram.
-        # The LSTM expects input shape (batch, time, features).
         self.lstm = nn.LSTM(
             input_size=64,
             hidden_size=hidden_size,
             num_layers=num_layers,
             batch_first=True
         )
-
-        # Dropout layer for regularization.
-        self.dropout = nn.Dropout(0.3)
-
-        # Fully connected layer for classification.
+        self.dropout = nn.Dropout(0.5)
         self.fc = nn.Linear(hidden_size, num_classes)
 
     def forward(self, waveform):
         """
-        Forward pass of the model.
-
-        Args:
-            waveform (Tensor): Input waveform of shape (batch, SNIPPET_SAMPLES).
-
-        Returns:
-            logits (Tensor): Raw class scores of shape (batch, num_classes).
+        waveform: Tensor of shape (batch, SNIPPET_SAMPLES) – here SNIPPET_SAMPLES = 30 * 44100
         """
-        # Note: We already normalized the waveform in the Dataset.
-
-        # Compute the Mel spectrogram: shape (batch, n_mels, time)
-        mel_spec = self.mel_transform(waveform)
-
-        # Apply logarithmic scaling.
+        # Compute Mel spectrogram
+        mel_spec = self.mel_transform(waveform)  # (batch, 64, time)
         log_mel_spec = torch.log(mel_spec + 1e-9)
+        log_mel_spec = log_mel_spec.transpose(1, 2)  # (batch, time, 64)
 
-        # Transpose to shape (batch, time, n_mels)
-        log_mel_spec = log_mel_spec.transpose(1, 2)
+        # Process through LSTM
+        lstm_out, _ = self.lstm(log_mel_spec)  # (batch, time, hidden_size)
 
-        # LSTM: output shape (batch, time, hidden_size)
-        lstm_out, _ = self.lstm(log_mel_spec)
+        # Calculate how many frames correspond to 0.5 s.
+        num_frames = int(0.5 * SAMPLE_RATE / self.mel_transform.hop_length)
+        # Ensure we do not exceed the sequence length:
+        num_frames = min(num_frames, lstm_out.size(1))
 
-        # Use the output from the last time step as the snippet representation.
-        last_time_step = lstm_out[:, -1, :]
+        # Average the last num_frames frames – this represents the last 0.5 s
+        last_time_window = lstm_out[:, -num_frames:, :]  # (batch, num_frames, hidden_size)
+        aggregated = last_time_window.mean(dim=1)          # (batch, hidden_size)
 
-        # Apply dropout and fully-connected layer.
-        out = self.dropout(last_time_step)
+        # Dropout and classification
+        out = self.dropout(aggregated)
         logits = self.fc(out)
         return logits
 
@@ -268,7 +221,7 @@ def main():
     eval_loader = DataLoader(eval_subset, batch_size=BATCH_SIZE, shuffle=False)
 
     # Initialize the model, criterion, and optimizer.
-    model = BreathClassifier(hidden_size=128, num_layers=2, num_classes=3).to(DEVICE)
+    model = BreathClassifier(hidden_size=256, num_layers=3, num_classes=3).to(DEVICE)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
@@ -278,9 +231,9 @@ def main():
     print("Evaluating model on validation set:")
     evaluate_model(model, eval_loader, criterion)
 
-    # Optionally, save the trained model.
-    torch.save(model.state_dict(), "breath_classifier.pth")
-    print("Model saved as breath_classifier.pth")
+    # Save the trained model.
+    torch.save(model.state_dict(), "breath_classifier6.pth")
+    print("Model saved as breath_classifier6.pth")
 
 
 if __name__ == "__main__":
