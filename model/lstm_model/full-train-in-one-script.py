@@ -1,11 +1,16 @@
 """
+This script preprocess the data into MFCCs and labels. It also creates a DataLoader object for training and validation sets.
 
-Same script as in model-train-rnn.ipynb, but all segments are in one script, because while changing AudioClassifier, sometimes Jupyter cache the class and do not update it while executing cell again
+The script divides sequences into 0.25s chunks and calculates MFCCs for every chunk. Then, it assigns a label to every chunk based on the labels from the CSV file. If a chunk has both sample from two different classes, the label is assigned based on the majority of samples in the chunk.
 
+The goal is to create a dataset, and final shape of output is a list of sequences. Every sequence is a list of tuples (MFCCs, label). The DataLoader object will be used to iterate through the dataset during training.
+
+Most important parameters of this script is:
+REFRESH_TIME - length of one classification window in seconds
+BATCH_SIZE - batch size for DataLoader
+data_dir - directory with training and validation data (there must be sequences in directories, ideally created with create_sequences.py script)
 """
-
 from model_classes import AudioDataset
-import torch
 import os
 from scipy.io.wavfile import read
 import csv
@@ -14,17 +19,17 @@ from torch.utils.data import DataLoader
 import numpy as np
 import librosa
 import time
+import torch
 import torch.optim as optim
 import torch.nn as nn
 from model_classes import AudioClassifierLSTM as AudioClassifier
 
 REFRESH_TIME = 0.25  # seconds
 BATCH_SIZE = 16
-N_MFCC = 20
 
 # Directories with data
 data_dir = '../../sequences'
-model_file_name = 'model_lstm'
+model_file_name = 'model_lstm.pth'
 
 # Function to load labels from csv file to list of tuples (label, start_frame, end_frame)
 def load_labels(csv_file_v):
@@ -74,7 +79,7 @@ for wav_file in wav_files:
         raise Exception("Sampling rate is not 44100. Make sure you have used right sequence creator.")
     if y.dtype != np.int16:
         raise Exception("Data type is not int16. Make sure you have used right sequence creator.")
-    if y.ndim != 1:
+    if y.ndim > 1 and y.shape[1] > 1:
         raise Exception("Audio is not mono. Make sure you have used right sequence creator.")
 
     # Load labels from CSV file
@@ -93,13 +98,19 @@ for wav_file in wav_files:
 
         # Ensure that the frame has the right size
         if len(frame) == chunk_size:
-            # Conversion to float32 from int16
+            # Make sure that frame is mono, 44100 Hz and in int16 format
             if frame.dtype != np.int16:
                 raise Exception("Data type is not int16. Make sure you have used right sequence creator.")
+            if sr != 44100:
+                raise Exception("Sampling rate is not 44100. Make sure you have used right sequence creator.")
+            if frame.ndim > 1 and frame.shape[1] > 1:
+                raise Exception("Audio is not mono. Make sure you have used right sequence creator.")
+
+            # Conversion to float32 from int16
             frames_float32 = frame.astype(np.float32) / np.iinfo(np.int16).max
 
             # Make sure that frame is mono, 44100 Hz and converted to float32
-            if frames_float32.ndim != 1:
+            if frames_float32.ndim > 1 and frames_float32.shape[1] > 1:
                 raise Exception("Audio is not mono. Make sure you have used right sequence creator.")
             if frames_float32.dtype != np.float32:
                 raise Exception("Data type is not float32. Make sure you have used right sequence creator.")
@@ -110,27 +121,16 @@ for wav_file in wav_files:
             mfcc = librosa.feature.mfcc(
                 y=frames_float32,
                 sr=sr,
-                n_mfcc=N_MFCC,
-                n_mels=40,
-                fmin=20,
-                fmax=8000,
-                lifter=22,
-                norm="ortho"
+                n_mfcc=13
             )
 
-            delta_mfcc = librosa.feature.delta(mfcc)
-
-            delta2_mfcc = librosa.feature.delta(mfcc, order=2)
-
-            combined_features = np.vstack([mfcc, delta_mfcc, delta2_mfcc])
-
-            # Because function will return x times 13 MFCCs, we will calculate mean of them (size of mfcc above is [13, x])
-            features = combined_features.mean(axis=1)
+            # Because function will return x times 20 MFCCs, we will calculate mean of them (size of mfcc above is [20, x])
+            features = mfcc.mean(axis=1)
 
             # Get label for the frame
             label = get_label_for_time(labels, i, i + chunk_size)
 
-            # Append MFCCs and label to the sequence (we append tuple of a ndarray of length 13 and a label)
+            # Append MFCCs and label to the sequence (we append tuple of a ndarray of length 20 and a label)
             mfcc_sequence.append((features, label))
 
     train_data.append(mfcc_sequence)  # Append sequence to the list of sequences
@@ -147,20 +147,10 @@ train_data, val_data = train_test_split(train_data, test_size=0.2)
 train_dataset = AudioDataset(train_data)
 val_dataset = AudioDataset(val_data)
 
-# DataLoader and collate function (collate function is used to pad sequences to the same length, but our sequences should have the same length)
-def collate_fn(batch):
-    sequences, labels_t = zip(*batch)
-    lengths_t = [seq.size(0) for seq in sequences]
-    max_length = max(lengths_t)
-    padded_sequences = torch.zeros(len(sequences), max_length, N_MFCC * 3)
-    padded_labels = torch.zeros(len(sequences), max_length, dtype=torch.long)
-    for j, seq in enumerate(sequences):
-        padded_sequences[j, :seq.size(0), :] = seq
-        padded_labels[j, :len(labels_t[j])] = labels_t[j]
-    return padded_sequences, padded_labels
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
+architecture = 'LSTM'
 
 NUM_EPOCHS = 100
 PATIENCE_TIME = 10
@@ -171,7 +161,7 @@ print("Device: ", device)
 
 model = AudioClassifier().to(device)
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
 best_val_accuracy = 0.0
@@ -256,7 +246,7 @@ for epoch in range(NUM_EPOCHS):
         val_loss_on_best_val_acc = avg_val_loss
         train_loss_on_best_val_acc = avg_train_loss
         early_stopping_counter = 0
-        torch.save(model.state_dict(), f'{model_file_name}.pth')
+        torch.save(model.state_dict(), model_file_name)
     else:
         early_stopping_counter += 1
 
@@ -271,7 +261,7 @@ for epoch in range(NUM_EPOCHS):
 
 # Save the final model after training completes
 
-print(f"Final model saved to {model_file_name}.pth")
+print(model_file_name)
 
 # Print metrics for the final model
 print("\nFinal Model Metrics:")

@@ -41,14 +41,12 @@ CLASSIFIER_MODEL_PATH = 'model_lstm.pth'
 
 REFRESH_TIME = 0.25
 
-FORMAT = pyaudio.paInt16
-
 INHALE_COUNTER = 0
 EXHALE_COUNTER = 0
 
 CHANNELS = 1
 RATE = 44100
-DEVICE_INDEX = 4
+DEVICE_INDEX = 5
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
 
 running = True
@@ -60,7 +58,6 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # Audio resource class
 
 class SharedAudioResource:
-    buffer = None
 
     def __init__(self):
         self.p = pyaudio.PyAudio()
@@ -73,7 +70,11 @@ class SharedAudioResource:
 
     def read(self):
         self.buffer = self.stream.read(self.buffer_size, exception_on_overflow=False)
-        return np.frombuffer(self.buffer, dtype=np.int16)
+        audio_data = np.frombuffer(self.buffer, dtype=np.int16)
+        if CHANNELS == 2:
+            audio_data = audio_data.reshape(-1, 2)
+            audio_data = audio_data.mean(axis=1).astype(np.int16)
+        return audio_data
 
     def close(self):
         self.stream.stop_stream()
@@ -82,7 +83,6 @@ class SharedAudioResource:
 
 
 # Class for prediction
-
 class RealTimeAudioClassifier:
     def __init__(self, model_path):
         self.model = AudioClassifier()
@@ -91,45 +91,38 @@ class RealTimeAudioClassifier:
         self.model.eval()
         self.hidden = None
 
-    def predict(self, y, sr=RATE):
+    def predict(self, y):
+        # Make sure that frame is mono, 44100 Hz and in int16 format
         if y.dtype != np.int16:
-            raise Exception("Data type is not int16. Make sure you have used right sequence creator.")
+            raise Exception("Data type is not int16.")
+        if y.ndim > 1 and y.shape[1] > 1:
+            raise Exception("Audio is not mono.")
+
+        # Conversion to float32 from int16
         frames_float32 = y.astype(np.float32) / np.iinfo(np.int16).max
 
         # Make sure that frame is mono, 44100 Hz and converted to float32
-        if frames_float32.ndim != 1:
-            raise Exception("Audio is not mono. Make sure you have used right sequence creator.")
+        if frames_float32.ndim > 1 and frames_float32.shape[1] > 1:
+            raise Exception("Audio is not mono.")
         if frames_float32.dtype != np.float32:
-            raise Exception("Data type is not float32. Make sure you have used right sequence creator.")
-        if sr != 44100:
-            raise Exception("Sampling rate is not 44100. Make sure you have used right sequence creator.")
+            raise Exception("Data type is not float32.")
 
         # Calculate MFCCs
         mfcc = librosa.feature.mfcc(
             y=frames_float32,
-            sr=sr,
-            n_mfcc=20,
-            n_mels=40,
-            fmin=20,
-            fmax=8000,
-            lifter=22,
-            norm="ortho"
+            sr=RATE,
+            n_mfcc=13
         )
 
-        delta_mfcc = librosa.feature.delta(mfcc)
-
-        delta2_mfcc = librosa.feature.delta(mfcc, order=2)
-
-        combined_features = np.vstack([mfcc, delta_mfcc, delta2_mfcc])
-
-        # Because function will return x times 13 MFCCs, we will calculate mean of them (size of mfcc above is [13, x])
-        features = combined_features.mean(axis=1)
+        # Because function will return x times 20 MFCCs, we will calculate mean of them (size of mfcc above is [20, x])
+        features = mfcc.mean(axis=1)
 
         single_data = torch.tensor(features, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
 
-        outputs, self.hidden = self.model(single_data, self.hidden)
+        with torch.no_grad():
+            outputs, self.hidden = self.model(single_data, self.hidden)
+            predicted = outputs[0, 0].detach().cpu().numpy()
 
-        predicted = outputs[0, 0].detach().cpu().numpy()
         return predicted
 
 
@@ -242,6 +235,7 @@ if __name__ == "__main__":
 
         # Determine the class of the prediction
         print(prediction)
+        print(np.argmax(prediction))
 
         # Update plot
         update_plot(buffer, np.argmax(prediction))
