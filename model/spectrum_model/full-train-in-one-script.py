@@ -132,8 +132,8 @@ for wav_file in wav_files:
                 y=frames_float32,
                 sr=44100,
                 n_fft=1024,  # Larger FFT window
-                hop_length=256,
-                n_mels=128  # Number of mel bands
+                hop_length=512,
+                n_mels=40  # Number of mel bands
             )
 
             # Convert amplitude to decibel scale
