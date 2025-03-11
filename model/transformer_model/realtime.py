@@ -79,7 +79,7 @@ REFRESH_TIME = 0.3      # time in seconds to read audio
 FORMAT = pyaudio.paInt16
 CHANNELS = 1           # 1 mono | 2 stereo
 RATE = 44100           # sampling rate
-DEVICE_INDEX = 1       # microphone device index (listed in the console output)
+DEVICE_INDEX = 4       # microphone device index (listed in the console output)
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
 
 INHALE_COUNTER = 0

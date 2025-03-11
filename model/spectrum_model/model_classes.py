@@ -8,7 +8,7 @@ class AudioClassifierLSTM(nn.Module):
     def __init__(self):
         super().__init__()
         self.lstm = nn.LSTM(
-            input_size=128,  #257,
+            input_size=40,
             hidden_size=256,
             num_layers=2,
             batch_first=True
