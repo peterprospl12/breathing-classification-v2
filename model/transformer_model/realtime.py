@@ -6,6 +6,13 @@ import torch
 import torchaudio
 import math
 
+# TODO
+# Sita learning
+# Oddychanie sposobem Wima Hofa
+# Dotrenowywanie modelu dla konkretnego uzytkownika i mikrofonu do sprawdzenia
+# Aplikacja, która wizualizuje rytm oddechu
+# Liczy ile razy użytkownik wydycha (może też wdycha) czyli liczy wdechy
+
 #############################################
 # Model – CNN + Transformer
 #############################################
