@@ -315,7 +315,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.2 + 0.6 * _animationController.value),
+                    color: color.withValues(alpha: 0.2 + 0.6 * _animationController.value),
                     shape: BoxShape.circle,
                   ),
                   child: Center(

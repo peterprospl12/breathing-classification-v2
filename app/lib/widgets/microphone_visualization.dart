@@ -7,7 +7,7 @@ import '../theme/app_theme.dart';
 import '../models/breath_classifier.dart';
 
 class MicrophoneVisualizationWidget extends StatefulWidget {
-  const MicrophoneVisualizationWidget({Key? key}) : super(key: key);
+  const MicrophoneVisualizationWidget({super.key});
 
   @override
   State<MicrophoneVisualizationWidget> createState() => _MicrophoneVisualizationWidgetState();
@@ -50,7 +50,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 10,
                 spreadRadius: 1,
               ),
@@ -91,7 +91,6 @@ class MicrophonePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final double width = size.width;
     final double height = size.height;
-    final double centerY = height / 2;
 
     // Clear the background
     final Paint backgroundPaint = Paint()
@@ -123,7 +122,7 @@ class MicrophonePainter extends CustomPainter {
     final double height = size.height;
     
     final Paint gridPaint = Paint()
-      ..color = Colors.grey.withOpacity(0.2)
+      ..color = Colors.grey.withValues(alpha: 0.2)
       ..strokeWidth = 1;
     
     // Horizontal grid lines
@@ -153,7 +152,7 @@ class MicrophonePainter extends CustomPainter {
     final double height = size.height;
     
     // Draw time markers at the bottom
-    final textStyle = const TextStyle(
+    const textStyle = TextStyle(
       color: Colors.grey,
       fontSize: 10,
     );
@@ -166,7 +165,7 @@ class MicrophonePainter extends CustomPainter {
       final double x = width - (i * gridSpacing + offset);
       if (x < 0) continue;
       
-      final String timeLabel = "${i * 0.5}s";
+      final String timeLabel = '${i * 0.5}s';
       final textSpan = TextSpan(text: timeLabel, style: textStyle);
       final textPainter = TextPainter(
         text: textSpan,
@@ -182,9 +181,9 @@ class MicrophonePainter extends CustomPainter {
   }
 
   void _drawNotRecordingMessage(Canvas canvas, Size size) {
-    final textSpan = TextSpan(
+    const textSpan = TextSpan(
       text: 'Start recording to visualize microphone data',
-      style: const TextStyle(
+      style: TextStyle(
         color: Colors.white70,
         fontSize: 16,
       ),
@@ -194,9 +193,9 @@ class MicrophonePainter extends CustomPainter {
   }
 
   void _drawWaitingForDataMessage(Canvas canvas, Size size) {
-    final textSpan = TextSpan(
+    const textSpan = TextSpan(
       text: 'Waiting for microphone data...',
-      style: const TextStyle(
+      style: TextStyle(
         color: Colors.white70,
         fontSize: 16,
       ),
@@ -230,17 +229,12 @@ class MicrophonePainter extends CustomPainter {
     final double centerY = height / 2;
     
     // Max value for normalization
-    final int maxPcmValue = 32767; // Maximum value for 16-bit PCM
+    const int maxPcmValue = 32767; // Maximum value for 16-bit PCM
     
-    // Calculate display time window (5 seconds like in Python)
-    final int displayTimeSeconds = 5;
+    const int displayTimeSeconds = 5;
     final int totalSamples = pcmSamples.length;
     
-    // Calculate total time represented by our buffer
-    final double totalBufferTimeSeconds = totalSamples / AudioService.sampleRate;
-    
-    // Calculate refresh time chunks similar to Python code
-    final double refreshTime = 0.3; // Same as Python
+    const double refreshTime = 0.3; 
     final int samplesPerRefreshTime = (AudioService.sampleRate * refreshTime).round();
     
     // How many refresh-time segments we can fit
@@ -356,9 +350,9 @@ class MicrophonePainter extends CustomPainter {
   
   void _drawInfoOverlay(Canvas canvas, Size size) {
     // Draw amplitude information
-    final textSpan = TextSpan(
+    const textSpan = TextSpan(
       text: 'Live Microphone Data - Breath-Colored Waveform',
-      style: const TextStyle(
+      style: TextStyle(
         color: Colors.white,
         fontSize: 12,
         fontWeight: FontWeight.bold,
@@ -374,9 +368,9 @@ class MicrophonePainter extends CustomPainter {
     textPainter.paint(canvas, const Offset(10, 10));
     
     // Add legend for "now"
-    final nowLegendSpan = TextSpan(
+    const nowLegendSpan = TextSpan(
       text: 'Now →',
-      style: const TextStyle(
+      style: TextStyle(
         color: Colors.white,
         fontSize: 10,
       ),

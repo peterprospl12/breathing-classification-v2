@@ -25,7 +25,7 @@ class AudioVisualizationWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 10,
             spreadRadius: 1,
           ),
@@ -80,7 +80,7 @@ class WaveformPainter extends CustomPainter {
     
     // Draw grid lines
     final Paint gridPaint = Paint()
-      ..color = Colors.grey.withOpacity(0.2)
+      ..color = Colors.grey.withValues(alpha: 0.2)
       ..strokeWidth = 1;
     
     // Horizontal grid lines
@@ -99,7 +99,7 @@ class WaveformPainter extends CustomPainter {
       
       for (int i = 0; i < totalPhases; i++) {
         final BreathPhase phase = breathPhases[i];
-        final Color phaseColor = _getColorForPhase(phase).withOpacity(0.2);
+        final Color phaseColor = _getColorForPhase(phase).withValues(alpha: 0.2);
         final Paint phasePaint = Paint()
           ..color = phaseColor
           ..style = PaintingStyle.fill;

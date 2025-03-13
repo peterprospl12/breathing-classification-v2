@@ -127,7 +127,9 @@ class AudioService extends ChangeNotifier {
   Future<void> printInputDevices() async {
     final devices = await _recorder.listInputDevices();
     for (final device in devices) {
-      print('Device id: ${device.id}, label: ${device.label}');
+      if (kDebugMode) {
+        print('Device id: ${device.id}, label: ${device.label}');
+      }
     }
   }
 

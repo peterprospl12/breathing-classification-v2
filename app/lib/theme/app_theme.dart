@@ -21,10 +21,10 @@ class AppTheme {
 
   static ThemeData get lightTheme {
     return ThemeData(
-      colorScheme: ColorScheme.light(
+      colorScheme: const ColorScheme.light(
         primary: primaryColor,
         secondary: accentColor,
-        background: lightBackgroundColor,
+        surface: lightBackgroundColor,
       ),
       primaryColor: primaryColor,
       fontFamily: fontFamily,
@@ -55,10 +55,10 @@ class AppTheme {
 
   static ThemeData get darkTheme {
     return ThemeData(
-      colorScheme: ColorScheme.dark(
+      colorScheme: const ColorScheme.dark(
         primary: primaryColor,
         secondary: accentColor,
-        background: darkBackgroundColor,
+        surface: darkBackgroundColor,
       ),
       primaryColor: primaryColor,
       fontFamily: fontFamily,

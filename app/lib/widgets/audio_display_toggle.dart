@@ -11,12 +11,12 @@ class AudioDisplayToggle extends StatefulWidget {
   final double refreshTime;
 
   const AudioDisplayToggle({
-    Key? key,
+    super.key,
     required this.audioData,
     required this.breathPhases,
     this.sampleRate = 44100,
     this.refreshTime = 0.3,
-  }) : super(key: key);
+  });
 
   @override
   State<AudioDisplayToggle> createState() => _AudioDisplayToggleState();
