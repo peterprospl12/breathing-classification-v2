@@ -5,6 +5,7 @@ import '../services/audio_service.dart';
 import '../widgets/audio_visualization.dart';
 import '../widgets/breath_counter.dart';
 import '../theme/app_theme.dart';
+import '../widgets/audio_metrics_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -55,36 +56,44 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ],
       ),
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (_showInfo)
-              _buildInfoPanel(),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const AudioMetricsWidget(),
 
-            // Breath counter widget
-            BreathCounter(
-              inhaleCount: audioService.inhaleCount,
-              exhaleCount: audioService.exhaleCount,
-              onReset: () => audioService.resetCounters(),
-            ),
-            
-            // Current breath status
-            _buildStatusCard(context, _currentPhase, classifier),
-            
-            // Visualization
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: AudioVisualizationWidget(
-                  audioData: audioService.audioBuffer,
-                  breathPhases: audioService.breathPhases,
+              if (_showInfo)
+                _buildInfoPanel(),
+
+              // Breath counter widget
+              BreathCounter(
+                inhaleCount: audioService.inhaleCount,
+                exhaleCount: audioService.exhaleCount,
+                onReset: () => audioService.resetCounters(),
+              ),
+              
+              // Current breath status
+              _buildStatusCard(context, _currentPhase, classifier),
+              
+              // Visualization - setting a fixed height instead of Expanded
+              SizedBox(
+                height: 200, // Fixed height instead of using Expanded
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: AudioVisualizationWidget(
+                    audioData: audioService.audioBuffer,
+                    breathPhases: audioService.breathPhases,
+                  ),
                 ),
               ),
-            ),
 
-            // Legend
-            _buildLegend(),
-          ],
+              // Legend
+              _buildLegend(),
+              
+              // Add padding at the bottom for the floating action button
+              const SizedBox(height: 80),
+            ],
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton(

@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:record/record.dart';
+import 'package:record_platform_interface/record_platform_interface.dart';
 import '../models/breath_classifier.dart';
 
 class AudioService extends ChangeNotifier {
@@ -17,6 +19,13 @@ class AudioService extends ChangeNotifier {
   // Audio data storage
   final List<double> _audioBuffer = [];
   List<double> get audioBuffer => _audioBuffer;
+
+  // Temporary buffer for audio data
+  final List<int> _pcmBuffer = [];
+  
+  // First 10 PCM samples for UI display
+  List<int> _first10PcmSamples = [];
+  List<int> get first10PcmSamples => _first10PcmSamples;
   
   // Breath phase tracking
   final List<BreathPhase> _breathPhases = [];
@@ -35,9 +44,19 @@ class AudioService extends ChangeNotifier {
 
   // Audio generation timer
   Timer? _simulationTimer;
+  // Timer do odświeżania amplitudy
+  Timer? _amplitudeRefreshTimer;
   final BreathClassifier _classifier = BreathClassifier();
 
-  AudioService() {
+  // Record plugin
+  final AudioRecorder _recorder = AudioRecorder();
+  StreamSubscription<Uint8List>? _amplitudeStreamSubscription;
+  double _currentAmplitude = 0.0;
+  double get currentAmplitude => _currentAmplitude;
+
+  
+
+  AudioService(){
     _classifier.initialize();
   }
 
@@ -59,16 +78,33 @@ class AudioService extends ChangeNotifier {
     
     _isRecording = true;
     notifyListeners();
+    await printInputDevices();
+
+    // Record plugin
+    _startRecordingMicrophoneAmplitude();
     
     // For now, we'll generate simulated audio data
     _startSimulation();
   }
 
-  void stopRecording() {
+  Future<void> printInputDevices() async {
+          final devices = await _recorder.listInputDevices();
+        for (final device in devices) {
+          print('Device id: ${device.id}, label: ${device.label}');
+        }
+  }
+
+  void stopRecording() async {
     if (!_isRecording) return;
     
     _isRecording = false;
     _simulationTimer?.cancel();
+
+    await _amplitudeStreamSubscription?.cancel();
+    await _recorder.stop();
+
+    _pcmBuffer.clear();
+
     notifyListeners();
   }
 
@@ -84,6 +120,82 @@ class AudioService extends ChangeNotifier {
       const Duration(milliseconds: (refreshTime * 1000 ~/ 3)),
       (_) => _generateAudioData(),
     );
+  }
+
+  void _startRecordingMicrophoneAmplitude() async {
+    final devices = await _recorder.listInputDevices();
+    final device = devices[0];
+    print("Used device: ${device.label}");
+    
+    // Używamy startStream z konfiguracją PCM 16-bit
+    final config = RecordConfig(encoder: AudioEncoder.pcm16bits, device: device);
+    final audioStream = await _recorder.startStream(config);
+    
+    // Ustawienie timera odświeżania amplitudy
+    _amplitudeRefreshTimer = Timer.periodic(
+      Duration(milliseconds: (refreshTime * 1000).round()), 
+      (_) => _updateAmplitude()
+    );
+    
+    // Nasłuchiwanie strumienia audio i buforowanie próbek
+    _amplitudeStreamSubscription = audioStream.listen((data) {
+      // Log surowych danych audio
+      if (kDebugMode) {
+        print("Raw audio data length: ${data.length} bytes");
+      }
+      
+      // Konwersja odebranych bajtów na PCM 16-bit
+      final pcmSamples = _recorder.convertBytesToInt16(data);
+      
+      // Dodanie próbek do bufora
+      synchronized(() {
+        _pcmBuffer.addAll(pcmSamples);
+      });
+      
+      // Zapisz pierwsze 10 próbek do wyświetlenia w UI
+      if (pcmSamples.isNotEmpty) {
+        _first10PcmSamples = pcmSamples.sublist(4, 14);
+        notifyListeners();
+      }
+      
+      // Debug: wypisanie pierwszych kilku wartości PCM
+      if (kDebugMode) {
+        print("First 10 PCM samples: ${pcmSamples.take(10).toList()}");
+      }
+    });
+  }
+
+  void synchronized(Function() action) {
+    action();
+  }
+
+    // Metoda aktualizująca amplitudę na podstawie zawartości bufora
+  void _updateAmplitude() {
+    // Kopiujemy bufor i czyścimy oryginalny
+    List<int> currentPcmSamples = [];
+    synchronized(() {
+      if (_pcmBuffer.isEmpty) return;
+      currentPcmSamples = List.from(_pcmBuffer);
+      _pcmBuffer.clear();
+    });
+    
+    if (currentPcmSamples.isEmpty) return;
+    
+    // Wyliczamy maksymalną wartość bezwzględną
+    final maxSample = currentPcmSamples.fold<int>(
+      0,
+      (prev, element) => element.abs() > prev ? element.abs() : prev,
+    );
+    
+    // Normalizacja (zakładamy 16-bit PCM: wartość max = 32767)
+    _currentAmplitude = maxSample / 32767.0;
+    
+    if (kDebugMode) {
+      print("Aktualna amplituda (${DateTime.now()}): $_currentAmplitude");
+      print("Liczba próbek użytych do obliczenia amplitudy: ${currentPcmSamples.length}");
+    }
+    
+    notifyListeners();
   }
 
   void _generateAudioData() async {
@@ -138,6 +250,8 @@ class AudioService extends ChangeNotifier {
   @override
   void dispose() {
     _simulationTimer?.cancel();
+    _amplitudeStreamSubscription?.cancel();
+    _recorder.stop();
     super.dispose();
   }
 }
