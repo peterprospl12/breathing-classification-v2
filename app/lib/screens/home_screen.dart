@@ -46,9 +46,69 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Breathing Monitor'),
         centerTitle: true,
+        title: const Text('Breathing Monitor'),
+        leadingWidth: 180, // Wider leading area to accommodate device name
+        leading: Row(
+          children: [
+            // Replace the IconButton with a more interactive button
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(24),
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  padding: const EdgeInsets.only(left: 16, right: 4),
+                  child: const Icon(
+                    Icons.mic,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+            if (audioService.selectedDevice != null)
+              Expanded(
+                child: InkWell(
+                  onTap: _showDeviceSelectionDialog,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          audioService.selectedDevice!.label,
+                          style: const TextStyle(fontSize: 11),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                        const Text(
+                          'Tap to change',
+                          style: TextStyle(fontSize: 9, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
         actions: [
+          // Show loading indicator when loading devices
+          if (audioService.isLoadingDevices)
+            const Center(
+              child: SizedBox(
+                width: 20, 
+                height: 20, 
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            ),
+          
+          // Info button
           IconButton(
             icon: Icon(_showInfo ? Icons.info_outline : Icons.info),
             onPressed: () => setState(() => _showInfo = !_showInfo),
@@ -96,21 +156,105 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          if (audioService.isRecording) {
-            audioService.stopRecording();
-          } else {
-            audioService.startRecording();
-          }
-        },
-        backgroundColor: audioService.isRecording ? Colors.red : AppTheme.primaryColor,
-        child: Icon(
-          audioService.isRecording ? Icons.stop : Icons.mic,
-          color: Colors.white,
+      floatingActionButton: _buildFloatingActionButton(audioService),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  Widget _buildFloatingActionButton(AudioService audioService) {
+    // Only enable the FAB if a device is selected
+    final bool canRecord = audioService.selectedDevice != null;
+    
+    return FloatingActionButton(
+      onPressed: canRecord 
+          ? () {
+              if (audioService.isRecording) {
+                audioService.stopRecording();
+              } else {
+                audioService.startRecording();
+              }
+            } 
+          : _showDeviceSelectionDialog,
+      backgroundColor: audioService.isRecording 
+          ? Colors.red 
+          : (canRecord ? AppTheme.primaryColor : Colors.grey),
+      child: Icon(
+        audioService.isRecording ? Icons.stop : Icons.mic,
+        color: Colors.white,
+      ),
+    );
+  }
+
+  void _showDeviceSelectionDialog() {
+    final audioService = Provider.of<AudioService>(context, listen: false);
+    
+    // Always show the dialog now, even if no devices, to give refresh option
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder( // Use StatefulBuilder to rebuild dialog when loading status changes
+        builder: (context, setState) => AlertDialog(
+          title: Row(
+            children: [
+              const Text('Select Audio Input Device'),
+              const Spacer(),
+              if (audioService.isLoadingDevices)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh audio devices',
+                  onPressed: () {
+                    audioService.loadInputDevices();
+                    // Force dialog to rebuild when loading status changes
+                    setState(() {});
+                  },
+                ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: audioService.inputDevices.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text(
+                        'No audio devices available.\nTry refreshing or check your microphone connections.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: audioService.inputDevices.length,
+                    itemBuilder: (context, index) {
+                      final device = audioService.inputDevices[index];
+                      final bool isSelected = audioService.selectedDevice?.id == device.id;
+                      
+                      return ListTile(
+                        title: Text(device.label),
+                        leading: const Icon(Icons.mic),
+                        selected: isSelected,
+                        trailing: isSelected ? const Icon(Icons.check) : null,
+                        onTap: () {
+                          audioService.selectDevice(device);
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+          ],
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 

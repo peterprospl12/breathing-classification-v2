@@ -16,6 +16,14 @@ class AudioService extends ChangeNotifier {
   bool _isRecording = false;
   bool get isRecording => _isRecording;
   
+  // Audio device selection
+  List<InputDevice> _inputDevices = [];
+  List<InputDevice> get inputDevices => _inputDevices;
+  InputDevice? _selectedDevice;
+  InputDevice? get selectedDevice => _selectedDevice;
+  bool _isLoadingDevices = false;
+  bool get isLoadingDevices => _isLoadingDevices;
+  
   // Audio data storage
   final List<double> _audioBuffer = [];
   List<double> get audioBuffer => _audioBuffer;
@@ -54,10 +62,47 @@ class AudioService extends ChangeNotifier {
   double _currentAmplitude = 0.0;
   double get currentAmplitude => _currentAmplitude;
 
-  
-
   AudioService(){
     _classifier.initialize();
+    loadInputDevices();
+  }
+
+  Future<void> loadInputDevices() async {
+    _isLoadingDevices = true;
+    notifyListeners();
+    
+    try {
+      final status = await Permission.microphone.request();
+      if (status == PermissionStatus.granted) {
+        _inputDevices = await _recorder.listInputDevices();
+        
+        // Auto-select the first device if none is selected and devices are available
+        if (_selectedDevice == null && _inputDevices.isNotEmpty) {
+          selectDevice(_inputDevices[0]);
+        }
+      } else {
+        if (kDebugMode) {
+          print('Microphone permission denied');
+        }
+        _inputDevices = [];
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error loading input devices: $e');
+      }
+      _inputDevices = [];
+    } finally {
+      _isLoadingDevices = false;
+      notifyListeners();
+    }
+  }
+  
+  void selectDevice(InputDevice device) {
+    _selectedDevice = device;
+    if (kDebugMode) {
+      print('Selected device: ${device.label}');
+    }
+    notifyListeners();
   }
 
   Future<bool> requestMicrophonePermission() async {
@@ -66,7 +111,7 @@ class AudioService extends ChangeNotifier {
   }
 
   void startRecording() async {
-    if (_isRecording) return;
+    if (_isRecording || _selectedDevice == null) return;
     
     final bool hasPermission = await requestMicrophonePermission();
     if (!hasPermission) {
@@ -78,20 +123,16 @@ class AudioService extends ChangeNotifier {
     
     _isRecording = true;
     notifyListeners();
-    await printInputDevices();
 
-    // Record plugin
     _startRecordingMicrophoneAmplitude();
-    
-    // For now, we'll generate simulated audio data
     _startSimulation();
   }
 
   Future<void> printInputDevices() async {
-          final devices = await _recorder.listInputDevices();
-        for (final device in devices) {
-          print('Device id: ${device.id}, label: ${device.label}');
-        }
+    final devices = await _recorder.listInputDevices();
+    for (final device in devices) {
+      print('Device id: ${device.id}, label: ${device.label}');
+    }
   }
 
   void stopRecording() async {
@@ -123,12 +164,13 @@ class AudioService extends ChangeNotifier {
   }
 
   void _startRecordingMicrophoneAmplitude() async {
-    final devices = await _recorder.listInputDevices();
-    final device = devices[0];
-    print("Used device: ${device.label}");
+    if (_selectedDevice == null) return;
     
-    // Używamy startStream z konfiguracją PCM 16-bit
-    final config = RecordConfig(encoder: AudioEncoder.pcm16bits, device: device);
+    final config = RecordConfig(
+      encoder: AudioEncoder.pcm16bits,
+      device: _selectedDevice!,
+    );
+    
     final audioStream = await _recorder.startStream(config);
     
     // Ustawienie timera odświeżania amplitudy
@@ -139,12 +181,11 @@ class AudioService extends ChangeNotifier {
     
     // Nasłuchiwanie strumienia audio i buforowanie próbek
     _amplitudeStreamSubscription = audioStream.listen((data) {
-      // Log surowych danych audio
+
       if (kDebugMode) {
         print("Raw audio data length: ${data.length} bytes");
       }
       
-      // Konwersja odebranych bajtów na PCM 16-bit
       final pcmSamples = _recorder.convertBytesToInt16(data);
       
       // Dodanie próbek do bufora
@@ -158,9 +199,8 @@ class AudioService extends ChangeNotifier {
         notifyListeners();
       }
       
-      // Debug: wypisanie pierwszych kilku wartości PCM
       if (kDebugMode) {
-        print("First 10 PCM samples: ${pcmSamples.take(10).toList()}");
+        print('First 10 PCM samples: ${pcmSamples.take(10).toList()}');
       }
     });
   }
