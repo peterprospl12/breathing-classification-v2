@@ -5,8 +5,7 @@ import '../services/audio_service.dart';
 import '../widgets/audio_visualization.dart';
 import '../widgets/breath_counter.dart';
 import '../theme/app_theme.dart';
-import '../widgets/audio_metrics_widget.dart';
-import '../widgets/audio_display_toggle.dart';  // Add this import
+import '../widgets/audio_display_toggle.dart'; 
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

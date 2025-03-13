@@ -22,7 +22,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
   void initState() {
     super.initState();
     // Setup timer to update scroll position - match Python's refresh rate
-    _animationTimer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
+    _animationTimer = Timer.periodic(const Duration(milliseconds: 300), (timer) {
       setState(() {
         // Use smoother scrolling with smaller increments
         _scrollPosition += 1.0;
