@@ -64,11 +64,10 @@ class WaveformPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (audioData.isEmpty || breathPhases.isEmpty) return;
 
-    final int samplesPerSegment = (sampleRate * refreshTime).round();
     final double width = size.width;
     final double height = size.height;
     final double centerY = height / 2;
-    final double amplitudeScale = height / 3;  // Scale for the waveform amplitude
+    final double amplitudeScale = height / 3; 
 
     // Clear the background
     final Paint backgroundPaint = Paint()
@@ -134,11 +133,9 @@ class WaveformPainter extends CustomPainter {
     }
 
     // Draw the waveform
-    // Prepare the path
     final Path path = Path();
     bool pathStarted = false;
     
-    // For efficiency, we'll sample the audio data
     for (int i = 0; i < totalPoints; i += pointsPerPixel.ceil()) {
       if (i >= totalPoints) continue;
       

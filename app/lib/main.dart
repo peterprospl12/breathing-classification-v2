@@ -14,7 +14,6 @@ void main() {
     DeviceOrientation.portraitDown,
   ]);
   
-  // Remove this provider since we're adding it in the MultiProvider below
   runApp(const BreathingApp());
 }
 

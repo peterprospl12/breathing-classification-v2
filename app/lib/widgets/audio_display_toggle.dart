@@ -23,8 +23,7 @@ class AudioDisplayToggle extends StatefulWidget {
 }
 
 class _AudioDisplayToggleState extends State<AudioDisplayToggle> {
-  // Default to simulation mode
-  DisplayMode selectedMode = DisplayMode.simulation;
+  DisplayMode selectedMode = DisplayMode.microphone;
 
   void _selectDisplayMode(DisplayMode mode) {
     setState(() {

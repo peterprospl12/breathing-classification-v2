@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/breath_classifier.dart';
 import '../services/audio_service.dart';
-import '../widgets/audio_visualization.dart';
 import '../widgets/breath_counter.dart';
 import '../theme/app_theme.dart';
 import '../widgets/audio_display_toggle.dart'; 
@@ -39,7 +38,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final audioService = Provider.of<AudioService>(context);
     final classifier = Provider.of<BreathClassifier>(context, listen: false);
     
-    // Update current phase if there are breath phases
     if (audioService.breathPhases.isNotEmpty) {
       _currentPhase = audioService.breathPhases.last;
     }
@@ -48,10 +46,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       appBar: AppBar(
         centerTitle: true,
         title: const Text('Breathing Monitor'),
-        leadingWidth: 180, // Wider leading area to accommodate device name
+        leadingWidth: 230, 
         leading: Row(
           children: [
-            // Replace the IconButton with a more interactive button
             Material(
               color: Colors.transparent,
               child: InkWell(
@@ -143,7 +140,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               if (_showInfo)
                 _buildInfoPanel(),
                             
-              // Legend
               _buildLegend(),
               
               // Add padding at the bottom for the floating action button
@@ -187,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     // Always show the dialog now, even if no devices, to give refresh option
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder( // Use StatefulBuilder to rebuild dialog when loading status changes
+      builder: (context) => StatefulBuilder( 
         builder: (context, setState) => AlertDialog(
           title: Row(
             children: [
@@ -205,7 +201,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   tooltip: 'Refresh audio devices',
                   onPressed: () {
                     audioService.loadInputDevices();
-                    // Force dialog to rebuild when loading status changes
                     setState(() {});
                   },
                 ),
@@ -255,43 +250,43 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildInfoPanel() {
-    return Card(
-      margin: const EdgeInsets.all(16),
+    return const Card(
+      margin: EdgeInsets.all(16),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'About Breathing Monitor',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
-            const Text(
+            SizedBox(height: 8),
+            Text(
               'This app monitors your breathing patterns in real-time. '
               'It detects inhales, exhales, and silence periods and '
               'visualizes them with different colors.',
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Row(
               children: [
-                const Icon(Icons.mic, size: 18),
-                const SizedBox(width: 8),
-                const Text(
+                Icon(Icons.mic, size: 18),
+                SizedBox(width: 8),
+                Text(
                   'Tap the mic button to start/stop monitoring',
                   style: TextStyle(fontSize: 14),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Row(
               children: [
-                const Icon(Icons.refresh, size: 18),
-                const SizedBox(width: 8),
-                const Text(
+                Icon(Icons.refresh, size: 18),
+                SizedBox(width: 8),
+                Text(
                   'Reset counters with the refresh button',
                   style: TextStyle(fontSize: 14),
                 ),
