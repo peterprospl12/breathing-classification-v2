@@ -6,6 +6,7 @@ import '../widgets/audio_visualization.dart';
 import '../widgets/breath_counter.dart';
 import '../theme/app_theme.dart';
 import '../widgets/audio_metrics_widget.dart';
+import '../widgets/audio_display_toggle.dart';  // Add this import
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -120,10 +121,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const AudioMetricsWidget(),
-
-              if (_showInfo)
-                _buildInfoPanel(),
 
               // Breath counter widget
               BreathCounter(
@@ -135,18 +132,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               // Current breath status
               _buildStatusCard(context, _currentPhase, classifier),
               
-              // Visualization - setting a fixed height instead of Expanded
-              SizedBox(
-                height: 200, // Fixed height instead of using Expanded
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: AudioVisualizationWidget(
-                    audioData: audioService.audioBuffer,
-                    breathPhases: audioService.breathPhases,
-                  ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: AudioDisplayToggle(
+                  audioData: audioService.audioBuffer,
+                  breathPhases: audioService.breathPhases,
+                  refreshTime: 0.3,
                 ),
               ),
 
+              if (_showInfo)
+                _buildInfoPanel(),
+                            
               // Legend
               _buildLegend(),
               
