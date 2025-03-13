@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/breath_classifier.dart';
+import '../models/display_mode.dart';
 import 'audio_visualization.dart';
-import 'audio_metrics_widget.dart';
+import 'microphone_visualization.dart';
 
 class AudioDisplayToggle extends StatefulWidget {
   final List<double> audioData;
@@ -22,56 +23,84 @@ class AudioDisplayToggle extends StatefulWidget {
 }
 
 class _AudioDisplayToggleState extends State<AudioDisplayToggle> {
-  // Changed default to false to show metrics first
-  bool showVisualization = false;
+  // Default to simulation mode
+  DisplayMode selectedMode = DisplayMode.simulation;
+
+  void _selectDisplayMode(DisplayMode mode) {
+    setState(() {
+      selectedMode = mode;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Toggle button
+        // Navigation bar with visualization options
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ElevatedButton.icon(
-                icon: Icon(
-                  showVisualization ? Icons.analytics : Icons.graphic_eq,
-                  color: Colors.white,
-                ),
-                label: Text(
-                  showVisualization ? 'Show Audio Metrics' : 'Show Visualization',
-                  style: const TextStyle(color: Colors.white),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade700,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+            children: DisplayMode.values.map((mode) {
+              final isSelected = mode == selectedMode;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: ElevatedButton.icon(
+                  icon: Icon(
+                    mode.icon,
+                    color: Colors.white,
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  label: Text(
+                    mode.label,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isSelected 
+                        ? Colors.blue.shade700 
+                        : Colors.blue.shade400,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                  onPressed: () => _selectDisplayMode(mode),
                 ),
-                onPressed: () {
-                  setState(() {
-                    showVisualization = !showVisualization;
-                  });
-                },
-              ),
-            ],
+              );
+            }).toList(),
           ),
         ),
 
-        // Display the appropriate widget based on the toggle state
-        showVisualization
-            ? AudioVisualizationWidget(
-                audioData: widget.audioData,
-                breathPhases: widget.breathPhases,
-                sampleRate: widget.sampleRate,
-                refreshTime: widget.refreshTime,
-              )
-            : const AudioMetricsWidget(),
+        // Display only the selected visualization
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Container(
+            padding: const EdgeInsets.all(8.0),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: Colors.blue.shade700,
+                width: 2,
+              ),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: _buildWidget(selectedMode),
+          ),
+        ),
       ],
     );
+  }
+
+  Widget _buildWidget(DisplayMode mode) {
+    switch (mode) {
+      case DisplayMode.simulation:
+        return AudioVisualizationWidget(
+          audioData: widget.audioData,
+          breathPhases: widget.breathPhases,
+          sampleRate: widget.sampleRate,
+          refreshTime: widget.refreshTime,
+        );
+      case DisplayMode.microphone:
+        return const MicrophoneVisualizationWidget();
+    }
   }
 }

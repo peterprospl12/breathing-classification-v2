@@ -35,6 +35,11 @@ class AudioService extends ChangeNotifier {
   List<int> _first10PcmSamples = [];
   List<int> get first10PcmSamples => _first10PcmSamples;
   
+  // Buffer for microphone visualization (scrolling waveform)
+  final List<int> _microphoneBuffer = [];
+  static const int maxMicrophoneBufferSize = 500; // Store more samples for scrolling effect
+  List<int> get microphoneBuffer => _microphoneBuffer;
+  
   // Breath phase tracking
   final List<BreathPhase> _breathPhases = [];
   List<BreathPhase> get breathPhases => _breathPhases;
@@ -145,6 +150,7 @@ class AudioService extends ChangeNotifier {
     await _recorder.stop();
 
     _pcmBuffer.clear();
+    // Don't clear the microphone buffer here to allow viewing the last recording
 
     notifyListeners();
   }
@@ -179,6 +185,9 @@ class AudioService extends ChangeNotifier {
       (_) => _updateAmplitude()
     );
     
+    // Clear the microphone buffer when starting a new recording
+    _microphoneBuffer.clear();
+    
     // Nasłuchiwanie strumienia audio i buforowanie próbek
     _amplitudeStreamSubscription = audioStream.listen((data) {
 
@@ -191,11 +200,22 @@ class AudioService extends ChangeNotifier {
       // Dodanie próbek do bufora
       synchronized(() {
         _pcmBuffer.addAll(pcmSamples);
+        
+        // Add to the microphone buffer for visualization
+        _microphoneBuffer.addAll(pcmSamples);
+        
+        // Trim the microphone buffer if it gets too large
+        if (_microphoneBuffer.length > maxMicrophoneBufferSize) {
+          _microphoneBuffer.removeRange(0, _microphoneBuffer.length - maxMicrophoneBufferSize);
+        }
       });
       
       // Zapisz pierwsze 10 próbek do wyświetlenia w UI
       if (pcmSamples.isNotEmpty) {
-        _first10PcmSamples = pcmSamples.sublist(4, 14);
+        _first10PcmSamples = pcmSamples.sublist(
+          0, 
+          math.min(10, pcmSamples.length)
+        );
         notifyListeners();
       }
       
