@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
+import 'dart:math' as math;
 import '../services/audio_service.dart';
 import '../theme/app_theme.dart';
+import '../models/breath_classifier.dart';
 
 class MicrophoneVisualizationWidget extends StatefulWidget {
   const MicrophoneVisualizationWidget({Key? key}) : super(key: key);
@@ -19,11 +21,11 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
   @override
   void initState() {
     super.initState();
-    // Setup timer to update scroll position
-    _animationTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+    // Setup timer to update scroll position - match Python's refresh rate
+    _animationTimer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
       setState(() {
-        // Increase scroll position for rightward movement effect
-        _scrollPosition += 2.0;
+        // Use smoother scrolling with smaller increments
+        _scrollPosition += 1.0;
         if (_scrollPosition > 1000) {
           _scrollPosition = 0.0; // Reset to avoid overflow
         }
@@ -61,6 +63,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
                 pcmSamples: audioService.microphoneBuffer,
                 isRecording: audioService.isRecording,
                 scrollPosition: _scrollPosition,
+                breathPhases: audioService.breathPhases,
               ),
               size: Size.infinite,
             ),
@@ -75,11 +78,13 @@ class MicrophonePainter extends CustomPainter {
   final List<int> pcmSamples;
   final bool isRecording;
   final double scrollPosition;
+  final List<BreathPhase> breathPhases;
   
   MicrophonePainter({
     required this.pcmSamples,
     required this.isRecording,
     required this.scrollPosition,
+    this.breathPhases = const [],
   });
 
   @override
@@ -109,8 +114,8 @@ class MicrophonePainter extends CustomPainter {
       return;
     }
 
-    // Draw real microphone data with scrolling effect
-    _drawScrollingMicrophoneData(canvas, size);
+    // Draw real microphone data with Python-like visualization
+    _drawPythonStyleVisualization(canvas, size);
   }
 
   void _drawGrid(Canvas canvas, Size size) {
@@ -217,67 +222,32 @@ class MicrophonePainter extends CustomPainter {
     textPainter.paint(canvas, offset);
   }
 
-  void _drawScrollingMicrophoneData(Canvas canvas, Size size) {
+  void _drawPythonStyleVisualization(Canvas canvas, Size size) {
     if (pcmSamples.isEmpty) return;
     
     final double width = size.width;
     final double height = size.height;
     final double centerY = height / 2;
     
-    // Find max value for normalization
+    // Max value for normalization
     final int maxPcmValue = 32767; // Maximum value for 16-bit PCM
     
-    // Prepare the path for waveform
-    final Path path = Path();
-    final Paint linePaint = Paint()
-      ..color = AppTheme.primaryColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round;
-
-    // Calculate sample spacing - make it narrower for smoother display
-    final double sampleSpacing = width / 200; 
+    // Calculate display time window (5 seconds like in Python)
+    final int displayTimeSeconds = 5;
+    final int totalSamples = pcmSamples.length;
     
-    // Draw from newest (right) to oldest (left)
-    // For scrolling effect, we offset each sample based on the scroll position
-    bool pathStarted = false;
+    // Calculate total time represented by our buffer
+    final double totalBufferTimeSeconds = totalSamples / AudioService.sampleRate;
     
-    for (int i = 0; i < pcmSamples.length; i++) {
-      // Calculate position
-      final double x = width - (i * sampleSpacing + scrollPosition % sampleSpacing);
-      
-      // Skip points that are off-screen
-      if (x < 0) break;
-      if (x > width) continue;
-      
-      final int sample = pcmSamples[pcmSamples.length - 1 - i];
-      
-      // Normalize to [-1, 1] range
-      final double normalizedValue = sample / maxPcmValue;
-      
-      // Calculate y position - scale to 80% of half height
-      final double y = centerY - normalizedValue * (height / 2) * 0.8;
-      
-      // Draw the waveform
-      if (!pathStarted) {
-        path.moveTo(x, y);
-        pathStarted = true;
-      } else {
-        path.lineTo(x, y);
-      }
-      
-      // Draw points only for some samples (not all, to avoid clutter)
-      if (i % 5 == 0) {
-        canvas.drawCircle(
-          Offset(x, y),
-          2.0,
-          Paint()..color = normalizedValue >= 0 ? Colors.blue : Colors.red,
-        );
-      }
-    }
+    // Calculate refresh time chunks similar to Python code
+    final double refreshTime = 0.3; // Same as Python
+    final int samplesPerRefreshTime = (AudioService.sampleRate * refreshTime).round();
     
-    // Draw the waveform path
-    canvas.drawPath(path, linePaint);
+    // How many refresh-time segments we can fit
+    final int numSegments = (totalSamples / samplesPerRefreshTime).ceil();
+    
+    // Ensure we have at least one breath phase if available
+    final int numPhases = math.min(numSegments, breathPhases.length);
     
     // Draw "now" marker at the right edge
     final Paint nowMarkerPaint = Paint()
@@ -290,14 +260,104 @@ class MicrophonePainter extends CustomPainter {
       nowMarkerPaint,
     );
     
+    // Similar to Python's plot, draw each segment with its own color
+    for (int segment = 0; segment < numSegments; segment++) {
+      // Get the color for this segment - use the most recent phases first
+      Color segmentColor;
+      if (segment < numPhases) {
+        int phaseIndex = breathPhases.length - segment - 1;
+        if (phaseIndex >= 0 && phaseIndex < breathPhases.length) {
+          segmentColor = _getColorForPhase(breathPhases[phaseIndex]);
+        } else {
+          segmentColor = AppTheme.primaryColor;
+        }
+      } else {
+        segmentColor = AppTheme.primaryColor;
+      }
+      
+      // Calculate segment boundaries in the buffer
+      int endIdx = pcmSamples.length - (segment * samplesPerRefreshTime);
+      int startIdx = math.max(0, endIdx - samplesPerRefreshTime);
+      
+      if (startIdx >= endIdx || startIdx >= pcmSamples.length) continue;
+      
+      // Prepare the path for this segment's waveform
+      final Path segmentPath = Path();
+      bool pathStarted = false;
+      
+      // Calculate position on screen - more recent data on the right
+      final double segmentWidth = width * refreshTime / displayTimeSeconds;
+      final double rightEdge = width - (segment * segmentWidth) - scrollPosition % segmentWidth;
+      final double leftEdge = rightEdge - segmentWidth;
+      
+      // Calculate how many points to skip for efficient rendering
+      int pointsToSkip = math.max(1, (endIdx - startIdx) ~/ 200);
+      
+      // Draw samples for this segment, using downsampling for efficiency
+      for (int i = startIdx; i < endIdx; i += pointsToSkip) {
+        if (i >= pcmSamples.length) break;
+        
+        // Calculate x position - map the sample index to screen space
+        final double progress = (i - startIdx) / (endIdx - startIdx);
+        final double x = leftEdge + progress * segmentWidth;
+        
+        // Skip points that are off-screen
+        if (x < 0) continue;
+        if (x > width) break;
+        
+        final int sample = pcmSamples[i];
+        
+        // Normalize to [-1, 1] range
+        final double normalizedValue = sample / maxPcmValue;
+        
+        // Use a non-linear mapping for better visualization of small values
+        // Similar to how Python's visualization appears more sensitive
+        double amplification = 0.8;
+        double y;
+        if (normalizedValue > 0) {
+          y = centerY - math.pow(normalizedValue, 0.7) * (height / 2) * amplification;
+        } else {
+          y = centerY - (-math.pow(-normalizedValue, 0.7)) * (height / 2) * amplification;
+        }
+        
+        // Draw the waveform
+        if (!pathStarted) {
+          segmentPath.moveTo(x, y);
+          pathStarted = true;
+        } else {
+          segmentPath.lineTo(x, y);
+        }
+      }
+      
+      // Draw the segment path with appropriate color
+      final Paint segmentPaint = Paint()
+        ..color = segmentColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..strokeCap = StrokeCap.round;
+      
+      canvas.drawPath(segmentPath, segmentPaint);
+    }
+    
     // Draw informational overlay
     _drawInfoOverlay(canvas, size);
+  }
+  
+  Color _getColorForPhase(BreathPhase phase) {
+    switch (phase) {
+      case BreathPhase.inhale:
+        return AppTheme.inhaleColor;
+      case BreathPhase.exhale:
+        return AppTheme.exhaleColor;
+      case BreathPhase.silence:
+        return AppTheme.silenceColor;
+    }
   }
   
   void _drawInfoOverlay(Canvas canvas, Size size) {
     // Draw amplitude information
     final textSpan = TextSpan(
-      text: 'Live Microphone Data - Scrolling Waveform',
+      text: 'Live Microphone Data - Breath-Colored Waveform',
       style: const TextStyle(
         color: Colors.white,
         fontSize: 12,
@@ -331,6 +391,58 @@ class MicrophonePainter extends CustomPainter {
     nowTextPainter.paint(
       canvas, 
       Offset(size.width - nowTextPainter.width - 15, 10),
+    );
+    
+    // Draw breath phase legend
+    _drawBreathPhaseLegend(canvas, size);
+  }
+  
+  void _drawBreathPhaseLegend(Canvas canvas, Size size) {
+    const double legendY = 30;
+    double xOffset = 10;
+    
+    // Draw inhale legend
+    _drawLegendItem(canvas, Offset(xOffset, legendY), AppTheme.inhaleColor, 'Inhale');
+    xOffset += 70;
+    
+    // Draw exhale legend
+    _drawLegendItem(canvas, Offset(xOffset, legendY), AppTheme.exhaleColor, 'Exhale');
+    xOffset += 70;
+    
+    // Draw silence legend
+    _drawLegendItem(canvas, Offset(xOffset, legendY), AppTheme.silenceColor, 'Silence');
+  }
+  
+  void _drawLegendItem(Canvas canvas, Offset position, Color color, String label) {
+    // Draw color indicator
+    final Paint circlePaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    
+    canvas.drawCircle(
+      Offset(position.dx + 5, position.dy + 5),
+      5,
+      circlePaint,
+    );
+    
+    // Draw label
+    final textSpan = TextSpan(
+      text: label,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 10,
+      ),
+    );
+    
+    final textPainter = TextPainter(
+      text: textSpan,
+      textDirection: TextDirection.ltr,
+    );
+    
+    textPainter.layout();
+    textPainter.paint(
+      canvas, 
+      Offset(position.dx + 15, position.dy),
     );
   }
 

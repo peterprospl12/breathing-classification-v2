@@ -10,7 +10,7 @@ class AudioService extends ChangeNotifier {
   // Constants similar to the Python version
   static const int sampleRate = 44100;
   static const double refreshTime = 0.3;
-  static final int chunkSize = (sampleRate * refreshTime).round();
+  static final int chunkSize = (sampleRate * refreshTime).round(); // ~13,230 samples
   
   // Audio state
   bool _isRecording = false;
@@ -35,9 +35,11 @@ class AudioService extends ChangeNotifier {
   List<int> _first10PcmSamples = [];
   List<int> get first10PcmSamples => _first10PcmSamples;
   
-  // Buffer for microphone visualization (scrolling waveform)
+  // Buffer for microphone visualization (scrolling waveform) 
+  // Increased to store more points for smoother visualization
   final List<int> _microphoneBuffer = [];
-  static const int maxMicrophoneBufferSize = 500; // Store more samples for scrolling effect
+  // Match Python's approach of storing ~5 seconds worth of data
+  static const int maxMicrophoneBufferSize = 44100 * 5; // 5 seconds of audio at 44.1kHz
   List<int> get microphoneBuffer => _microphoneBuffer;
   
   // Breath phase tracking
@@ -174,12 +176,14 @@ class AudioService extends ChangeNotifier {
     
     final config = RecordConfig(
       encoder: AudioEncoder.pcm16bits,
+      sampleRate: sampleRate, // Explicitly set to match Python's rate
+      numChannels: 1, // Mono to match Python
       device: _selectedDevice!,
     );
     
     final audioStream = await _recorder.startStream(config);
     
-    // Ustawienie timera odświeżania amplitudy
+    // Set amplitude refresh timer to match Python's approach
     _amplitudeRefreshTimer = Timer.periodic(
       Duration(milliseconds: (refreshTime * 1000).round()), 
       (_) => _updateAmplitude()
@@ -187,24 +191,21 @@ class AudioService extends ChangeNotifier {
     
     // Clear the microphone buffer when starting a new recording
     _microphoneBuffer.clear();
+    _breathPhases.clear(); // Also clear breath phases for fresh start
     
-    // Nasłuchiwanie strumienia audio i buforowanie próbek
+    // Listen to audio stream and buffer samples
     _amplitudeStreamSubscription = audioStream.listen((data) {
-
-      if (kDebugMode) {
-        print("Raw audio data length: ${data.length} bytes");
-      }
-      
       final pcmSamples = _recorder.convertBytesToInt16(data);
       
-      // Dodanie próbek do bufora
       synchronized(() {
+        // Add new samples and maintain buffer size similar to Python's approach
         _pcmBuffer.addAll(pcmSamples);
         
         // Add to the microphone buffer for visualization
         _microphoneBuffer.addAll(pcmSamples);
         
-        // Trim the microphone buffer if it gets too large
+        // Trim the buffer to keep it from growing too large
+        // But keep more data for smoother visualization like Python
         if (_microphoneBuffer.length > maxMicrophoneBufferSize) {
           _microphoneBuffer.removeRange(0, _microphoneBuffer.length - maxMicrophoneBufferSize);
         }
@@ -229,9 +230,8 @@ class AudioService extends ChangeNotifier {
     action();
   }
 
-    // Metoda aktualizująca amplitudę na podstawie zawartości bufora
   void _updateAmplitude() {
-    // Kopiujemy bufor i czyścimy oryginalny
+    // Copy buffer and clear original
     List<int> currentPcmSamples = [];
     synchronized(() {
       if (_pcmBuffer.isEmpty) return;
@@ -241,18 +241,41 @@ class AudioService extends ChangeNotifier {
     
     if (currentPcmSamples.isEmpty) return;
     
-    // Wyliczamy maksymalną wartość bezwzględną
+    // Calculate maximum absolute value
     final maxSample = currentPcmSamples.fold<int>(
       0,
       (prev, element) => element.abs() > prev ? element.abs() : prev,
     );
     
-    // Normalizacja (zakładamy 16-bit PCM: wartość max = 32767)
+    // Normalize (assuming 16-bit PCM: max value = 32767)
     _currentAmplitude = maxSample / 32767.0;
     
+    // Convert PCM samples to floating point for the classifier
+    final List<double> normalizedSamples = currentPcmSamples
+        .map((sample) => sample / 32767.0)
+        .toList();
+    
+    // Classify the breath phase
+    _classifier.classify(normalizedSamples).then((phase) {
+      // Add to phases list
+      _breathPhases.add(phase);
+      if (_breathPhases.length > maxPhaseHistory) {
+        _breathPhases.removeAt(0);
+      }
+      
+      // Update counters
+      if (phase == BreathPhase.inhale) {
+        _inhaleCount++;
+      } else if (phase == BreathPhase.exhale) {
+        _exhaleCount++;
+      }
+      
+      notifyListeners();
+    });
+    
     if (kDebugMode) {
-      print("Aktualna amplituda (${DateTime.now()}): $_currentAmplitude");
-      print("Liczba próbek użytych do obliczenia amplitudy: ${currentPcmSamples.length}");
+      print("Current amplitude (${DateTime.now()}): $_currentAmplitude");
+      print("Number of samples used to calculate amplitude: ${currentPcmSamples.length}");
     }
     
     notifyListeners();
