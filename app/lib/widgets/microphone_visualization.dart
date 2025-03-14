@@ -1,10 +1,7 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:async';
-import 'dart:math' as math;
 import '../services/audio_service.dart';
-import '../theme/app_theme.dart';
-import '../models/breath_classifier.dart';
 
 class MicrophoneVisualizationWidget extends StatefulWidget {
   const MicrophoneVisualizationWidget({super.key});
@@ -13,29 +10,23 @@ class MicrophoneVisualizationWidget extends StatefulWidget {
   State<MicrophoneVisualizationWidget> createState() => _MicrophoneVisualizationWidgetState();
 }
 
-class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationWidget> {
-  // Animation controller for auto-scrolling effect
-  Timer? _animationTimer;
-  double _scrollPosition = 0.0;
+class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationWidget> 
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
   
   @override
   void initState() {
     super.initState();
-    // Setup timer to update scroll position - match Python's refresh rate
-    _animationTimer = Timer.periodic(const Duration(milliseconds: 300), (timer) {
-      setState(() {
-        // Use smoother scrolling with smaller increments
-        _scrollPosition += 1.0;
-        if (_scrollPosition > 1000) {
-          _scrollPosition = 0.0; // Reset to avoid overflow
-        }
-      });
-    });
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000), // how often to repaint
+    );
+    _animationController.repeat();
   }
   
   @override
   void dispose() {
-    _animationTimer?.cancel();
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -43,405 +34,223 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
   Widget build(BuildContext context) {
     return Consumer<AudioService>(
       builder: (context, audioService, child) {
-        return Container(
-          height: 200,
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardTheme.color,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 10,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: CustomPaint(
-              painter: MicrophonePainter(
-                pcmSamples: audioService.microphoneBuffer,
-                isRecording: audioService.isRecording,
-                scrollPosition: _scrollPosition,
-                breathPhases: audioService.breathPhases,
-              ),
-              size: Size.infinite,
-            ),
-          ),
+        return Column(
+          children: [
+            _buildControlPanel(audioService),
+            const SizedBox(height: 8),
+            _buildVisualization(audioService),
+            const SizedBox(height: 8),
+          ],
         );
       },
     );
   }
+
+  Widget _buildControlPanel(AudioService audioService) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          width: 120, 
+          height: 40, 
+          decoration: BoxDecoration(
+            color: audioService.isRecording ? Colors.red.shade600 : Colors.green.shade600,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: (audioService.isRecording ? Colors.red : Colors.green).withValues(alpha: 0.3),
+                spreadRadius: 1,
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () {
+                if (audioService.isRecording) {
+                  audioService.stopRecording();
+                } else {
+                  audioService.startRecording();
+                }
+              },
+              child: Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      audioService.isRecording ? Icons.stop_rounded : Icons.mic,
+                      color: Colors.white,
+                      size: 22, 
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      audioService.isRecording ? 'Stop' : 'Start',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16, 
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVisualization(AudioService audioService) {
+    return Container(
+      height: 200,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: AnimatedBuilder(
+          animation: _animationController,
+          builder: (context, child) {
+            return CustomPaint(
+              painter: MicrophoneWaveformPainter(
+                audioBuffer: audioService.microphoneBuffer,
+                isRecording: audioService.isRecording,
+              ),
+              size: Size.infinite,
+            );
+          },
+        ),
+      ),
+    );
+  }
 }
 
-class MicrophonePainter extends CustomPainter {
-  final List<int> pcmSamples;
+class MicrophoneWaveformPainter extends CustomPainter {
+  final List<int> audioBuffer;
   final bool isRecording;
-  final double scrollPosition;
-  final List<BreathPhase> breathPhases;
   
-  MicrophonePainter({
-    required this.pcmSamples,
-    required this.isRecording,
-    required this.scrollPosition,
-    this.breathPhases = const [],
-  });
+  static List<double> _smoothedValues = [];
+  static const double _smoothingFactor = 0.2; // Lower means more smoothing
+  
+  MicrophoneWaveformPainter({required this.audioBuffer, required this.isRecording});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double width = size.width;
-    final double height = size.height;
-
-    // Clear the background
-    final Paint backgroundPaint = Paint()
-      ..color = Colors.black;
-    canvas.drawRect(Rect.fromLTWH(0, 0, width, height), backgroundPaint);
-
-    // Draw grid lines
-    _drawGrid(canvas, size);
-    
-    // Draw time markers
-    _drawTimeMarkers(canvas, size);
-    
-    if (!isRecording && pcmSamples.isEmpty) {
-      _drawNotRecordingMessage(canvas, size);
-      return;
-    }
-    
-    if (pcmSamples.isEmpty) {
-      _drawWaitingForDataMessage(canvas, size);
+    if (audioBuffer.isEmpty) {
+      _drawIdleWaveform(canvas, size);
       return;
     }
 
-    // Draw real microphone data with Python-like visualization
-    _drawPythonStyleVisualization(canvas, size);
-  }
+    final paint = Paint()
+      ..color = Colors.greenAccent
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
 
-  void _drawGrid(Canvas canvas, Size size) {
-    final double width = size.width;
-    final double height = size.height;
+    final path = Path();
     
-    final Paint gridPaint = Paint()
-      ..color = Colors.grey.withValues(alpha: 0.2)
-      ..strokeWidth = 1;
+    final displayPoints = size.width.toInt();
+    final step = math.max(1, audioBuffer.length ~/ displayPoints);
     
-    // Horizontal grid lines
-    for (double i = 0; i <= height; i += height / 6) {
-      canvas.drawLine(
-        Offset(0, i),
-        Offset(width, i),
-        gridPaint,
-      );
+    const maxAmplitude = 16384; // Half of 16-bit max for better visualization
+    final heightScale = size.height / 6 / maxAmplitude;
+    
+    final yCenter = size.height / 2;
+    
+    // Initialize smoothed values if needed
+    if (_smoothedValues.length != displayPoints) {
+      _smoothedValues = List<double>.filled(displayPoints, yCenter);
     }
     
-    // Vertical grid lines with scrolling effect
-    final double gridSpacing = width / 10;
-    final double offset = scrollPosition % gridSpacing;
-    
-    for (double i = -offset; i <= width; i += gridSpacing) {
-      canvas.drawLine(
-        Offset(i, 0),
-        Offset(i, height),
-        gridPaint,
-      );
-    }
-  }
-  
-  void _drawTimeMarkers(Canvas canvas, Size size) {
-    final double width = size.width;
-    final double height = size.height;
-    
-    // Draw time markers at the bottom
-    const textStyle = TextStyle(
-      color: Colors.grey,
-      fontSize: 10,
-    );
-    
-    final double gridSpacing = width / 10;
-    final double offset = scrollPosition % gridSpacing;
-    
-    // Draw time markers (current time at right, older times at left)
-    for (int i = 0; i < 11; i++) {
-      final double x = width - (i * gridSpacing + offset);
-      if (x < 0) continue;
+    if (audioBuffer.length >= step) {
+      path.moveTo(0, _smoothedValues[0]);
       
-      final String timeLabel = '${i * 0.5}s';
-      final textSpan = TextSpan(text: timeLabel, style: textStyle);
-      final textPainter = TextPainter(
-        text: textSpan,
-        textDirection: TextDirection.ltr,
-      );
-      
-      textPainter.layout(minWidth: 0, maxWidth: gridSpacing);
-      textPainter.paint(
-        canvas, 
-        Offset(x - textPainter.width / 2, height - 15),
-      );
-    }
-  }
-
-  void _drawNotRecordingMessage(Canvas canvas, Size size) {
-    const textSpan = TextSpan(
-      text: 'Start recording to visualize microphone data',
-      style: TextStyle(
-        color: Colors.white70,
-        fontSize: 16,
-      ),
-    );
-    
-    _drawCenteredText(canvas, size, textSpan);
-  }
-
-  void _drawWaitingForDataMessage(Canvas canvas, Size size) {
-    const textSpan = TextSpan(
-      text: 'Waiting for microphone data...',
-      style: TextStyle(
-        color: Colors.white70,
-        fontSize: 16,
-      ),
-    );
-    
-    _drawCenteredText(canvas, size, textSpan);
-  }
-
-  void _drawCenteredText(Canvas canvas, Size size, TextSpan textSpan) {
-    final textPainter = TextPainter(
-      text: textSpan,
-      textDirection: TextDirection.ltr,
-      textAlign: TextAlign.center,
-    );
-    
-    textPainter.layout(maxWidth: size.width * 0.8);
-    
-    final offset = Offset(
-      (size.width - textPainter.width) / 2,
-      (size.height - textPainter.height) / 2,
-    );
-    
-    textPainter.paint(canvas, offset);
-  }
-
-  void _drawPythonStyleVisualization(Canvas canvas, Size size) {
-    if (pcmSamples.isEmpty) return;
-    
-    final double width = size.width;
-    final double height = size.height;
-    final double centerY = height / 2;
-    
-    // Max value for normalization
-    const int maxPcmValue = 32767; // Maximum value for 16-bit PCM
-    
-    const int displayTimeSeconds = 5;
-    final int totalSamples = pcmSamples.length;
-    
-    const double refreshTime = 0.3; 
-    final int samplesPerRefreshTime = (AudioService.sampleRate * refreshTime).round();
-    
-    // How many refresh-time segments we can fit
-    final int numSegments = (totalSamples / samplesPerRefreshTime).ceil();
-    
-    // Ensure we have at least one breath phase if available
-    final int numPhases = math.min(numSegments, breathPhases.length);
-    
-    // Draw "now" marker at the right edge
-    final Paint nowMarkerPaint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 2;
-    
-    canvas.drawLine(
-      Offset(width - 5, 0),
-      Offset(width - 5, height),
-      nowMarkerPaint,
-    );
-    
-    // Similar to Python's plot, draw each segment with its own color
-    for (int segment = 0; segment < numSegments; segment++) {
-      // Get the color for this segment - use the most recent phases first
-      Color segmentColor;
-      if (segment < numPhases) {
-        int phaseIndex = breathPhases.length - segment - 1;
-        if (phaseIndex >= 0 && phaseIndex < breathPhases.length) {
-          segmentColor = _getColorForPhase(breathPhases[phaseIndex]);
-        } else {
-          segmentColor = AppTheme.primaryColor;
+      // Only shift values if currently recording - this freezes the waveform when stopped
+      if (isRecording) {
+        // Draw the waveform from left to right, shifting older data to the left
+        for (int i = 0; i < displayPoints - 1; i++) {
+          // Shift values left (this creates the scrolling effect)
+          _smoothedValues[i] = _smoothedValues[i + 1];
+          path.lineTo(i.toDouble(), _smoothedValues[i]);
+        }
+        
+        // Add the newest data point at the rightmost position
+        if (audioBuffer.isNotEmpty) {
+          final latestSampleIndex = audioBuffer.length - 1;
+          final latestSample = audioBuffer[latestSampleIndex];
+          
+          // Apply smoothing to reduce shakiness
+          final targetY = yCenter - latestSample * heightScale;
+          _smoothedValues[displayPoints - 1] = _smoothedValues[displayPoints - 2] * (1 - _smoothingFactor) + 
+                                              targetY * _smoothingFactor;
         }
       } else {
-        segmentColor = AppTheme.primaryColor;
-      }
-      
-      // Calculate segment boundaries in the buffer
-      int endIdx = pcmSamples.length - (segment * samplesPerRefreshTime);
-      int startIdx = math.max(0, endIdx - samplesPerRefreshTime);
-      
-      if (startIdx >= endIdx || startIdx >= pcmSamples.length) continue;
-      
-      // Prepare the path for this segment's waveform
-      final Path segmentPath = Path();
-      bool pathStarted = false;
-      
-      // Calculate position on screen - more recent data on the right
-      final double segmentWidth = width * refreshTime / displayTimeSeconds;
-      final double rightEdge = width - (segment * segmentWidth) - scrollPosition % segmentWidth;
-      final double leftEdge = rightEdge - segmentWidth;
-      
-      // Calculate how many points to skip for efficient rendering
-      int pointsToSkip = math.max(1, (endIdx - startIdx) ~/ 200);
-      
-      // Draw samples for this segment, using downsampling for efficiency
-      for (int i = startIdx; i < endIdx; i += pointsToSkip) {
-        if (i >= pcmSamples.length) break;
-        
-        // Calculate x position - map the sample index to screen space
-        final double progress = (i - startIdx) / (endIdx - startIdx);
-        final double x = leftEdge + progress * segmentWidth;
-        
-        // Skip points that are off-screen
-        if (x < 0) continue;
-        if (x > width) break;
-        
-        final int sample = pcmSamples[i];
-        
-        // Normalize to [-1, 1] range
-        final double normalizedValue = sample / maxPcmValue;
-        
-        // Use a non-linear mapping for better visualization of small values
-        // Similar to how Python's visualization appears more sensitive
-        double amplification = 0.8;
-        double y;
-        if (normalizedValue > 0) {
-          y = centerY - math.pow(normalizedValue, 0.7) * (height / 2) * amplification;
-        } else {
-          y = centerY - (-math.pow(-normalizedValue, 0.7)) * (height / 2) * amplification;
-        }
-        
-        // Draw the waveform
-        if (!pathStarted) {
-          segmentPath.moveTo(x, y);
-          pathStarted = true;
-        } else {
-          segmentPath.lineTo(x, y);
+        // When not recording, just draw the current buffer without shifting
+        for (int i = 0; i < displayPoints - 1; i++) {
+          path.lineTo(i.toDouble(), _smoothedValues[i]);
         }
       }
       
-      // Draw the segment path with appropriate color
-      final Paint segmentPaint = Paint()
-        ..color = segmentColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0
-        ..strokeCap = StrokeCap.round;
+      // Add the final point
+      path.lineTo((displayPoints - 1).toDouble(), _smoothedValues[displayPoints - 1]);
       
-      canvas.drawPath(segmentPath, segmentPaint);
+      canvas.drawPath(path, paint);
+    } else {
+      _drawIdleWaveform(canvas, size);
     }
     
-    // Draw informational overlay
-    _drawInfoOverlay(canvas, size);
-  }
-  
-  Color _getColorForPhase(BreathPhase phase) {
-    switch (phase) {
-      case BreathPhase.inhale:
-        return AppTheme.inhaleColor;
-      case BreathPhase.exhale:
-        return AppTheme.exhaleColor;
-      case BreathPhase.silence:
-        return AppTheme.silenceColor;
+    // Draw center line
+    final centerPaint = Paint()
+      ..color = Colors.grey.withValues(alpha: 0.5)
+      ..strokeWidth = 0.5;
+    canvas.drawLine(
+      Offset(0, size.height / 2),
+      Offset(size.width, size.height / 2),
+      centerPaint,
+    );
+    
+    // Draw recording indicator
+    if (isRecording) {
+      final indicatorPaint = Paint()
+        ..color = Colors.red
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(
+        Offset(size.width - 16, 16),
+        8,
+        indicatorPaint,
+      );
     }
   }
   
-  void _drawInfoOverlay(Canvas canvas, Size size) {
-    // Draw amplitude information
-    const textSpan = TextSpan(
-      text: 'Live Microphone Data - Breath-Colored Waveform',
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: 12,
-        fontWeight: FontWeight.bold,
-      ),
-    );
+  void _drawIdleWaveform(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.grey
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
     
-    final textPainter = TextPainter(
-      text: textSpan,
-      textDirection: TextDirection.ltr,
-    );
+    final centerY = size.height / 2;
+    final path = Path();
     
-    textPainter.layout();
-    textPainter.paint(canvas, const Offset(10, 10));
+    // Draw a flat line with small sine waves to indicate idle state
+    path.moveTo(0, centerY);
+    for (double x = 0; x < size.width; x += 1) {
+      final y = centerY + math.sin(x / 8) * 3; // More gentle waves
+      path.lineTo(x, y);
+    }
     
-    // Add legend for "now"
-    const nowLegendSpan = TextSpan(
-      text: 'Now →',
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: 10,
-      ),
-    );
-    
-    final nowTextPainter = TextPainter(
-      text: nowLegendSpan,
-      textDirection: TextDirection.ltr,
-    );
-    
-    nowTextPainter.layout();
-    nowTextPainter.paint(
-      canvas, 
-      Offset(size.width - nowTextPainter.width - 15, 10),
-    );
-    
-    // Draw breath phase legend
-    _drawBreathPhaseLegend(canvas, size);
-  }
-  
-  void _drawBreathPhaseLegend(Canvas canvas, Size size) {
-    const double legendY = 30;
-    double xOffset = 10;
-    
-    // Draw inhale legend
-    _drawLegendItem(canvas, Offset(xOffset, legendY), AppTheme.inhaleColor, 'Inhale');
-    xOffset += 70;
-    
-    // Draw exhale legend
-    _drawLegendItem(canvas, Offset(xOffset, legendY), AppTheme.exhaleColor, 'Exhale');
-    xOffset += 70;
-    
-    // Draw silence legend
-    _drawLegendItem(canvas, Offset(xOffset, legendY), AppTheme.silenceColor, 'Silence');
-  }
-  
-  void _drawLegendItem(Canvas canvas, Offset position, Color color, String label) {
-    // Draw color indicator
-    final Paint circlePaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    
-    canvas.drawCircle(
-      Offset(position.dx + 5, position.dy + 5),
-      5,
-      circlePaint,
-    );
-    
-    // Draw label
-    final textSpan = TextSpan(
-      text: label,
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 10,
-      ),
-    );
-    
-    final textPainter = TextPainter(
-      text: textSpan,
-      textDirection: TextDirection.ltr,
-    );
-    
-    textPainter.layout();
-    textPainter.paint(
-      canvas, 
-      Offset(position.dx + 15, position.dy),
-    );
+    canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(covariant MicrophonePainter oldDelegate) {
-    return true; // Always repaint for smooth animation
+  bool shouldRepaint(MicrophoneWaveformPainter oldDelegate) {
+    // Only repaint if recording state changed or buffer was updated
+    return oldDelegate.isRecording != isRecording || 
+           (audioBuffer.isNotEmpty && oldDelegate.audioBuffer != audioBuffer);
   }
 }
