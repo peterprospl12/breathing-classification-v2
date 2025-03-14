@@ -5,12 +5,10 @@ class AppTheme {
   static const Color primaryColor = Color(0xFF3498DB);
   static const Color accentColor = Color(0xFF2ECC71);
   
-  // Status colors
   static const Color inhaleColor = Color(0xFFE74C3C);     // Red
   static const Color exhaleColor = Color(0xFF2ECC71);     // Green
   static const Color silenceColor = Color(0xFF3498DB);    // Blue
   
-  // Background colors
   static const Color darkBackgroundColor = Color(0xFF121212);
   static const Color lightBackgroundColor = Color(0xFFF5F5F5);
   
@@ -23,10 +21,10 @@ class AppTheme {
 
   static ThemeData get lightTheme {
     return ThemeData(
-      colorScheme: ColorScheme.light(
+      colorScheme: const ColorScheme.light(
         primary: primaryColor,
         secondary: accentColor,
-        background: lightBackgroundColor,
+        surface: lightBackgroundColor,
       ),
       primaryColor: primaryColor,
       fontFamily: fontFamily,
@@ -57,10 +55,10 @@ class AppTheme {
 
   static ThemeData get darkTheme {
     return ThemeData(
-      colorScheme: ColorScheme.dark(
+      colorScheme: const ColorScheme.dark(
         primary: primaryColor,
         secondary: accentColor,
-        background: darkBackgroundColor,
+        surface: darkBackgroundColor,
       ),
       primaryColor: primaryColor,
       fontFamily: fontFamily,

@@ -2,43 +2,94 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:record/record.dart';
 import '../models/breath_classifier.dart';
 
 class AudioService extends ChangeNotifier {
-  // Constants similar to the Python version
   static const int sampleRate = 44100;
   static const double refreshTime = 0.3;
-  static final int chunkSize = (sampleRate * refreshTime).round();
+  static final int chunkSize = (sampleRate * refreshTime).round(); // ~13,230 samples
   
   // Audio state
   bool _isRecording = false;
   bool get isRecording => _isRecording;
   
+  // Audio device selection
+  List<InputDevice> _inputDevices = [];
+  List<InputDevice> get inputDevices => _inputDevices;
+  InputDevice? _selectedDevice;
+  InputDevice? get selectedDevice => _selectedDevice;
+  bool _isLoadingDevices = false;
+  bool get isLoadingDevices => _isLoadingDevices;
+  
   // Audio data storage
   final List<double> _audioBuffer = [];
   List<double> get audioBuffer => _audioBuffer;
   
-  // Breath phase tracking
+  // Increased to store more points for smoother visualization
+  final List<int> _microphoneBuffer = [];
+  static const int maxMicrophoneBufferSize = 44100 * 5; // 5 seconds of audio at 44.1kHz
+  List<int> get microphoneBuffer => _microphoneBuffer;
+  
   final List<BreathPhase> _breathPhases = [];
   List<BreathPhase> get breathPhases => _breathPhases;
   
-  // Counters
   int _inhaleCount = 0;
   int _exhaleCount = 0;
   int get inhaleCount => _inhaleCount;
   int get exhaleCount => _exhaleCount;
   
-  // Maximum history to keep
   final int _maxHistorySeconds = 5;
   int get maxBufferSize => sampleRate * _maxHistorySeconds;
   int get maxPhaseHistory => (_maxHistorySeconds / refreshTime).round();
 
-  // Audio generation timer
   Timer? _simulationTimer;
   final BreathClassifier _classifier = BreathClassifier();
 
-  AudioService() {
+  // Record plugin
+  final AudioRecorder _recorder = AudioRecorder();
+  StreamSubscription<Uint8List>? _amplitudeStreamSubscription;
+
+  AudioService(){
     _classifier.initialize();
+    loadInputDevices();
+  }
+
+  Future<void> loadInputDevices() async {
+    _isLoadingDevices = true;
+    notifyListeners();
+    
+    try {
+      final status = await Permission.microphone.request();
+      if (status == PermissionStatus.granted) {
+        _inputDevices = await _recorder.listInputDevices();
+        
+        if (_selectedDevice == null && _inputDevices.isNotEmpty) {
+          selectDevice(_inputDevices[0]);
+        }
+      } else {
+        if (kDebugMode) {
+          print('Microphone permission denied');
+        }
+        _inputDevices = [];
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error loading input devices: $e');
+      }
+      _inputDevices = [];
+    } finally {
+      _isLoadingDevices = false;
+      notifyListeners();
+    }
+  }
+  
+  void selectDevice(InputDevice device) {
+    _selectedDevice = device;
+    if (kDebugMode) {
+      print('Selected device: ${device.label}');
+    }
+    notifyListeners();
   }
 
   Future<bool> requestMicrophonePermission() async {
@@ -47,7 +98,7 @@ class AudioService extends ChangeNotifier {
   }
 
   void startRecording() async {
-    if (_isRecording) return;
+    if (_isRecording || _selectedDevice == null) return;
     
     final bool hasPermission = await requestMicrophonePermission();
     if (!hasPermission) {
@@ -59,16 +110,29 @@ class AudioService extends ChangeNotifier {
     
     _isRecording = true;
     notifyListeners();
-    
-    // For now, we'll generate simulated audio data
-    _startSimulation();
+
+    _captureStream();
+    // _startSimulation();
   }
 
-  void stopRecording() {
+  Future<void> printInputDevices() async {
+    final devices = await _recorder.listInputDevices();
+    for (final device in devices) {
+      if (kDebugMode) {
+        print('Device id: ${device.id}, label: ${device.label}');
+      }
+    }
+  }
+
+  void stopRecording() async {
     if (!_isRecording) return;
     
     _isRecording = false;
     _simulationTimer?.cancel();
+
+    await _amplitudeStreamSubscription?.cancel();
+    await _recorder.stop();
+
     notifyListeners();
   }
 
@@ -79,25 +143,66 @@ class AudioService extends ChangeNotifier {
   }
 
   void _startSimulation() {
-    // Generate fake audio data similar to a breathing pattern
-    _simulationTimer = Timer.periodic(
-      const Duration(milliseconds: (refreshTime * 1000 ~/ 3)),
-      (_) => _generateAudioData(),
+    const simulationInterval = Duration(milliseconds: (refreshTime * 1000 ~/ 3));
+    _simulationTimer = Timer.periodic(simulationInterval, (_) => _generateAudioData());
+  }
+
+  void _captureStream() async {
+    if (_selectedDevice == null) return;
+    
+    await _startStreamCapturing();
+    _prepareBuffers();
+  }
+  
+  Future<void> _startStreamCapturing() async {
+    final config = RecordConfig(
+      encoder: AudioEncoder.pcm16bits,
+      sampleRate: 48000,
+      numChannels: 2, // Stereo
+      device: _selectedDevice!,
     );
+    
+    final audioStream = await _recorder.startStream(config);
+    _createAudioStreamSubscription(audioStream);
+  }
+  
+  void _prepareBuffers() {
+    _microphoneBuffer.clear();
+    _breathPhases.clear();
+  }
+  
+  void _createAudioStreamSubscription(Stream<Uint8List> audioStream) {
+    _amplitudeStreamSubscription = audioStream.listen((data) {
+      final pcmSamples = _recorder.convertBytesToInt16(data);
+      
+      synchronized(() {
+        _addToMicrophoneBuffer(pcmSamples);
+      });
+      
+    });
+  }
+  
+  void _addToMicrophoneBuffer(List<int> samples) {
+    _microphoneBuffer.addAll(samples);
+    
+    if (_microphoneBuffer.length > maxMicrophoneBufferSize) {
+      _microphoneBuffer.removeRange(0, _microphoneBuffer.length - maxMicrophoneBufferSize);
+    }
+  }
+
+  void synchronized(Function() action) {
+    action();
   }
 
   void _generateAudioData() async {
-    // Generate synthetic breathing waveform
     final int currentTime = DateTime.now().millisecondsSinceEpoch;
     final List<double> newSamples = List.generate(
       chunkSize ~/ 3,
       (i) {
         final double t = (currentTime / 1000.0) + (i / sampleRate);
         
-        // Base sine wave with frequency of approximately 0.3Hz (1 breath every ~3 seconds)
         double baseBreathing = math.sin(2 * math.pi * 0.3 * t) * 0.5;
         
-        // Add some higher frequency components to make it look like real audio
         double noise = math.sin(2 * math.pi * 100 * t) * 0.05 + 
                      math.sin(2 * math.pi * 220 * t) * 0.03;
                      
@@ -105,26 +210,21 @@ class AudioService extends ChangeNotifier {
       },
     );
     
-    // Add to buffer and trim if needed
     _audioBuffer.addAll(newSamples);
     if (_audioBuffer.length > maxBufferSize) {
       _audioBuffer.removeRange(0, _audioBuffer.length - maxBufferSize);
     }
     
-    // Every refreshTime, classify the breath
     if (_audioBuffer.length >= chunkSize) {
       final segment = _audioBuffer.sublist(_audioBuffer.length - chunkSize);
       
-      // Get the classification
       final phase = await _classifier.classify(segment);
       
-      // Update phases list
       _breathPhases.add(phase);
       if (_breathPhases.length > maxPhaseHistory) {
         _breathPhases.removeAt(0);
       }
       
-      // Update counters
       if (phase == BreathPhase.inhale) {
         _inhaleCount++;
       } else if (phase == BreathPhase.exhale) {
@@ -138,6 +238,8 @@ class AudioService extends ChangeNotifier {
   @override
   void dispose() {
     _simulationTimer?.cancel();
+    _amplitudeStreamSubscription?.cancel();
+    _recorder.stop();
     super.dispose();
   }
 }
