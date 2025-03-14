@@ -117,16 +117,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-
-              // Breath counter widget
-              BreathCounter(
-                inhaleCount: audioService.inhaleCount,
-                exhaleCount: audioService.exhaleCount,
-                onReset: () => audioService.resetCounters(),
+              // Replace separate widgets with combined widget
+              _buildCombinedCounterAndStatus(
+                context,
+                audioService,
+                _currentPhase, 
+                classifier
               ),
-              
-              // Current breath status
-              _buildStatusCard(context, _currentPhase, classifier),
               
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -141,10 +138,149 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 _buildInfoPanel(),
                             
               _buildLegend(),
-              
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // New method to combine breath counter and status
+  Widget _buildCombinedCounterAndStatus(
+    BuildContext context,
+    AudioService audioService,
+    BreathPhase phase,
+    BreathClassifier classifier
+  ) {
+    final color = classifier.getColorForPhase(phase);
+    final label = classifier.getLabelForPhase(phase);
+    
+    return Card(
+      margin: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            // Top section: Breath Counter
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildCounterItem(
+                  context, 
+                  'INHALE', 
+                  audioService.inhaleCount, 
+                  AppTheme.inhaleColor
+                ),
+                Container(
+                  height: 50, 
+                  width: 1, 
+                  color: Colors.grey.withOpacity(0.3)
+                ),
+                _buildCounterItem(
+                  context, 
+                  'EXHALE', 
+                  audioService.exhaleCount, 
+                  AppTheme.exhaleColor
+                ),
+              ],
+            ),
+            
+            // Reset button
+            TextButton.icon(
+              onPressed: audioService.resetCounters,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('RESET'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey,
+                padding: EdgeInsets.zero,
+              ),
+            ),
+            
+            const Divider(height: 24),
+            
+            // Bottom section: Current Status - centered
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center, // Add this to center horizontally
+              children: [
+                // Animated breathing indicator
+                AnimatedBuilder(
+                  animation: _animationController,
+                  builder: (context, child) {
+                    return Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.2 + 0.6 * _animationController.value),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.center, // Changed from start to center
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Current Status',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey,
+                      ),
+                    ),
+                    Text(
+                      label,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Helper method for counter items
+  Widget _buildCounterItem(
+    BuildContext context, 
+    String label, 
+    int count, 
+    Color color
+  ) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.grey[400],
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            count.toString(),
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -261,65 +397,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 Text(
                   'Reset counters with the refresh button',
                   style: TextStyle(fontSize: 14),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusCard(BuildContext context, BreathPhase phase, BreathClassifier classifier) {
-    final color = classifier.getColorForPhase(phase);
-    final label = classifier.getLabelForPhase(phase);
-    
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          children: [
-            AnimatedBuilder(
-              animation: _animationController,
-              builder: (context, child) {
-                return Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.2 + 0.6 * _animationController.value),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 16,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        color: color,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Current Status',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey,
-                  ),
-                ),
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
                 ),
               ],
             ),
