@@ -25,9 +25,6 @@ class AudioService extends ChangeNotifier {
   // Audio data storage
   final List<double> _audioBuffer = [];
   List<double> get audioBuffer => _audioBuffer;
-
-  // Temporary buffer for audio data
-  final List<int> _pcmBuffer = [];
   
   List<int> _first10PcmSamples = [];
   List<int> get first10PcmSamples => _first10PcmSamples;
@@ -50,14 +47,11 @@ class AudioService extends ChangeNotifier {
   int get maxPhaseHistory => (_maxHistorySeconds / refreshTime).round();
 
   Timer? _simulationTimer;
-  Timer? _amplitudeRefreshTimer;
   final BreathClassifier _classifier = BreathClassifier();
 
   // Record plugin
   final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<Uint8List>? _amplitudeStreamSubscription;
-  double _currentAmplitude = 0.0;
-  double get currentAmplitude => _currentAmplitude;
 
   AudioService(){
     _classifier.initialize();
@@ -120,7 +114,7 @@ class AudioService extends ChangeNotifier {
     _isRecording = true;
     notifyListeners();
 
-    _startRecordingMicrophoneAmplitude();
+    _captureStream();
     _startSimulation();
   }
 
@@ -142,9 +136,6 @@ class AudioService extends ChangeNotifier {
     await _amplitudeStreamSubscription?.cancel();
     await _recorder.stop();
 
-    _pcmBuffer.clear();
-    // Don't clear the microphone buffer here to allow viewing the last recording
-
     notifyListeners();
   }
 
@@ -155,110 +146,72 @@ class AudioService extends ChangeNotifier {
   }
 
   void _startSimulation() {
-    _simulationTimer = Timer.periodic(
-      const Duration(milliseconds: (refreshTime * 1000 ~/ 3)),
-      (_) => _generateAudioData(),
-    );
+    const simulationInterval = Duration(milliseconds: (refreshTime * 1000 ~/ 3));
+    _simulationTimer = Timer.periodic(simulationInterval, (_) => _generateAudioData());
   }
 
-  void _startRecordingMicrophoneAmplitude() async {
+  void _captureStream() async {
     if (_selectedDevice == null) return;
     
+    await _startStreamCapturing();
+    _prepareBuffers();
+  }
+  
+  Future<void> _startStreamCapturing() async {
     final config = RecordConfig(
       encoder: AudioEncoder.pcm16bits,
-      sampleRate: sampleRate, 
-      numChannels: 1, // Mono
+      sampleRate: 48000,
+      numChannels: 2, // Stereo
       device: _selectedDevice!,
     );
     
     final audioStream = await _recorder.startStream(config);
-    
-    _amplitudeRefreshTimer = Timer.periodic(
-      Duration(milliseconds: (refreshTime * 1000).round()), 
-      (_) => _updateAmplitude()
-    );
-    
+    _createAudioStreamSubscription(audioStream);
+  }
+  
+  void _prepareBuffers() {
     _microphoneBuffer.clear();
-    _breathPhases.clear(); 
-    
+    _breathPhases.clear();
+  }
+  
+  void _createAudioStreamSubscription(Stream<Uint8List> audioStream) {
     _amplitudeStreamSubscription = audioStream.listen((data) {
       final pcmSamples = _recorder.convertBytesToInt16(data);
       
       synchronized(() {
-        _pcmBuffer.addAll(pcmSamples);
-        
-        _microphoneBuffer.addAll(pcmSamples);
-        
-        if (_microphoneBuffer.length > maxMicrophoneBufferSize) {
-          _microphoneBuffer.removeRange(0, _microphoneBuffer.length - maxMicrophoneBufferSize);
-        }
+        _addToMicrophoneBuffer(pcmSamples);
       });
       
-      if (pcmSamples.isNotEmpty) {
-        _first10PcmSamples = pcmSamples.sublist(
-          0, 
-          math.min(10, pcmSamples.length)
-        );
-        notifyListeners();
-      }
-      
-      if (kDebugMode) {
-        print('First 10 PCM samples: ${pcmSamples.take(10).toList()}');
-      }
+      _updateSamplesDisplay(pcmSamples);
     });
+  }
+  
+  void _addToMicrophoneBuffer(List<int> samples) {
+    _microphoneBuffer.addAll(samples);
+    
+    if (_microphoneBuffer.length > maxMicrophoneBufferSize) {
+      _microphoneBuffer.removeRange(0, _microphoneBuffer.length - maxMicrophoneBufferSize);
+    }
+  }
+  
+  void _updateSamplesDisplay(List<int> samples) {
+    if (samples.isNotEmpty) {
+      _first10PcmSamples = samples.sublist(
+        0, 
+        math.min(10, samples.length)
+      );
+      notifyListeners();
+    }
+    
+    if (kDebugMode) {
+      print('First 10 PCM samples: ${samples.take(10).toList()}');
+    }
   }
 
   void synchronized(Function() action) {
     action();
   }
 
-  void _updateAmplitude() {
-    // Copy buffer and clear original
-    List<int> currentPcmSamples = [];
-    synchronized(() {
-      if (_pcmBuffer.isEmpty) return;
-      currentPcmSamples = List.from(_pcmBuffer);
-      _pcmBuffer.clear();
-    });
-    
-    if (currentPcmSamples.isEmpty) return;
-    
-    // Calculate maximum absolute value
-    final maxSample = currentPcmSamples.fold<int>(
-      0,
-      (prev, element) => element.abs() > prev ? element.abs() : prev,
-    );
-    
-    // Normalize (assuming 16-bit PCM: max value = 32767)
-    _currentAmplitude = maxSample / 32767.0;
-    
-    // Convert PCM samples to floating point for the classifier
-    final List<double> normalizedSamples = currentPcmSamples
-        .map((sample) => sample / 32767.0)
-        .toList();
-    
-    _classifier.classify(normalizedSamples).then((phase) {
-      _breathPhases.add(phase);
-      if (_breathPhases.length > maxPhaseHistory) {
-        _breathPhases.removeAt(0);
-      }
-      
-      if (phase == BreathPhase.inhale) {
-        _inhaleCount++;
-      } else if (phase == BreathPhase.exhale) {
-        _exhaleCount++;
-      }
-      
-      notifyListeners();
-    });
-    
-    if (kDebugMode) {
-      print('Current amplitude (${DateTime.now()}): $_currentAmplitude');
-      print('Number of samples used to calculate amplitude: ${currentPcmSamples.length}');
-    }
-    
-    notifyListeners();
-  }
 
   void _generateAudioData() async {
     final int currentTime = DateTime.now().millisecondsSinceEpoch;
