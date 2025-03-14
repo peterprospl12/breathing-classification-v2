@@ -26,9 +26,6 @@ class AudioService extends ChangeNotifier {
   final List<double> _audioBuffer = [];
   List<double> get audioBuffer => _audioBuffer;
   
-  List<int> _first10PcmSamples = [];
-  List<int> get first10PcmSamples => _first10PcmSamples;
-  
   // Increased to store more points for smoother visualization
   final List<int> _microphoneBuffer = [];
   static const int maxMicrophoneBufferSize = 44100 * 5; // 5 seconds of audio at 44.1kHz
@@ -115,7 +112,7 @@ class AudioService extends ChangeNotifier {
     notifyListeners();
 
     _captureStream();
-    _startSimulation();
+    // _startSimulation();
   }
 
   Future<void> printInputDevices() async {
@@ -182,7 +179,6 @@ class AudioService extends ChangeNotifier {
         _addToMicrophoneBuffer(pcmSamples);
       });
       
-      _updateSamplesDisplay(pcmSamples);
     });
   }
   
@@ -193,25 +189,10 @@ class AudioService extends ChangeNotifier {
       _microphoneBuffer.removeRange(0, _microphoneBuffer.length - maxMicrophoneBufferSize);
     }
   }
-  
-  void _updateSamplesDisplay(List<int> samples) {
-    if (samples.isNotEmpty) {
-      _first10PcmSamples = samples.sublist(
-        0, 
-        math.min(10, samples.length)
-      );
-      notifyListeners();
-    }
-    
-    if (kDebugMode) {
-      print('First 10 PCM samples: ${samples.take(10).toList()}');
-    }
-  }
 
   void synchronized(Function() action) {
     action();
   }
-
 
   void _generateAudioData() async {
     final int currentTime = DateTime.now().millisecondsSinceEpoch;
