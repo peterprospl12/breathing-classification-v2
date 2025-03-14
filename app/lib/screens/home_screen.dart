@@ -92,7 +92,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ],
         ),
         actions: [
-          // Show loading indicator when loading devices
           if (audioService.isLoadingDevices)
             const Center(
               child: SizedBox(
@@ -117,7 +116,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Replace separate widgets with combined widget
               _buildCombinedCounterAndStatus(
                 context,
                 audioService,
@@ -145,7 +143,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // New method to combine breath counter and status
   Widget _buildCombinedCounterAndStatus(
     BuildContext context,
     AudioService audioService,
@@ -198,11 +195,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             
             const Divider(height: 24),
             
-            // Bottom section: Current Status - centered
+            // Bottom section: Current Status
             Row(
-              mainAxisAlignment: MainAxisAlignment.center, // Add this to center horizontally
+              mainAxisAlignment: MainAxisAlignment.center, 
               children: [
-                // Animated breathing indicator
                 AnimatedBuilder(
                   animation: _animationController,
                   builder: (context, child) {
@@ -228,7 +224,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 const SizedBox(width: 16),
                 Column(
-                  crossAxisAlignment: CrossAxisAlignment.center, // Changed from start to center
+                  crossAxisAlignment: CrossAxisAlignment.center, 
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
@@ -254,7 +250,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
   
-  // Helper method for counter items
   Widget _buildCounterItem(
     BuildContext context, 
     String label, 
@@ -288,7 +283,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _showDeviceSelectionDialog() {
     final audioService = Provider.of<AudioService>(context, listen: false);
     
-    // Always show the dialog now, even if no devices, to give refresh option
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder( 
@@ -416,11 +410,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           children: [
             Text(
               'Legend',
-              style: Theme.of(context).textTheme.titleMedium,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildLegendItem(AppTheme.inhaleColor, 'Inhale'),
                 _buildLegendItem(AppTheme.exhaleColor, 'Exhale'),
@@ -434,22 +431,34 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildLegendItem(Color color, String label) {
-    return Row(
+    return Column(
       children: [
         Container(
-          width: 16,
-          height: 16,
+          width: 30,
+          height: 30,
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
+            border: Border.all(
+              color: Colors.white.withOpacity(0.3),
+              width: 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.5),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+            ],
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(height: 8),
         Text(
           label,
           style: TextStyle(
             fontSize: 14,
-            color: Colors.grey[300],
+            fontWeight: FontWeight.w500,
+            color: Colors.white,
           ),
         ),
       ],
