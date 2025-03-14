@@ -142,37 +142,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             
               _buildLegend(),
               
-              // Add padding at the bottom for the floating action button
-              const SizedBox(height: 80),
             ],
           ),
         ),
-      ),
-      floatingActionButton: _buildFloatingActionButton(audioService),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-    );
-  }
-
-  Widget _buildFloatingActionButton(AudioService audioService) {
-    // Only enable the FAB if a device is selected
-    final bool canRecord = audioService.selectedDevice != null;
-    
-    return FloatingActionButton(
-      onPressed: canRecord 
-          ? () {
-              if (audioService.isRecording) {
-                audioService.stopRecording();
-              } else {
-                audioService.startRecording();
-              }
-            } 
-          : _showDeviceSelectionDialog,
-      backgroundColor: audioService.isRecording 
-          ? Colors.red 
-          : (canRecord ? AppTheme.primaryColor : Colors.grey),
-      child: Icon(
-        audioService.isRecording ? Icons.stop : Icons.mic,
-        color: Colors.white,
       ),
     );
   }
@@ -315,7 +287,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.2 + 0.6 * _animationController.value),
+                    color: color.withOpacity(0.2 + 0.6 * _animationController.value),
                     shape: BoxShape.circle,
                   ),
                   child: Center(
