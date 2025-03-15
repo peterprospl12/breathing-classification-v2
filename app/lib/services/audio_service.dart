@@ -1,20 +1,20 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/breath_classifier.dart';
 
 class AudioService extends ChangeNotifier {
-  static const int sampleRate = 44100;
+  static const int sampleRate = 48000;
   static const double refreshTime = 0.3;
-  static final int chunkSize = (sampleRate * refreshTime).round(); // ~13,230 samples
+  static final int chunkSize = (sampleRate * refreshTime).round();
   
-  // Audio state
   bool _isRecording = false;
   bool get isRecording => _isRecording;
   
-  // Audio device selection
   List<InputDevice> _inputDevices = [];
   List<InputDevice> get inputDevices => _inputDevices;
   InputDevice? _selectedDevice;
@@ -22,13 +22,11 @@ class AudioService extends ChangeNotifier {
   bool _isLoadingDevices = false;
   bool get isLoadingDevices => _isLoadingDevices;
   
-  // Audio data storage
   final List<double> _audioBuffer = [];
   List<double> get audioBuffer => _audioBuffer;
   
-  // Increased to store more points for smoother visualization
   final List<int> _microphoneBuffer = [];
-  static const int maxMicrophoneBufferSize = 44100 * 5; // 5 seconds of audio at 44.1kHz
+  static const int maxMicrophoneBufferSize = sampleRate * 5; 
   List<int> get microphoneBuffer => _microphoneBuffer;
   
   final List<BreathPhase> _breathPhases = [];
@@ -46,9 +44,13 @@ class AudioService extends ChangeNotifier {
   Timer? _simulationTimer;
   final BreathClassifier _classifier = BreathClassifier();
 
-  // Record plugin
   final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<Uint8List>? _amplitudeStreamSubscription;
+
+  bool _isSaving = false;
+  bool get isSaving => _isSaving;
+  String? _lastSavedFilePath;
+  String? get lastSavedFilePath => _lastSavedFilePath;
 
   AudioService(){
     _classifier.initialize();
@@ -63,7 +65,6 @@ class AudioService extends ChangeNotifier {
       final status = await Permission.microphone.request();
       if (status == PermissionStatus.granted) {
         _inputDevices = await _recorder.listInputDevices();
-        
         if (_selectedDevice == null && _inputDevices.isNotEmpty) {
           selectDevice(_inputDevices[0]);
         }
@@ -112,7 +113,7 @@ class AudioService extends ChangeNotifier {
     notifyListeners();
 
     _captureStream();
-    // _startSimulation();
+    // _startSimulation(); // currently disabled
   }
 
   Future<void> printInputDevices() async {
@@ -157,8 +158,8 @@ class AudioService extends ChangeNotifier {
   Future<void> _startStreamCapturing() async {
     final config = RecordConfig(
       encoder: AudioEncoder.pcm16bits,
-      sampleRate: 48000,
-      numChannels: 2, // Stereo
+      sampleRate: sampleRate,
+      numChannels: 2,
       device: _selectedDevice!,
     );
     
@@ -174,11 +175,9 @@ class AudioService extends ChangeNotifier {
   void _createAudioStreamSubscription(Stream<Uint8List> audioStream) {
     _amplitudeStreamSubscription = audioStream.listen((data) {
       final pcmSamples = _recorder.convertBytesToInt16(data);
-      
       synchronized(() {
         _addToMicrophoneBuffer(pcmSamples);
       });
-      
     });
   }
   
@@ -200,12 +199,9 @@ class AudioService extends ChangeNotifier {
       chunkSize ~/ 3,
       (i) {
         final double t = (currentTime / 1000.0) + (i / sampleRate);
-        
         double baseBreathing = math.sin(2 * math.pi * 0.3 * t) * 0.5;
-        
         double noise = math.sin(2 * math.pi * 100 * t) * 0.05 + 
-                     math.sin(2 * math.pi * 220 * t) * 0.03;
-                     
+                       math.sin(2 * math.pi * 220 * t) * 0.03;
         return baseBreathing + noise;
       },
     );
@@ -217,7 +213,6 @@ class AudioService extends ChangeNotifier {
     
     if (_audioBuffer.length >= chunkSize) {
       final segment = _audioBuffer.sublist(_audioBuffer.length - chunkSize);
-      
       final phase = await _classifier.classify(segment);
       
       _breathPhases.add(phase);
@@ -233,6 +228,128 @@ class AudioService extends ChangeNotifier {
       
       notifyListeners();
     }
+  }
+
+  Future<bool> _checkStoragePermission() async {
+    if (Platform.isAndroid) {
+      final status = await Permission.storage.request();
+      return status.isGranted;
+    } else if (Platform.isIOS) {
+      return true;
+    } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<String?> saveRecording() async {
+    if (_microphoneBuffer.isEmpty) {
+      return null;
+    }
+
+    _isSaving = true;
+    notifyListeners();
+
+    try {
+      final hasPermission = await _checkStoragePermission();
+      if (!hasPermission) {
+        if (kDebugMode) {
+          print('Storage permission denied');
+        }
+        return null;
+      }
+
+      final byteData = ByteData(_microphoneBuffer.length * 2);
+      for (int i = 0; i < _microphoneBuffer.length; i++) {
+        byteData.setInt16(i * 2, _microphoneBuffer[i], Endian.little);
+      }
+      final pcmBytes = byteData.buffer.asUint8List();
+
+      final wavHeader = _createWavHeader(pcmBytes.length, sampleRate);
+
+      final wavFile = Uint8List(wavHeader.length + pcmBytes.length);
+      wavFile.setAll(0, wavHeader);
+      wavFile.setAll(wavHeader.length, pcmBytes);
+
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final filePath = '${directory.path}/recording_$timestamp.wav';
+
+      final file = File(filePath);
+      await file.writeAsBytes(wavFile);
+
+      _lastSavedFilePath = filePath;
+      if (kDebugMode) {
+        print('Recording saved to: $filePath');
+      }
+
+      return filePath;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error saving recording: $e');
+      }
+      return null;
+    } finally {
+      _isSaving = false;
+      notifyListeners();
+    }
+  }
+
+
+  Uint8List _createWavHeader(int dataLength, int sampleRate) {
+    final header = ByteData(44);
+    // RIFF header
+    header.setUint8(0, 82); // 'R'
+    header.setUint8(1, 73); // 'I'
+    header.setUint8(2, 70); // 'F'
+    header.setUint8(3, 70); // 'F'
+    
+    // File size
+    header.setUint32(4, dataLength + 36, Endian.little);
+    
+    // WAVE header
+    header.setUint8(8, 87);  // 'W'
+    header.setUint8(9, 65);  // 'A'
+    header.setUint8(10, 86); // 'V'
+    header.setUint8(11, 69); // 'E'
+    
+    // fmt chunk
+    header.setUint8(12, 102); // 'f'
+    header.setUint8(13, 109); // 'm'
+    header.setUint8(14, 116); // 't'
+    header.setUint8(15, 32);  // ' '
+    
+    // FMT chunk size (16 for PCM)
+    header.setUint32(16, 16, Endian.little);
+    
+    // Audio format (1 = PCM)
+    header.setUint16(20, 1, Endian.little);
+    
+    // Liczba kanałów (2 for stereo)
+    header.setUint16(22, 2, Endian.little);
+    
+    // Sample rate
+    header.setUint32(24, sampleRate, Endian.little);
+    
+    // Byte rate = SampleRate * NumChannels * BitsPerSample/8
+    header.setUint32(28, sampleRate * 2 * 16 ~/ 8, Endian.little);
+    
+    // Block align = NumChannels * BitsPerSample/8
+    header.setUint16(32, 2 * 16 ~/ 8, Endian.little);
+    
+    // Bits per sample
+    header.setUint16(34, 16, Endian.little);
+    
+    // data chunk
+    header.setUint8(36, 100); // 'd'
+    header.setUint8(37, 97);  // 'a'
+    header.setUint8(38, 116); // 't'
+    header.setUint8(39, 97);  // 'a'
+    
+    // Data chunk size
+    header.setUint32(40, dataLength, Endian.little);
+    
+    return header.buffer.asUint8List();
   }
 
   @override

@@ -40,6 +40,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
             const SizedBox(height: 8),
             _buildVisualization(audioService),
             const SizedBox(height: 8),
+            _buildDebugSaveButton(audioService),
           ],
         );
       },
@@ -129,6 +130,72 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
         ),
       ),
     );
+  }
+
+  Widget _buildDebugSaveButton(AudioService audioService) {
+    // Only show save button when there's data and we're not currently saving
+    final bool hasData = audioService.microphoneBuffer.isNotEmpty;
+    
+    return AnimatedOpacity(
+      opacity: hasData ? 1.0 : 0.3,
+      duration: const Duration(milliseconds: 300),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        child: ElevatedButton.icon(
+          onPressed: hasData && !audioService.isSaving 
+            ? () => _saveRecording(audioService) 
+            : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue.shade700,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
+          icon: audioService.isSaving 
+            ? const SizedBox(
+                width: 20, 
+                height: 20, 
+                child: CircularProgressIndicator(
+                  strokeWidth: 2, 
+                  color: Colors.white,
+                )
+              ) 
+            : const Icon(Icons.save),
+          label: Text(
+            audioService.isSaving ? 'Saving...' : 'Save Debug Recording',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Future<void> _saveRecording(AudioService audioService) async {
+    final filePath = await audioService.saveRecording();
+    
+    if (!mounted) return;
+    
+    if (filePath != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Recording saved to: $filePath'),
+          backgroundColor: Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Failed to save recording'),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 }
 
