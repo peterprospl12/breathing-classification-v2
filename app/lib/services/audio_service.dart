@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/breath_classifier.dart';
+import './socket_service.dart';
 
 class AudioService extends ChangeNotifier {
   static const int sampleRate = 48000;
@@ -52,9 +53,16 @@ class AudioService extends ChangeNotifier {
   String? _lastSavedFilePath;
   String? get lastSavedFilePath => _lastSavedFilePath;
 
+  final SocketService _socketService = SocketService();
+  SocketService get socketService => _socketService;
+  
+  Timer? _audioProcessingTimer;
+  static const int audioProcessingInterval = 300; // milliseconds
+
   AudioService(){
     _classifier.initialize();
     loadInputDevices();
+    _initializeSocketListener();
   }
 
   Future<void> loadInputDevices() async {
@@ -109,11 +117,14 @@ class AudioService extends ChangeNotifier {
       return;
     }
     
+    // Connect to socket server
+    await _socketService.connect();
+    
     _isRecording = true;
     notifyListeners();
 
     _captureStream();
-    // _startSimulation(); // currently disabled
+    _startAudioProcessing();
   }
 
   Future<void> printInputDevices() async {
@@ -130,9 +141,11 @@ class AudioService extends ChangeNotifier {
     
     _isRecording = false;
     _simulationTimer?.cancel();
+    _audioProcessingTimer?.cancel();
 
     await _amplitudeStreamSubscription?.cancel();
     await _recorder.stop();
+    _socketService.disconnect();
 
     notifyListeners();
   }
@@ -174,7 +187,7 @@ class AudioService extends ChangeNotifier {
   
   void _createAudioStreamSubscription(Stream<Uint8List> audioStream) {
     _amplitudeStreamSubscription = audioStream.listen((data) {
-      final pcmSamples = _recorder.convertBytesToInt16(data);
+      final pcmSamples = _recorder.convertBytesToInt16(data, Endian.big);
       synchronized(() {
         _addToMicrophoneBuffer(pcmSamples);
       });
@@ -352,11 +365,51 @@ class AudioService extends ChangeNotifier {
     return header.buffer.asUint8List();
   }
 
+  void _initializeSocketListener() {
+    _socketService.predictionStream.listen((phase) {
+      _breathPhases.add(phase);
+      if (_breathPhases.length > maxPhaseHistory) {
+        _breathPhases.removeAt(0);
+      }
+      
+      if (phase == BreathPhase.inhale) {
+        _inhaleCount++;
+      } else if (phase == BreathPhase.exhale) {
+        _exhaleCount++;
+      }
+      
+      notifyListeners();
+    });
+  }
+
+  void _startAudioProcessing() {
+    _audioProcessingTimer = Timer.periodic(
+      const Duration(milliseconds: audioProcessingInterval), 
+      (_) => _processAudioForServer()
+    );
+  }
+
+  void _processAudioForServer() {
+    if (_microphoneBuffer.length >= chunkSize) {
+      // Get the latest chunk of audio data
+      final audioChunk = _microphoneBuffer.sublist(
+        _microphoneBuffer.length - chunkSize, 
+        _microphoneBuffer.length
+      );
+      
+      // Send to socket server for classification
+      _socketService.sendAudioData(audioChunk);
+    }
+  }
+
   @override
   void dispose() {
+    print('Disposing AudioService');
     _simulationTimer?.cancel();
+    _audioProcessingTimer?.cancel();
     _amplitudeStreamSubscription?.cancel();
     _recorder.stop();
+    _socketService.dispose();
     super.dispose();
   }
 }

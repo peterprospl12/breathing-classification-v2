@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/audio_service.dart';
+import '../models/breath_classifier.dart';
+import '../theme/app_theme.dart';
 
 class MicrophoneVisualizationWidget extends StatefulWidget {
   const MicrophoneVisualizationWidget({super.key});
@@ -19,7 +21,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
     super.initState();
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000), // how often to repaint
+      duration: const Duration(milliseconds: 300), // how often to repaint
     );
     _animationController.repeat();
   }
@@ -122,6 +124,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
             return CustomPaint(
               painter: MicrophoneWaveformPainter(
                 audioBuffer: audioService.microphoneBuffer,
+                breathPhases: audioService.breathPhases, // Pass breath phases
                 isRecording: audioService.isRecording,
               ),
               size: Size.infinite,
@@ -201,15 +204,31 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
 
 class MicrophoneWaveformPainter extends CustomPainter {
   final List<int> audioBuffer;
+  final List<BreathPhase> breathPhases;
   final bool isRecording;
   
   static List<double> _smoothedValues = [];
   static const double _smoothingFactor = 0.2; // Lower means more smoothing
   
-  MicrophoneWaveformPainter({required this.audioBuffer, required this.isRecording});
+  MicrophoneWaveformPainter({
+    required this.audioBuffer, 
+    required this.breathPhases,
+    required this.isRecording
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Draw background
+    final backgroundPaint = Paint()
+      ..color = Colors.black;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), backgroundPaint);
+    
+    // Draw breath phase sections
+    _drawBreathPhases(canvas, size);
+    
+    // Draw grid lines
+    _drawGridLines(canvas, size);
+    
     if (audioBuffer.isEmpty) {
       _drawIdleWaveform(canvas, size);
       return;
@@ -225,8 +244,8 @@ class MicrophoneWaveformPainter extends CustomPainter {
     final displayPoints = size.width.toInt();
     final step = math.max(1, audioBuffer.length ~/ displayPoints);
     
-    const maxAmplitude = 16384; // Half of 16-bit max for better visualization
-    final heightScale = size.height / 6 / maxAmplitude;
+    const maxAmplitude = 1024; // Reduced from 16384 to increase visibility
+    final heightScale = size.height / 1 / maxAmplitude; // Increased from /6 to /3 for better visibility
     
     final yCenter = size.height / 2;
     
@@ -294,6 +313,84 @@ class MicrophoneWaveformPainter extends CustomPainter {
       );
     }
   }
+
+  void _drawBreathPhases(Canvas canvas, Size size) {
+    final int totalPhases = breathPhases.length;
+    if (totalPhases <= 0) return;
+    
+    final double segmentWidth = size.width / totalPhases;
+    
+    for (int i = 0; i < totalPhases; i++) {
+      final BreathPhase phase = breathPhases[i];
+      final Color phaseColor = _getColorForPhase(phase).withValues(alpha: 0.2);
+      final Paint phasePaint = Paint()
+        ..color = phaseColor
+        ..style = PaintingStyle.fill;
+        
+      canvas.drawRect(
+        Rect.fromLTWH(i * segmentWidth, 0, segmentWidth, size.height),
+        phasePaint,
+      );
+      
+      // Phase label
+      final TextSpan span = TextSpan(
+        text: _getLabelForPhase(phase),
+        style: TextStyle(
+          color: _getColorForPhase(phase),
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
+      );
+      
+      final TextPainter tp = TextPainter(
+        text: span,
+        textDirection: TextDirection.ltr,
+      );
+      
+      tp.layout();
+      tp.paint(
+        canvas, 
+        Offset(i * segmentWidth + 5, 5),
+      );
+    }
+  }
+
+  void _drawGridLines(Canvas canvas, Size size) {
+    final Paint gridPaint = Paint()
+      ..color = Colors.grey.withValues(alpha: 0.2)
+      ..strokeWidth = 1;
+    
+    // Horizontal grid lines
+    for (double i = 0; i <= size.height; i += size.height / 6) {
+      canvas.drawLine(
+        Offset(0, i),
+        Offset(size.width, i),
+        gridPaint,
+      );
+    }
+  }
+  
+  Color _getColorForPhase(BreathPhase phase) {
+    switch (phase) {
+      case BreathPhase.inhale:
+        return AppTheme.inhaleColor;
+      case BreathPhase.exhale:
+        return AppTheme.exhaleColor;
+      case BreathPhase.silence:
+        return AppTheme.silenceColor;
+    }
+  }
+
+  String _getLabelForPhase(BreathPhase phase) {
+    switch (phase) {
+      case BreathPhase.inhale:
+        return 'Inhale';
+      case BreathPhase.exhale:
+        return 'Exhale';
+      case BreathPhase.silence:
+        return 'Silence';
+    }
+  }
   
   void _drawIdleWaveform(Canvas canvas, Size size) {
     final paint = Paint()
@@ -318,6 +415,7 @@ class MicrophoneWaveformPainter extends CustomPainter {
   bool shouldRepaint(MicrophoneWaveformPainter oldDelegate) {
     // Only repaint if recording state changed or buffer was updated
     return oldDelegate.isRecording != isRecording || 
-           (audioBuffer.isNotEmpty && oldDelegate.audioBuffer != audioBuffer);
+           (audioBuffer.isNotEmpty && oldDelegate.audioBuffer != audioBuffer) ||
+           oldDelegate.breathPhases != breathPhases;
   }
 }
