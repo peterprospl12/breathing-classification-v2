@@ -5,6 +5,11 @@ import time
 import torch
 import torchaudio
 import math
+import requests
+from enum import Enum
+
+#from torch.distributed.rpc.internal import serialize
+
 
 #############################################
 # Model – CNN + Transformer
@@ -79,7 +84,7 @@ REFRESH_TIME = 0.3      # time in seconds to read audio
 FORMAT = pyaudio.paInt16
 CHANNELS = 1           # 1 mono | 2 stereo
 RATE = 44100           # sampling rate
-DEVICE_INDEX = 4       # microphone device index (listed in the console output)
+DEVICE_INDEX = 1       # microphone device index (listed in the console output)
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
 
 INHALE_COUNTER = 0
@@ -110,22 +115,16 @@ class SharedAudioResource:
         self.stream.close()
         self.p.terminate()
 
-#############################################
-# Prediction class
-#############################################
-class RealTimeAudioClassifier:
-    def __init__(self, model_path):
-        self.model = BreathPhaseTransformerSeq(n_mels=40, num_classes=3, d_model=128, nhead=4, num_transformer_layers=2).to(device)
-        self.model.load_state_dict(torch.load(model_path, map_location=device))
-        self.model.eval()
-        # Mel spectrogram transformation – using the same settings as during training
+
+class MelTransformer:
+    def __init__(self):
         self.mel_transform = torchaudio.transforms.MelSpectrogram(
             sample_rate=RATE,
             n_fft=1024,
             hop_length=512,
             n_mels=40
         )
-    def predict(self, y, sr=RATE):
+    def get_mel_transform(self, y, sr=RATE):
         # y: int16 signal; convert to float32 in the range [-1, 1]
         y = y.astype(np.float32) / 32768.0
         # Ensure the signal is mono
@@ -136,16 +135,83 @@ class RealTimeAudioClassifier:
         # Compute Mel spectrogram – result: [1, n_mels, time_steps]
         mel_spec = self.mel_transform(waveform)
         mel_spec = torch.log(mel_spec + 1e-9)
-        # Add channel dimension – expected shape: (batch, 1, n_mels, time_steps)
+        # Add channel dimension – expected shape: (batch, 1, n_mels, time_steps)d
         mel_spec = mel_spec.unsqueeze(0)
-        mel_spec = mel_spec.to(device)
-        with torch.no_grad():
-            logits = self.model(mel_spec)  # shape: (1, time_steps, num_classes)
-            probabilities = torch.softmax(logits, dim=2)
-            probs_np = probabilities.squeeze(0).cpu().numpy()  # (time_steps, num_classes)
-            # Aggregate predictions by frames – choose the most frequent class
-            preds = np.argmax(probs_np, axis=1)
-            predicted_class = int(np.bincount(preds).argmax())
+        return mel_spec
+
+
+class PredictionModes(Enum):
+    LOCAL = 1
+    HTTP_SERVER = 2
+    PRE_CALC_MEL_SOCKET = 3
+    SOCKET = 4
+
+
+#############################################
+# Prediction class
+#############################################
+class RealTimeAudioClassifier:
+    def __init__(self, model_path,mode: PredictionModes, http_url=None, socket_server_port=None):
+        self.model = BreathPhaseTransformerSeq(n_mels=40, num_classes=3, d_model=128, nhead=4,
+                                               num_transformer_layers=2).to(device)
+        self.model.load_state_dict(torch.load(model_path, map_location=device))
+        self.model.eval()
+        self.mel_transformer = MelTransformer()
+        self.server_url = http_url
+        self.socket_port = socket_server_port
+        self.mode = mode
+
+    def send_to_server(self, y):
+        if self.mode is PredictionModes.HTTP_SERVER:
+            if self.server_url is None:
+                raise Exception("Server URL is not provided")
+
+            mel_spec = self.mel_transformer.mel_transform(y)
+            mel_np = mel_spec.cpu().numpy()
+            requests.post(self.server_url, data={'mel_data': mel_np})
+            return
+
+        if self.mode is PredictionModes.PRE_CALC_MEL_SOCKET or self.mode is PredictionModes.SOCKET:
+            import socket
+            import pickle
+
+            if self.socket_port is None:
+                raise Exception("Socket port is not provided")
+
+            if self.mode is PredictionModes.PRE_CALC_MEL_SOCKET:
+                mel_spec = self.mel_transformer.get_mel_transform(y)
+                y = mel_spec.cpu().numpy()
+
+            serialized = pickle.dumps(y)
+            data_size = len(serialized)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                sock.connect(('localhost', self.socket_port))
+                sock.sendall(data_size.to_bytes(4, byteorder='big'))
+                sock.sendall(serialized)
+                result_bytes = sock.recv(4)
+                prediction = int.from_bytes(result_bytes, byteorder='big')
+                return prediction
+            except Exception as e:
+                print(f"Socket error: {e}")
+                return None
+            finally:
+                sock.close()
+
+    def predict(self, y, sr=RATE):
+        if not self.mode is PredictionModes.LOCAL:  # If server URL is provided
+            predicted_class = self.send_to_server(y)
+        else:
+            with torch.no_grad():
+                mel = self.mel_transformer.get_mel_transform(y)
+                mel = mel.to(device)
+                logits = self.model(mel)  # shape: (1, time_steps, num_classes)
+                probabilities = torch.softmax(logits, dim=2)
+                probs_np = probabilities.squeeze(0).cpu().numpy()  # (time_steps, num_classes)
+                # Aggregate predictions by frames – choose the most frequent class
+                preds = np.argmax(probs_np, axis=1)
+                predicted_class = int(np.bincount(preds).argmax())
+
         return predicted_class
 
 #############################################
@@ -208,10 +274,12 @@ def update_plot(frames, current_prediction):
     plt.draw()
     plt.pause(0.01)
 
+
+
 if __name__ == '__main__':
     audio = SharedAudioResource()
-    classifier = RealTimeAudioClassifier(MODEL_PATH)
-    
+    classifier = RealTimeAudioClassifier(MODEL_PATH, PredictionModes.SOCKET, socket_server_port=50000)
+
     while running:
         start_time = time.time()
 
@@ -219,9 +287,9 @@ if __name__ == '__main__':
         buffer = audio.read()
         if buffer is None:
             continue
-
-        # Prediction (one class is returned for the current audio window)
+        print(buffer.shape)
         prediction = classifier.predict(buffer)
+
         print("Prediction:", prediction)
 
         update_plot(buffer, prediction)
