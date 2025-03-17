@@ -25,7 +25,7 @@ class AudioVisualizationWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 10,
             spreadRadius: 1,
           ),
@@ -64,11 +64,10 @@ class WaveformPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (audioData.isEmpty || breathPhases.isEmpty) return;
 
-    final int samplesPerSegment = (sampleRate * refreshTime).round();
     final double width = size.width;
     final double height = size.height;
     final double centerY = height / 2;
-    final double amplitudeScale = height / 3;  // Scale for the waveform amplitude
+    final double amplitudeScale = height / 3; 
 
     // Clear the background
     final Paint backgroundPaint = Paint()
@@ -81,7 +80,7 @@ class WaveformPainter extends CustomPainter {
     
     // Draw grid lines
     final Paint gridPaint = Paint()
-      ..color = Colors.grey.withOpacity(0.2)
+      ..color = Colors.grey.withValues(alpha: 0.2)
       ..strokeWidth = 1;
     
     // Horizontal grid lines
@@ -100,7 +99,7 @@ class WaveformPainter extends CustomPainter {
       
       for (int i = 0; i < totalPhases; i++) {
         final BreathPhase phase = breathPhases[i];
-        final Color phaseColor = _getColorForPhase(phase).withOpacity(0.2);
+        final Color phaseColor = _getColorForPhase(phase).withValues(alpha: 0.2);
         final Paint phasePaint = Paint()
           ..color = phaseColor
           ..style = PaintingStyle.fill;
@@ -134,11 +133,9 @@ class WaveformPainter extends CustomPainter {
     }
 
     // Draw the waveform
-    // Prepare the path
     final Path path = Path();
     bool pathStarted = false;
     
-    // For efficiency, we'll sample the audio data
     for (int i = 0; i < totalPoints; i += pointsPerPixel.ceil()) {
       if (i >= totalPoints) continue;
       
