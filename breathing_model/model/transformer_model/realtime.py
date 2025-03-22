@@ -151,7 +151,7 @@ class PredictionModes(Enum):
 # Prediction class
 #############################################
 class RealTimeAudioClassifier:
-    def __init__(self, model_path,mode: PredictionModes, http_url=None, socket_server_port=None):
+    def __init__(self, model_path, mode: PredictionModes, http_url=None, socket_server_port=None):
         self.model = BreathPhaseTransformerSeq(n_mels=40, num_classes=3, d_model=128, nhead=4,
                                                num_transformer_layers=2).to(device)
         self.model.load_state_dict(torch.load(model_path, map_location=device))
@@ -160,59 +160,112 @@ class RealTimeAudioClassifier:
         self.server_url = http_url
         self.socket_port = socket_server_port
         self.mode = mode
+        self.socket_connection = None
+
+        # Initialize socket connection if using socket mode
+        if self.mode in [PredictionModes.PRE_CALC_MEL_SOCKET, PredictionModes.SOCKET]:
+            self._connect_socket()
+
+    def _connect_socket(self):
+        if self.socket_connection is not None:
+            try:
+                self.socket_connection.close()
+            except:
+                pass
+
+        import socket
+        self.socket_connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.socket_connection.connect(('localhost', self.socket_port))
+            print(f"Connected to socket server on port {self.socket_port}")
+        except Exception as e:
+            print(f"Failed to connect to socket server: {e}")
+            self.socket_connection = None
 
     def send_to_server(self, y):
         if self.mode is PredictionModes.HTTP_SERVER:
             if self.server_url is None:
                 raise Exception("Server URL is not provided")
 
-            mel_spec = self.mel_transformer.mel_transform(y)
+            mel_spec = self.mel_transformer.get_mel_transform(y)
             mel_np = mel_spec.cpu().numpy()
-            requests.post(self.server_url, data={'mel_data': mel_np})
-            return
+            response = requests.post(self.server_url, json={'mel_data': mel_np.tolist()})
+            return response.json()['prediction']
 
-        if self.mode is PredictionModes.PRE_CALC_MEL_SOCKET or self.mode is PredictionModes.SOCKET:
-            import socket
+        if self.mode in [PredictionModes.PRE_CALC_MEL_SOCKET, PredictionModes.SOCKET]:
             import pickle
 
-            if self.socket_port is None:
-                raise Exception("Socket port is not provided")
+            # Ensure we have a socket connection
+            if self.socket_connection is None:
+                self._connect_socket()
+                if self.socket_connection is None:
+                    # Fall back to local prediction if connection failed
+                    return self._local_predict(y)
 
+            # Process data based on mode
             if self.mode is PredictionModes.PRE_CALC_MEL_SOCKET:
                 mel_spec = self.mel_transformer.get_mel_transform(y)
-                y = mel_spec.cpu().numpy()
+                data_to_send = mel_spec.cpu().numpy()
+            else:  # SOCKET mode - send raw audio
+                data_to_send = y
 
-            serialized = pickle.dumps(y)
-            data_size = len(serialized)
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Serialize and send data
             try:
-                sock.connect(('localhost', self.socket_port))
-                sock.sendall(data_size.to_bytes(4, byteorder='big'))
-                sock.sendall(serialized)
-                result_bytes = sock.recv(4)
-                prediction = int.from_bytes(result_bytes, byteorder='big')
-                return prediction
+                serialized = pickle.dumps(data_to_send)
+                data_size = len(serialized)
+
+                self.socket_connection.sendall(data_size.to_bytes(4, byteorder='big'))
+                self.socket_connection.sendall(serialized)
+
+                result_bytes = self.socket_connection.recv(4)
+                if result_bytes:
+                    prediction = int.from_bytes(result_bytes, byteorder='big')
+                    return prediction
+                else:
+                    # Connection lost, try to reconnect
+                    print("Connection lost, reconnecting...")
+                    self._connect_socket()
+                    return self._local_predict(y)
+
             except Exception as e:
                 print(f"Socket error: {e}")
-                return None
-            finally:
-                sock.close()
+                # Reset socket connection and try to reconnect next time
+                self.socket_connection = None
+                return self._local_predict(y)
+
+    def _local_predict(self, y):
+        """Fallback method for local prediction when server connection fails"""
+        with torch.no_grad():
+            mel = self.mel_transformer.get_mel_transform(y)
+            mel = mel.to(device)
+            logits = self.model(mel)  # shape: (1, time_steps, num_classes)
+            probabilities = torch.softmax(logits, dim=2)
+            probs_np = probabilities.squeeze(0).cpu().numpy()  # (time_steps, num_classes)
+            # Aggregate predictions by frames – choose the most frequent class
+            preds = np.argmax(probs_np, axis=1)
+            predicted_class = int(np.bincount(preds).argmax())
+        return predicted_class
 
     def predict(self, y, sr=RATE):
-        if not self.mode is PredictionModes.LOCAL:  # If server URL is provided
-            predicted_class = self.send_to_server(y)
+        if self.mode is not PredictionModes.LOCAL:
+            try:
+                predicted_class = self.send_to_server(y)
+                if predicted_class is not None:
+                    return predicted_class
+            except Exception as e:
+                print(f"Server prediction failed: {e}, falling back to local")
+                # Fall back to local prediction in case of failure
+                return self._local_predict(y)
         else:
-            with torch.no_grad():
-                mel = self.mel_transformer.get_mel_transform(y)
-                mel = mel.to(device)
-                logits = self.model(mel)  # shape: (1, time_steps, num_classes)
-                probabilities = torch.softmax(logits, dim=2)
-                probs_np = probabilities.squeeze(0).cpu().numpy()  # (time_steps, num_classes)
-                # Aggregate predictions by frames – choose the most frequent class
-                preds = np.argmax(probs_np, axis=1)
-                predicted_class = int(np.bincount(preds).argmax())
+            return self._local_predict(y)
 
-        return predicted_class
+    def __del__(self):
+        """Clean up resources when the object is destroyed"""
+        if self.socket_connection is not None:
+            try:
+                self.socket_connection.close()
+            except:
+                pass
 
 #############################################
 # Plot configuration
