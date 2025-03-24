@@ -138,7 +138,7 @@ async def main():
         if client.is_connected:
             print(f"Connected to {DEVICE_NAME}")
             await client.start_notify(TENS_CHARACTERISTIC_UUID, handle_data)
-            print("Listening for data...")
+            print("Listening for data-raw...")
             input("Naciśnij Enter, aby rozpocząć nagrywanie dźwięku i zbieranie danych...")
 
             # Uruchom jednocześnie nagrywanie audio i zbieranie danych

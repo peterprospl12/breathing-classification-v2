@@ -26,9 +26,9 @@ INPUT_DEVICE_INDEX = 0
 
 # Paths for saving WAV files
 WAV_PATHS = {
-    "inhale": "../data/raw/manual/inhale/",
-    "exhale": "../data/raw/manual/exhale/",
-    "silence": "../data/raw/manual/silence/",
+    "inhale": "../data-raw/raw/manual/inhale/",
+    "exhale": "../data-raw/raw/manual/exhale/",
+    "silence": "../data-raw/raw/manual/silence/",
 }
 
 

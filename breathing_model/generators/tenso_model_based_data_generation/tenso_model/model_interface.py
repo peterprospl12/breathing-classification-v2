@@ -53,7 +53,7 @@ class TFLiteModel:
         output_path = os.path.join(LABELD_DATA_PATH, file_name)
         with open(output_path, "w") as file:
             writer = csv.writer(file)
-            writer.writerow(["time", "data", "tag"])
+            writer.writerow(["time", "data-raw", "tag"])
             for i in range(len(data)):
                 writer.writerow([time[i], data[i], tags[i]])
         print(f"Plik zapisany w: {output_path}")
@@ -75,7 +75,7 @@ class TFLiteModel:
         
         df[0] = (df[0] - df[0].min()).dt.total_seconds()
 
-        df.columns = ["seconds", "data"]
+        df.columns = ["seconds", "data-raw"]
         
         df.to_csv(output_path, index=False)
 

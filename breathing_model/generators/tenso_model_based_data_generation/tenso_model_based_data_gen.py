@@ -114,7 +114,7 @@ def process_single_file(file_name):
     df[0] = (df[0] - df[0].min()).dt.total_seconds()
 
     # Nadanie nazw kolumnom
-    df.columns = ["seconds", "data"]
+    df.columns = ["seconds", "data-raw"]
 
     # Tworzenie katalogu wyjściowego, jeśli nie istnieje
     os.makedirs(TENS_CONVERTED_ROW_DATA_PATH, exist_ok=True)
@@ -162,7 +162,7 @@ def predict_tags(data: list[float], model_path: str, window_size: int) -> list[i
     Przewiduje tagi na podstawie danych przy użyciu modelu TensorFlow Lite.
     
     Args:
-    - data (list[float]): Dane wejściowe.
+    - data-raw (list[float]): Dane wejściowe.
     - model_path (str): Ścieżka do modelu TensorFlow Lite.
     - window_size (int): Rozmiar okna dla predykcji.
 
@@ -177,7 +177,7 @@ def predict_tags(data: list[float], model_path: str, window_size: int) -> list[i
         numbers = data[i : i + 5]
         numbers.extend([abs(max(data[i : i + 5]) - min(data[i : i + 5]))])
         data_to_predict.append(numbers)
-    print(f"data to pred{data_to_predict}")
+    print(f"data-raw to pred{data_to_predict}")
     tags.append(model.predict(np.array(data_to_predict)))
     return tags[0]
 
@@ -189,7 +189,7 @@ def save_tagged_data(data, tags, time, filename):
     Zapisuje dane z tagami do pliku w katalogu TENS_LABELLED_DATA_PATH.
     
     Args:
-    - data (list[float]): Dane wejściowe.
+    - data-raw (list[float]): Dane wejściowe.
     - tags (list[int]): Przewidziane tagi.
     - time (list[float]): Czas w sekundach.
     - filename (str): Nazwa pliku wyjściowego.
@@ -204,7 +204,7 @@ def save_tagged_data(data, tags, time, filename):
 def load_raw_data(filename: str) -> tuple[list[float], list[float]]:
     numbers = []
     times = []
-    # Geting data from file
+    # Geting data-raw from file
     with open(filename) as file:
         data = list(csv.reader(file))[1:]
         for data_line in data:
