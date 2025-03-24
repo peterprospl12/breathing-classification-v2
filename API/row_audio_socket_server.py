@@ -33,7 +33,7 @@ def handle_client(conn, addr):
     try:
         while True:
             try:
-                # Read data-raw size (4 bytes)
+                # Read data size (4 bytes)
                 size_bytes = conn.recv(4)
                 if not size_bytes or len(size_bytes) < 4:
                     print(f"Client {addr} disconnected")
@@ -42,7 +42,7 @@ def handle_client(conn, addr):
                 data_size = int.from_bytes(size_bytes, byteorder='big')
                 print(f"Receiving {data_size} bytes from {addr}")
 
-                # Receive raw audio data-raw
+                # Receive raw audio data
                 data = b''
                 bytes_received = 0
 
@@ -81,7 +81,7 @@ def handle_client(conn, addr):
 
                 if len(data) == data_size:
                     try:
-                        # Convert raw binary data-raw to numpy array
+                        # Convert raw binary data to numpy array
                         # Assuming 16-bit PCM audio format (int16)
                         audio_data = np.frombuffer(data, dtype=np.int16)
                         
