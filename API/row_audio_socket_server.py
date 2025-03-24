@@ -33,7 +33,7 @@ def handle_client(conn, addr):
     try:
         while True:
             try:
-                # Read data size (4 bytes)
+                # Read data-raw size (4 bytes)
                 size_bytes = conn.recv(4)
                 if not size_bytes or len(size_bytes) < 4:
                     print(f"Client {addr} disconnected")
@@ -42,7 +42,7 @@ def handle_client(conn, addr):
                 data_size = int.from_bytes(size_bytes, byteorder='big')
                 print(f"Receiving {data_size} bytes from {addr}")
 
-                # Receive raw audio data
+                # Receive raw audio data-raw
                 data = b''
                 bytes_received = 0
 
@@ -78,6 +78,38 @@ def handle_client(conn, addr):
                 print(f"Connection with {addr} timed out")
                 break
 
+
+                if len(data) == data_size:
+                    try:
+                        # Convert raw binary data-raw to numpy array
+                        # Assuming 16-bit PCM audio format (int16)
+                        audio_data = np.frombuffer(data, dtype=np.int16)
+                        
+                        # If needed, reshape the array based on expected dimensions
+                        # If stereo, you might need to reshape: audio_data = audio_data.reshape(-1, 2)
+                        
+                        print(f"Received audio data shape: {audio_data.shape}")
+                        
+                        # Calculate mel spectrogram
+                        mel_spec = mel_transformer.get_mel_transform(audio_data)
+                        
+                        # Predict using the model
+                        prediction, prediction_name, confidence = classifier.predict(
+                            mel_spec, dont_calc_mel=True
+                        )
+                        
+                        print(f"Prediction: {prediction} ({prediction_name}) - Confidence: {confidence:.4f}")
+                        
+                        # Send back prediction (4 bytes)
+                        conn.sendall(prediction.to_bytes(4, byteorder='big'))
+                    except Exception as e:
+                        print(f"Error processing audio data: {e}")
+                        # First few bytes might help diagnose the issue
+                        print(f"First 20 bytes of data: {data[:20]}")
+                        conn.sendall((0).to_bytes(4, byteorder='big'))  # Send error code
+                else:
+                    print(f"Incomplete data received: got {len(data)} bytes, expected {data_size}")
+                    conn.sendall((0).to_bytes(4, byteorder='big'))  # Send error code
             except Exception as e:
                 print(f"Error processing request from {addr}: {e}")
                 traceback.print_exc()

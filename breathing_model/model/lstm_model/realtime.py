@@ -179,7 +179,7 @@ def update_plot(frames, current_prediction):
     predictions = np.roll(predictions, -1)
     predictions[-1] = current_prediction
 
-    # Clean the plot and plot the new data
+    # Clean the plot and plot the new data-raw
 
     ax.clear()
 

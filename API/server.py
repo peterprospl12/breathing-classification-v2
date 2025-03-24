@@ -80,7 +80,7 @@ async def predict_audio(data: AudioData):
         audio_bytes = base64.b64decode(data.audio_data)
         audio_array = np.frombuffer(audio_bytes, dtype=np.float32)
     except Exception as e:
-        raise HTTPException(status_code=400, detail="Invalid audio data format")
+        raise HTTPException(status_code=400, detail="Invalid audio data-raw format")
 
     # Klasyfikacja
     prediction, prediction_name, confidence = classifier.predict(audio_array, data.sample_rate)
@@ -116,7 +116,7 @@ async def predict_mel(data: MelData):
             confidence=confidence
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing mel data: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error processing mel data-raw: {str(e)}")
 
 
 # Uruchomienie aplikacji FastAPI z Uvicorn

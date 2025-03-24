@@ -1,14 +1,14 @@
 """
-This script preprocess the data into MFCCs and labels. It also creates a DataLoader object for training and validation sets.
+This script preprocess the data-raw into MFCCs and labels. It also creates a DataLoader object for training and validation sets.
 
-The script divides sequences into 0.25s chunks and calculates MFCCs for every chunk. Then, it assigns a label to every chunk based on the labels from the CSV file. If a chunk has both sample from two different classes, the label is assigned based on the majority of samples in the chunk.
+The script divides data-sequences into 0.25s chunks and calculates MFCCs for every chunk. Then, it assigns a label to every chunk based on the labels from the CSV file. If a chunk has both sample from two different classes, the label is assigned based on the majority of samples in the chunk.
 
-The goal is to create a dataset, and final shape of output is a list of sequences. Every sequence is a list of tuples (MFCCs, label). The DataLoader object will be used to iterate through the dataset during training.
+The goal is to create a dataset, and final shape of output is a list of data-sequences. Every sequence is a list of tuples (MFCCs, label). The DataLoader object will be used to iterate through the dataset during training.
 
 Most important parameters of this script is:
 REFRESH_TIME - length of one classification window in seconds
 BATCH_SIZE - batch size for DataLoader
-data_dir - directory with training and validation data (there must be sequences in directories, ideally created with create_sequences.py script)
+data_dir - directory with training and validation data-raw (there must be data-sequences in directories, ideally created with create_sequences.py script)
 """
 from model_classes import AudioDataset
 import os
@@ -27,8 +27,8 @@ from model_classes import AudioClassifierLSTM as AudioClassifier
 REFRESH_TIME = 0.25  # seconds
 BATCH_SIZE = 16
 
-# Directories with data
-data_dir = '../../sequences'
+# Directories with data-raw
+data_dir = '../../data-sequences'
 model_file_name = 'model_lstm.pth'
 
 # Function to load labels from csv file to list of tuples (label, start_frame, end_frame)
@@ -63,7 +63,7 @@ def get_label_for_time(labels_v, start_frame, end_frame):
 wav_files = [os.path.join(data_dir, file) for file in os.listdir(data_dir) if file.endswith('.wav')]
 train_data = []
 
-# Main loop to preprocess data into MFCCs
+# Main loop to preprocess data-raw into MFCCs
 for wav_file in wav_files:
     csv_file = wav_file.replace('.wav', '.csv')
 
@@ -88,7 +88,7 @@ for wav_file in wav_files:
     # Calculate chunk size
     chunk_size = int(sr * REFRESH_TIME)
 
-    # List of MFCCs for every data sequence (it will be a list of lists of tuples (mfcc coefficients, label))
+    # List of MFCCs for every data-raw sequence (it will be a list of lists of tuples (mfcc coefficients, label))
     mfcc_sequence = []
 
     # Iterate through every 0.25s audio chunk
@@ -148,15 +148,15 @@ for wav_file in wav_files:
             # Append MFCCs and label to the sequence (we append tuple of a ndarray of length 20 and a label)
             mfcc_sequence.append((features, label))
 
-    train_data.append(mfcc_sequence)  # Append sequence to the list of sequences
+    train_data.append(mfcc_sequence)  # Append sequence to the list of data-sequences
 
-# Ensure that all sequences have the same length
+# Ensure that all data-sequences have the same length
 length = len(train_data[0])
 for sequence in train_data:
     if len(sequence) != length:
         raise Exception("Sequences have different lengths")
 
-# Split data into train and validation sets
+# Split data-raw into train and validation sets
 train_data, val_data = train_test_split(train_data, test_size=0.2)
 
 train_dataset = AudioDataset(train_data)

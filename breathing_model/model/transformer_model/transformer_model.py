@@ -27,7 +27,7 @@ class BreathSeqDataset(Dataset):
     def __init__(self, data_dir, sample_rate=44100, n_mels=40, n_fft=1024, hop_length=512, transform=None):
         """
         Args:
-            data_dir (str): Path to the data folder (e.g., "../../scripts/data-seq")
+            data_dir (str): Path to the data-raw folder (e.g., "../../scripts/data-raw-seq")
             sample_rate (int): Target sampling rate (set to 44100 Hz here)
             n_mels (int): Number of mel filters
             n_fft (int): FFT length
@@ -300,11 +300,11 @@ def infer(model, input_tensor, device):
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_epochs = 100
-    batch_size = 4   # Value chosen as an example – depends on the amount of data and GPU/CPU power
+    batch_size = 4   # Value chosen as an example – depends on the amount of data-raw and GPU/CPU power
     learning_rate = 1e-3
 
-    # Path to the folder with sequential data
-    data_dir = "../../sequences"
+    # Path to the folder with sequential data-raw
+    data_dir = "../../data-sequences"
     
     # Create dataset and DataLoader (example split into training and validation)
     full_dataset = BreathSeqDataset(data_dir, sample_rate=44100, n_mels=40, n_fft=1024, hop_length=512)

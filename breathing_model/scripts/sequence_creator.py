@@ -1,11 +1,11 @@
 """
-This script creates sequences of audio files from the audio files in the data folder.
+This script creates data-sequences of audio files from the audio files in the data-raw folder.
 
 Every sequence is a concatenation of audio fragments from the 'inhale', 'exhale', and 'silence' classes.
 
 The script loads all audio files, preprocesses them, and splits them into fragments of a maximum length of 3 seconds.
 
-The script then creates sequences of fragments, ensuring that the total length of the sequence is MAX_LENGTH seconds.
+The script then creates data-sequences of fragments, ensuring that the total length of the sequence is MAX_LENGTH seconds.
 
 Every sequence is saved with sampling rate of 44.1 kHz, mono channel, and frames are in int16 format.
 """
@@ -18,15 +18,15 @@ import numpy as np
 from scipy.io.wavfile import read, write
 from scipy.signal import resample
 
-# Define the folder for sequences
-sequence_folder = '../sequences'
+# Define the folder for data-sequences
+sequence_folder = '../data-sequences'
 os.makedirs(sequence_folder, exist_ok=True)
 
 # Directories with audio files
 folders = {
-    'inhale': '../data/inhale',
-    'exhale': '../data/exhale',
-    'silence': '../data/silence'
+    'inhale': '../data-raw/inhale',
+    'exhale': '../data-raw/exhale',
+    'silence': '../data-raw/silence'
 }
 
 # Sequence length and max length of a single class (in seconds)
@@ -86,7 +86,7 @@ for cls in audio_fragments:
 
 seq_num = 1  # Sequence number for file naming
 
-# Create sequences
+# Create data-sequences
 while any(len(fragments) > 0 for fragments in audio_fragments.values()):
     combined_audio_list = []  # List of audio fragments (numpy arrays)
     labels = []  # List of labels: (class, start_sample, end_sample)
