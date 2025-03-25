@@ -100,7 +100,7 @@ class SocketService extends ChangeNotifier {
 
     try {
       // Convert the audio data to bytes
-      final byteData = Uint8List.fromList(audioData);
+      final byteData = Uint16List.fromList(audioData);
       
       // First send the size of the data (4 bytes)
       final sizeHeader = ByteData(4)..setInt32(0, byteData.length, Endian.big);
