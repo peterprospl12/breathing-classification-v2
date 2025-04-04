@@ -1,22 +1,10 @@
 import numpy as np
-import pyaudio
 import torch
 import torchaudio
 import math
 from enum import Enum
 
-
-REFRESH_TIME = 0.3      # time in seconds to read audio
-FORMAT = pyaudio.paInt16
-CHANNELS = 1           # 1 mono | 2 stereo
 RATE = 44100           # sampling rate
-DEVICE_INDEX = 1       # microphone device index (listed in the console output)
-CHUNK_SIZE = int(RATE * REFRESH_TIME)
-
-INHALE_COUNTER = 0
-EXHALE_COUNTER = 0
-
-running = True
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -86,28 +74,6 @@ class BreathPhaseTransformerSeq(torch.nn.Module):
         logits = self.fc_out(x)  # (batch, time_steps, num_classes)
         return logits
 
-
-class SharedAudioResource:
-    def __init__(self):
-        self.p = pyaudio.PyAudio()
-        self.buffer_size = CHUNK_SIZE
-        # Print available devices
-        for i in range(self.p.get_device_count()):
-            print(self.p.get_device_info_by_index(i))
-        self.stream = self.p.open(format=FORMAT, channels=CHANNELS, rate=RATE,
-                                  input=True, frames_per_buffer=self.buffer_size,
-                                  input_device_index=DEVICE_INDEX)
-
-    def read(self):
-        data = self.stream.read(self.buffer_size, exception_on_overflow=False)
-        return np.frombuffer(data, dtype=np.int16)
-
-    def close(self):
-        self.stream.stop_stream()
-        self.stream.close()
-        self.p.terminate()
-
-
 class MelTransformer:
     def __init__(self):
         self.mel_transform = torchaudio.transforms.MelSpectrogram(
@@ -117,7 +83,7 @@ class MelTransformer:
             n_mels=40
         )
 
-    def get_mel_transform(self, y, sr=RATE):
+    def get_mel_transform(self, y):
         # y: int16 signal; convert to float32 in the range [-1, 1]
         y = y.astype(np.float32) / 32768.0
         # Ensure the signal is mono
@@ -161,3 +127,4 @@ class RealTimeAudioClassifier:
             preds = np.argmax(probs_np, axis=1)
             predicted_class = int(np.bincount(preds).argmax())
         return predicted_class, BreathPhase(predicted_class).name, probs_np.max()
+    

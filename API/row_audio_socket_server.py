@@ -1,7 +1,4 @@
-# socket_server.py
 import socket
-import torch
-import pickle
 import numpy as np
 import traceback
 from server_dependencies.server_dependecies import RealTimeAudioClassifier, MelTransformer, device
@@ -58,7 +55,7 @@ def handle_client(conn, addr):
                     bytes_received += len(packet)
 
                 # Process the received data
-                audio_data = pickle.loads(data)
+                audio_data = np.frombuffer(data, dtype=np.int16)
                 print(f"Received audio data shape: {audio_data.shape}")
 
                 # Calculate mel spectrogram

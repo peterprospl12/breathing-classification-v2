@@ -1,7 +1,10 @@
 import 'dart:math' as math;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/audio_service.dart';
+import '../models/breath_classifier.dart';
+import '../theme/app_theme.dart';
 
 class MicrophoneVisualizationWidget extends StatefulWidget {
   const MicrophoneVisualizationWidget({super.key});
@@ -13,20 +16,56 @@ class MicrophoneVisualizationWidget extends StatefulWidget {
 class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationWidget> 
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
+  StreamSubscription<List<int>>? _audioSubscription;
+  StreamSubscription<BreathPhase>? _breathPhaseSubscription;
+  List<int> _audioData = [];
+  List<BreathPhase> _breathPhases = [];
+  
+  // Maximum number of breath phases to store
+  static const int _maxBreathPhasesToStore = 20;
   
   @override
   void initState() {
     super.initState();
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000), // how often to repaint
+      duration: const Duration(milliseconds: 300), // how often to repaint
     );
     _animationController.repeat();
+    
+    // Subscribe to audio and breath phase streams after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _subscribeToStreams();
+    });
+  }
+  
+  void _subscribeToStreams() {
+    final audioService = Provider.of<AudioService>(context, listen: false);
+    
+    // Subscribe to audio stream
+    _audioSubscription = audioService.subscribeToAudioStream((audioData) {
+      setState(() {
+        _audioData = audioData;
+      });
+    });
+    
+    // Subscribe to breath phases stream
+    _breathPhaseSubscription = audioService.breathPhasesStream.listen((phase) {
+      setState(() {
+        // Add the new phase and maintain fixed size
+        _breathPhases.add(phase);
+        if (_breathPhases.length > _maxBreathPhasesToStore) {
+          _breathPhases.removeAt(0);
+        }
+      });
+    });
   }
   
   @override
   void dispose() {
     _animationController.dispose();
+    _audioSubscription?.cancel();
+    _breathPhaseSubscription?.cancel();
     super.dispose();
   }
 
@@ -60,7 +99,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: (audioService.isRecording ? Colors.red : Colors.green).withValues(alpha: 0.3),
+                color: (audioService.isRecording ? Colors.red : Colors.green).withValues(alpha:0.3),
                 spreadRadius: 1,
                 blurRadius: 6,
                 offset: const Offset(0, 2),
@@ -121,7 +160,8 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
           builder: (context, child) {
             return CustomPaint(
               painter: MicrophoneWaveformPainter(
-                audioBuffer: audioService.microphoneBuffer,
+                audioBuffer: _audioData,
+                breathPhases: _breathPhases,
                 isRecording: audioService.isRecording,
               ),
               size: Size.infinite,
@@ -134,7 +174,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
 
   Widget _buildDebugSaveButton(AudioService audioService) {
     // Only show save button when there's data and we're not currently saving
-    final bool hasData = audioService.microphoneBuffer.isNotEmpty;
+    final bool hasData = audioService.audioBuffer.isNotEmpty;
     
     return AnimatedOpacity(
       opacity: hasData ? 1.0 : 0.3,
@@ -201,15 +241,31 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
 
 class MicrophoneWaveformPainter extends CustomPainter {
   final List<int> audioBuffer;
+  final List<BreathPhase> breathPhases;
   final bool isRecording;
   
   static List<double> _smoothedValues = [];
   static const double _smoothingFactor = 0.2; // Lower means more smoothing
   
-  MicrophoneWaveformPainter({required this.audioBuffer, required this.isRecording});
+  MicrophoneWaveformPainter({
+    required this.audioBuffer, 
+    required this.breathPhases,
+    required this.isRecording
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Draw background
+    final backgroundPaint = Paint()
+      ..color = Colors.black;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), backgroundPaint);
+    
+    // Draw breath phase sections
+    _drawBreathPhases(canvas, size);
+    
+    // Draw grid lines
+    _drawGridLines(canvas, size);
+    
     if (audioBuffer.isEmpty) {
       _drawIdleWaveform(canvas, size);
       return;
@@ -225,8 +281,8 @@ class MicrophoneWaveformPainter extends CustomPainter {
     final displayPoints = size.width.toInt();
     final step = math.max(1, audioBuffer.length ~/ displayPoints);
     
-    const maxAmplitude = 16384; // Half of 16-bit max for better visualization
-    final heightScale = size.height / 6 / maxAmplitude;
+    const maxAmplitude = 1024; // Reduced from 16384 to increase visibility
+    final heightScale = size.height / 1 / maxAmplitude; // Increased from /6 to /3 for better visibility
     
     final yCenter = size.height / 2;
     
@@ -274,7 +330,7 @@ class MicrophoneWaveformPainter extends CustomPainter {
     
     // Draw center line
     final centerPaint = Paint()
-      ..color = Colors.grey.withValues(alpha: 0.5)
+      ..color = Colors.grey.withValues(alpha:0.5)
       ..strokeWidth = 0.5;
     canvas.drawLine(
       Offset(0, size.height / 2),
@@ -292,6 +348,84 @@ class MicrophoneWaveformPainter extends CustomPainter {
         8,
         indicatorPaint,
       );
+    }
+  }
+
+  void _drawBreathPhases(Canvas canvas, Size size) {
+    final int totalPhases = breathPhases.length;
+    if (totalPhases <= 0) return;
+    
+    final double segmentWidth = size.width / totalPhases;
+    
+    for (int i = 0; i < totalPhases; i++) {
+      final BreathPhase phase = breathPhases[i];
+      final Color phaseColor = _getColorForPhase(phase).withValues(alpha:0.2);
+      final Paint phasePaint = Paint()
+        ..color = phaseColor
+        ..style = PaintingStyle.fill;
+        
+      canvas.drawRect(
+        Rect.fromLTWH(i * segmentWidth, 0, segmentWidth, size.height),
+        phasePaint,
+      );
+      
+      // Phase label
+      final TextSpan span = TextSpan(
+        text: _getLabelForPhase(phase),
+        style: TextStyle(
+          color: _getColorForPhase(phase),
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
+      );
+      
+      final TextPainter tp = TextPainter(
+        text: span,
+        textDirection: TextDirection.ltr,
+      );
+      
+      tp.layout();
+      tp.paint(
+        canvas, 
+        Offset(i * segmentWidth + 5, 5),
+      );
+    }
+  }
+
+  void _drawGridLines(Canvas canvas, Size size) {
+    final Paint gridPaint = Paint()
+      ..color = Colors.grey.withValues(alpha: 0.2)
+      ..strokeWidth = 1;
+    
+    // Horizontal grid lines
+    for (double i = 0; i <= size.height; i += size.height / 6) {
+      canvas.drawLine(
+        Offset(0, i),
+        Offset(size.width, i),
+        gridPaint,
+      );
+    }
+  }
+  
+  Color _getColorForPhase(BreathPhase phase) {
+    switch (phase) {
+      case BreathPhase.inhale:
+        return AppTheme.inhaleColor;
+      case BreathPhase.exhale:
+        return AppTheme.exhaleColor;
+      case BreathPhase.silence:
+        return AppTheme.silenceColor;
+    }
+  }
+
+  String _getLabelForPhase(BreathPhase phase) {
+    switch (phase) {
+      case BreathPhase.inhale:
+        return 'Inhale';
+      case BreathPhase.exhale:
+        return 'Exhale';
+      case BreathPhase.silence:
+        return 'Silence';
     }
   }
   
@@ -318,6 +452,7 @@ class MicrophoneWaveformPainter extends CustomPainter {
   bool shouldRepaint(MicrophoneWaveformPainter oldDelegate) {
     // Only repaint if recording state changed or buffer was updated
     return oldDelegate.isRecording != isRecording || 
-           (audioBuffer.isNotEmpty && oldDelegate.audioBuffer != audioBuffer);
+           (audioBuffer.isNotEmpty && oldDelegate.audioBuffer != audioBuffer) ||
+           oldDelegate.breathPhases != breathPhases;
   }
 }
