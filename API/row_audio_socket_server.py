@@ -1,7 +1,4 @@
-# socket_server.py
 import socket
-import torch
-import pickle
 import numpy as np
 import traceback
 from server_dependencies.server_dependecies import RealTimeAudioClassifier, MelTransformer, device

@@ -83,7 +83,7 @@ class MelTransformer:
             n_mels=40
         )
 
-    def get_mel_transform(self, y, sr=RATE):
+    def get_mel_transform(self, y):
         # y: int16 signal; convert to float32 in the range [-1, 1]
         y = y.astype(np.float32) / 32768.0
         # Ensure the signal is mono
@@ -127,3 +127,4 @@ class RealTimeAudioClassifier:
             preds = np.argmax(probs_np, axis=1)
             predicted_class = int(np.bincount(preds).argmax())
         return predicted_class, BreathPhase(predicted_class).name, probs_np.max()
+    
