@@ -20,6 +20,9 @@ class SocketService extends ChangeNotifier {
   final StreamController<BreathPhase> _predictionController = StreamController<BreathPhase>.broadcast();
   Stream<BreathPhase> get predictionStream => _predictionController.stream;
 
+  final List<int> _audioBuffer = [];
+  static const int requiredBufferSize = 48000 ~/ 10 * 3; // equivalent to 48000 * 0.3
+
   // Connection management
   Future<void> connect() async {
     if (_isConnected || _isConnecting) return;
@@ -65,19 +68,31 @@ class SocketService extends ChangeNotifier {
     }
 
     try {
-      // Convert the audio data to bytes
-      final byteData = Uint16List.fromList(audioData);
+      // Dodaj nowe dane do bufora
+      _audioBuffer.addAll(audioData);
       
-      // First send the size of the data (4 bytes)
-      final sizeHeader = ByteData(4)..setInt32(0, byteData.length, Endian.big);
-      _socket!.add(sizeHeader.buffer.asUint8List());
-      
-      // Then send the actual audio data
-      _socket!.add(byteData);
-      await _socket!.flush();
-      
-      if (kDebugMode) {
-        print('Sent ${byteData.length} bytes of audio data');
+      // Sprawdź czy mamy wystarczająco danych do wysłania (0.3s audio)
+      if (_audioBuffer.length >= requiredBufferSize) {
+        // Weź dokładnie potrzebny kawałek audio
+        final chunkToSend = _audioBuffer.sublist(0, requiredBufferSize);
+        
+        // Wyczyść wysłane dane z bufora
+        _audioBuffer.removeRange(0, requiredBufferSize);
+        
+        // Convert the audio data to bytes
+        final byteData = Uint16List.fromList(chunkToSend);
+        
+        // First send the size of the data (4 bytes)
+        final sizeHeader = ByteData(4)..setInt32(0, byteData.length, Endian.big);
+        _socket!.add(sizeHeader.buffer.asUint8List());
+        
+        // Then send the actual audio data
+        _socket!.add(byteData);
+        await _socket!.flush();
+        
+        if (kDebugMode) {
+          print('Sent ${byteData.length} bytes of audio data (${requiredBufferSize} samples)');
+        }
       }
     } catch (e) {
       _handleConnectionError(e);

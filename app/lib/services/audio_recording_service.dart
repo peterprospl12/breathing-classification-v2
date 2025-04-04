@@ -116,8 +116,7 @@ class AudioRecordingService {
     _amplitudeStreamSubscription = audioStream.listen((data) {
       final pcmSamples = _recorder.convertBytesToInt16(data, Endian.big);
       _addToMicrophoneBuffer(pcmSamples);
-        _audioStreamController.add(pcmSamples);
-      
+      _audioStreamController.add(pcmSamples);
     });
   }
   
