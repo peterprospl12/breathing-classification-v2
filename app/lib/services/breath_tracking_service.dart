@@ -25,14 +25,15 @@ class BreathTrackingService {
     _refreshTime = refreshTime;
 
   void addBreathPhase(BreathPhase phase) {
+    BreathPhase lastPhase = _breathPhases.isNotEmpty ? _breathPhases.last : BreathPhase.silence;
     _breathPhases.add(phase);
     if (_breathPhases.length > maxPhaseHistory) {
       _breathPhases.removeAt(0);
     }
     
-    if (phase == BreathPhase.inhale) {
+    if (phase == BreathPhase.inhale && lastPhase != BreathPhase.inhale) {
       _inhaleCount++;
-    } else if (phase == BreathPhase.exhale) {
+    } else if (phase == BreathPhase.exhale && lastPhase != BreathPhase.exhale) {
       _exhaleCount++;
     }
     
