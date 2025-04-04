@@ -1,8 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/breath_classifier.dart';
 import '../services/audio_service.dart';
-import '../widgets/breath_counter.dart';
 import '../theme/app_theme.dart';
 import '../widgets/audio_display_toggle.dart'; 
 
@@ -17,6 +17,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   late AnimationController _animationController;
   BreathPhase _currentPhase = BreathPhase.silence;
   bool _showInfo = false;
+  StreamSubscription<BreathPhase>? _breathPhaseSubscription;
+  List<BreathPhase> _breathPhases = [];
+  StreamSubscription<List<int>>? _audioSubscription;
+  List<int> _audioData = [];
+
+  // Maximum number of breath phases to store
+  static const int _maxBreathPhasesToStore = 20;
 
   @override
   void initState() {
@@ -25,11 +32,42 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       vsync: this,
       duration: const Duration(seconds: 3),
     )..repeat(reverse: true);
+    
+    // Initialize stream subscriptions after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _subscribeToStreams();
+    });
+  }
+  
+  void _subscribeToStreams() {
+    final audioService = Provider.of<AudioService>(context, listen: false);
+    
+    // Subscribe to breath phases stream
+    _breathPhaseSubscription = audioService.breathPhasesStream.listen((phase) {
+      setState(() {
+        _currentPhase = phase;
+        
+        // Also maintain a history of breath phases for the visualization
+        _breathPhases.add(phase);
+        if (_breathPhases.length > _maxBreathPhasesToStore) {
+          _breathPhases.removeAt(0);
+        }
+      });
+    });
+    
+    // Subscribe to audio stream for visualization
+    _audioSubscription = audioService.subscribeToAudioStream((audioData) {
+      setState(() {
+        _audioData = audioData;
+      });
+    });
   }
 
   @override
   void dispose() {
     _animationController.dispose();
+    _breathPhaseSubscription?.cancel();
+    _audioSubscription?.cancel();
     super.dispose();
   }
 
@@ -37,10 +75,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final audioService = Provider.of<AudioService>(context);
     final classifier = Provider.of<BreathClassifier>(context, listen: false);
-    
-    if (audioService.breathPhases.isNotEmpty) {
-      _currentPhase = audioService.breathPhases.last;
-    }
     
     return Scaffold(
       appBar: AppBar(
@@ -126,8 +160,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: AudioDisplayToggle(
-                  audioData: audioService.audioBuffer,
-                  breathPhases: audioService.breathPhases,
+                  audioData: _audioData.map((e) => e.toDouble()).toList(),
+                  breathPhases: _breathPhases,
                   refreshTime: 0.3,
                 ),
               ),

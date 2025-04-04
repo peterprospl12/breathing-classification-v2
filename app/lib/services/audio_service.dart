@@ -26,7 +26,7 @@ class AudioService extends ChangeNotifier {
   
   // Forward key properties from services
   bool get isRecording => _recordingService.isRecording;
-  List<BreathPhase> get breathPhases => _breathTrackingService.breathPhases;
+  Stream<BreathPhase> get breathPhasesStream => _breathTrackingService.breathPhasesStream;
   int get inhaleCount => _breathTrackingService.inhaleCount;
   int get exhaleCount => _breathTrackingService.exhaleCount;
   bool get isSaving => _fileService.isSaving;
@@ -82,7 +82,7 @@ class AudioService extends ChangeNotifier {
     });
   }
 
-  StreamSubscription<List<int>> subscribeToAudioStream(void Function(List<int> audioChunk) onData) {
+  StreamSubscription<List<int>> subscribeToAudioStream(void Function(List<int> audioData) onData) {
     return _recordingService.audioStream.listen(onData);
   }
 

@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import '../models/breath_classifier.dart';
 
 class BreathTrackingService {
   // Breath tracking
   final List<BreathPhase> _breathPhases = [];
-  List<BreathPhase> get breathPhases => _breathPhases;
+  final _breathPhasesController = StreamController<BreathPhase>.broadcast();
+  Stream<BreathPhase> get breathPhasesStream => _breathPhasesController.stream;
   
   int _inhaleCount = 0;
   int _exhaleCount = 0;
@@ -16,10 +16,6 @@ class BreathTrackingService {
   final int _maxHistorySeconds;
   final double _refreshTime;
   int get maxPhaseHistory => (_maxHistorySeconds / _refreshTime).round();
-  
-  // Events
-  final _onBreathPhaseChangedController = StreamController<BreathPhase>.broadcast();
-  Stream<BreathPhase> get onBreathPhaseChanged => _onBreathPhaseChangedController.stream;
 
   BreathTrackingService({
     int maxHistorySeconds = 5,
@@ -40,7 +36,7 @@ class BreathTrackingService {
       _exhaleCount++;
     }
     
-    _onBreathPhaseChangedController.add(phase);
+    _breathPhasesController.add(phase);
   }
 
   void resetCounters() {
@@ -53,6 +49,6 @@ class BreathTrackingService {
   }
 
   void dispose() {
-    _onBreathPhaseChangedController.close();
+    _breathPhasesController.close();
   }
 }

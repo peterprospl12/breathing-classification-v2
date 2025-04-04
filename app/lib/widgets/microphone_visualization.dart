@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/audio_service.dart';
@@ -15,6 +16,13 @@ class MicrophoneVisualizationWidget extends StatefulWidget {
 class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationWidget> 
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
+  StreamSubscription<List<int>>? _audioSubscription;
+  StreamSubscription<BreathPhase>? _breathPhaseSubscription;
+  List<int> _audioData = [];
+  List<BreathPhase> _breathPhases = [];
+  
+  // Maximum number of breath phases to store
+  static const int _maxBreathPhasesToStore = 20;
   
   @override
   void initState() {
@@ -24,11 +32,40 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
       duration: const Duration(milliseconds: 300), // how often to repaint
     );
     _animationController.repeat();
+    
+    // Subscribe to audio and breath phase streams after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _subscribeToStreams();
+    });
+  }
+  
+  void _subscribeToStreams() {
+    final audioService = Provider.of<AudioService>(context, listen: false);
+    
+    // Subscribe to audio stream
+    _audioSubscription = audioService.subscribeToAudioStream((audioData) {
+      setState(() {
+        _audioData = audioData;
+      });
+    });
+    
+    // Subscribe to breath phases stream
+    _breathPhaseSubscription = audioService.breathPhasesStream.listen((phase) {
+      setState(() {
+        // Add the new phase and maintain fixed size
+        _breathPhases.add(phase);
+        if (_breathPhases.length > _maxBreathPhasesToStore) {
+          _breathPhases.removeAt(0);
+        }
+      });
+    });
   }
   
   @override
   void dispose() {
     _animationController.dispose();
+    _audioSubscription?.cancel();
+    _breathPhaseSubscription?.cancel();
     super.dispose();
   }
 
@@ -62,7 +99,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: (audioService.isRecording ? Colors.red : Colors.green).withValues(alpha: 0.3),
+                color: (audioService.isRecording ? Colors.red : Colors.green).withValues(alpha:0.3),
                 spreadRadius: 1,
                 blurRadius: 6,
                 offset: const Offset(0, 2),
@@ -123,8 +160,8 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
           builder: (context, child) {
             return CustomPaint(
               painter: MicrophoneWaveformPainter(
-                audioBuffer: audioService.audioBuffer,
-                breathPhases: audioService.breathPhases, // Pass breath phases
+                audioBuffer: _audioData,
+                breathPhases: _breathPhases,
                 isRecording: audioService.isRecording,
               ),
               size: Size.infinite,
@@ -293,7 +330,7 @@ class MicrophoneWaveformPainter extends CustomPainter {
     
     // Draw center line
     final centerPaint = Paint()
-      ..color = Colors.grey.withValues(alpha: 0.5)
+      ..color = Colors.grey.withValues(alpha:0.5)
       ..strokeWidth = 0.5;
     canvas.drawLine(
       Offset(0, size.height / 2),
@@ -322,7 +359,7 @@ class MicrophoneWaveformPainter extends CustomPainter {
     
     for (int i = 0; i < totalPhases; i++) {
       final BreathPhase phase = breathPhases[i];
-      final Color phaseColor = _getColorForPhase(phase).withValues(alpha: 0.2);
+      final Color phaseColor = _getColorForPhase(phase).withValues(alpha:0.2);
       final Paint phasePaint = Paint()
         ..color = phaseColor
         ..style = PaintingStyle.fill;
