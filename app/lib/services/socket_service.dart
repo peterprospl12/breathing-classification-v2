@@ -5,19 +5,22 @@ import 'package:flutter/foundation.dart';
 import '../models/breath_classifier.dart';
 
 class SocketService extends ChangeNotifier {
+  // Socket connection
   Socket? _socket;
   bool _isConnected = false;
   bool _isConnecting = false;
   String _errorMessage = '';
 
+  // Public getters
   bool get isConnected => _isConnected;
   bool get isConnecting => _isConnecting;
   String get errorMessage => _errorMessage;
 
-  // Stream controller for breath phase predictions
+  // Stream for breath phase predictions
   final StreamController<BreathPhase> _predictionController = StreamController<BreathPhase>.broadcast();
   Stream<BreathPhase> get predictionStream => _predictionController.stream;
 
+  // Connection management
   Future<void> connect() async {
     if (_isConnected || _isConnecting) return;
 
@@ -28,9 +31,7 @@ class SocketService extends ChangeNotifier {
     try {
       _socket = await Socket.connect('localhost', 50000, timeout: const Duration(seconds: 5));
       _isConnected = true;
-      _isConnecting = false;
-      notifyListeners();
-
+      
       if (kDebugMode) {
         print('Connected to socket server');
       }
@@ -43,55 +44,20 @@ class SocketService extends ChangeNotifier {
       );
     } catch (e) {
       _handleConnectionError(e);
+    } finally {
+      _isConnecting = false;
+      notifyListeners();
     }
   }
 
-  void _handleServerResponse(Uint8List data) {
-    if (data.length == 4) {
-      // The server sends a 4-byte integer representing the prediction
-      final prediction = data.buffer.asByteData().getInt32(0, Endian.big);
-      
-      // Convert prediction integer to BreathPhase enum
-      BreathPhase phase;
-      switch (prediction) {
-        case 0:
-          phase = BreathPhase.inhale;
-          break;
-        case 1:
-          phase = BreathPhase.exhale;
-          break;
-        default:
-          phase = BreathPhase.silence;
-      }
-
-      if (kDebugMode) {
-        print('Received prediction from server: $phase');
-      }
-
-      // Send prediction to stream
-      _predictionController.add(phase);
-    }
-  }
-
-  void _handleConnectionError(dynamic error) {
-    if (kDebugMode) {
-      print('Socket error: $error');
-    }
-    _errorMessage = error.toString();
-    _isConnected = false;
-    _isConnecting = false;
-    notifyListeners();
-    disconnect();
-  }
-
-  void _handleConnectionClosed() {
-    if (kDebugMode) {
-      print('Socket connection closed');
-    }
+  void disconnect() {
+    _socket?.destroy();
+    _socket = null;
     _isConnected = false;
     notifyListeners();
   }
 
+  // Server communication
   Future<void> sendAudioData(List<int> audioData) async {
     if (!_isConnected || _socket == null) {
       await connect();
@@ -118,9 +84,47 @@ class SocketService extends ChangeNotifier {
     }
   }
 
-  void disconnect() {
-    _socket?.destroy();
-    _socket = null;
+  // Response handling
+  void _handleServerResponse(Uint8List data) {
+    if (data.length == 4) {
+      final prediction = data.buffer.asByteData().getInt32(0, Endian.big);
+      final phase = _convertPredictionToPhase(prediction);
+
+      if (kDebugMode) {
+        print('Received prediction from server: $phase');
+      }
+
+      _predictionController.add(phase);
+    }
+  }
+
+  BreathPhase _convertPredictionToPhase(int prediction) {
+    switch (prediction) {
+      case 0:
+        return BreathPhase.inhale;
+      case 1:
+        return BreathPhase.exhale;
+      default:
+        return BreathPhase.silence;
+    }
+  }
+
+  // Error handling
+  void _handleConnectionError(dynamic error) {
+    if (kDebugMode) {
+      print('Socket error: $error');
+    }
+    _errorMessage = error.toString();
+    _isConnected = false;
+    _isConnecting = false;
+    notifyListeners();
+    disconnect();
+  }
+
+  void _handleConnectionClosed() {
+    if (kDebugMode) {
+      print('Socket connection closed');
+    }
     _isConnected = false;
     notifyListeners();
   }

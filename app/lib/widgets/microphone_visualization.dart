@@ -123,7 +123,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
           builder: (context, child) {
             return CustomPaint(
               painter: MicrophoneWaveformPainter(
-                audioBuffer: audioService.microphoneBuffer,
+                audioBuffer: audioService.audioBuffer,
                 breathPhases: audioService.breathPhases, // Pass breath phases
                 isRecording: audioService.isRecording,
               ),
@@ -137,7 +137,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
 
   Widget _buildDebugSaveButton(AudioService audioService) {
     // Only show save button when there's data and we're not currently saving
-    final bool hasData = audioService.microphoneBuffer.isNotEmpty;
+    final bool hasData = audioService.audioBuffer.isNotEmpty;
     
     return AnimatedOpacity(
       opacity: hasData ? 1.0 : 0.3,
