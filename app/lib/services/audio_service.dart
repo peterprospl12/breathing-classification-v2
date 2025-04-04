@@ -89,7 +89,7 @@ class AudioService extends ChangeNotifier {
   Future<void> startRecording() async {
     if (isRecording) return;
     
-    await _socketService.connect();
+    await _socketService.connect(selectedDevice!);
     await _recordingService.startRecording();
     
     notifyListeners();
