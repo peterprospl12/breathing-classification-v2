@@ -2,9 +2,13 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:record/record.dart';
 import '../models/breath_classifier.dart';
+import 'package:audio_device_info_windows/audio_device_info_windows.dart';
 
 class SocketService extends ChangeNotifier {
+
+  AudioDeviceInfoWindows audioDeviceInfo = AudioDeviceInfoWindows();
   // Socket connection
   Socket? _socket;
   bool _isConnected = false;
@@ -24,8 +28,18 @@ class SocketService extends ChangeNotifier {
   static const int requiredBufferSize = 48000 ~/ 10 * 3; // equivalent to 48000 * 0.3
 
   // Connection management
-  Future<void> connect() async {
+  Future<void> connect(InputDevice inputDevice) async {
     if (_isConnected || _isConnecting) return;
+
+    audioDeviceInfo.getAudioDeviceInfo(inputDevice.id).then((deviceInfo) {
+
+      // Need to add logic to set sample rate in the client and also in the server
+
+
+      if (kDebugMode) {
+        print('Audio device info: $deviceInfo');
+      }
+    });
 
     _isConnecting = true;
     _errorMessage = '';
@@ -63,7 +77,6 @@ class SocketService extends ChangeNotifier {
   // Server communication
   Future<void> sendAudioData(List<int> audioData) async {
     if (!_isConnected || _socket == null) {
-      await connect();
       if (!_isConnected) return;
     }
 
