@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 import numpy as np
 import matplotlib.pyplot as plt
+import json
 
 
 class BreathingAutoencoder(nn.Module):
@@ -145,7 +146,7 @@ def train_autoencoder(autoencoder, train_loader, val_loader, device, num_epochs=
                 break
 
     if not early_stop:
-        print("Completed all epochs without early stopping")
+        print("Completed all epochs without early stopping")    
 
     # Plot loss curves
     plt.figure(figsize=(10, 5))
@@ -159,6 +160,8 @@ def train_autoencoder(autoencoder, train_loader, val_loader, device, num_epochs=
     plt.close()
 
     return train_losses, val_losses
+
+
 def calculate_reconstruction_error(autoencoder, dataloader, device):
     """
     Calculate reconstruction error for each sample in the dataset.
@@ -234,7 +237,89 @@ def is_anomaly(autoencoder, mel_spec, threshold, device):
     return error > threshold, error
 
 
+def estimate_silence_threshold(dataset, percentile=95):
+    """
+    Estimate a suitable RMS amplitude threshold for silence detection.
+
+    Args:
+        dataset: Dataset containing audio samples
+        percentile: Percentile to use for threshold calculation
+
+    Returns:
+        float: RMS amplitude threshold
+    """
+    rms_values = []
+
+    # Calculate RMS for samples that contain silence segments
+    for i in range(len(dataset)):
+        mel_spec, label = dataset[i]
+
+        # Handle sequence tensor labels (looking for 0=silence values)
+        if isinstance(label, torch.Tensor) and label.dim() > 0:
+            # Check if this sequence contains silence labels (0)
+            if (label == 0).any():
+                # Convert from mel spectrogram to approximate amplitude
+                power = torch.exp(mel_spec) - 1e-9
+                rms = torch.sqrt(torch.mean(power ** 2)).item()
+                rms_values.append(rms)
+
+        # Handle string labels (legacy support)
+        elif isinstance(label, str) and label.lower() == 'silence':
+            power = torch.exp(mel_spec) - 1e-9
+            rms = torch.sqrt(torch.mean(power ** 2)).item()
+            rms_values.append(rms)
+
+    if not rms_values:
+        # If no silence samples found, use a default value
+        print("WARNING: No silence samples found for threshold estimation. Using default value.")
+        return 0.01
+
+    # Set threshold as percentile of RMS values from silence samples
+    threshold = np.percentile(rms_values, percentile)
+    return threshold
+
+def filter_non_silence_samples(dataset):
+    """
+    Create a filtered dataset with only inhale and exhale samples.
+
+    Args:
+        dataset: Original dataset with all samples
+
+    Returns:
+        List of indices for non-silence samples
+    """
+    non_silence_indices = []
+
+    for i in range(len(dataset)):
+        mel_spec, label = dataset[i]
+
+        # Debug the first few samples
+        if i < 5:
+            print(f"Sample {i} label type: {type(label)}")
+            print(f"Sample {i} label shape: {label.shape if hasattr(label, 'shape') else 'no shape'}")
+
+        # Handle sequence tensor labels (looking for 1=inhale or 2=exhale values)
+        if isinstance(label, torch.Tensor) and label.dim() > 0:
+            # Check if this sequence contains any inhale (1) or exhale (2) labels
+            if (label == 1).any() or (label == 2).any():
+                non_silence_indices.append(i)
+
+        # Handle string labels (legacy support)
+        elif isinstance(label, str) and label.lower() in ['inhale', 'exhale']:
+            non_silence_indices.append(i)
+
+    print(f"Found {len(non_silence_indices)} inhale/exhale samples out of {len(dataset)} total")
+
+    # If no samples found, include a warning and use all samples
+    if len(non_silence_indices) == 0:
+        print("WARNING: No inhale/exhale samples found! Check your dataset labels.")
+        print("Including all samples for training as a fallback.")
+        return list(range(len(dataset)))
+
+    return non_silence_indices
+
 if __name__ == '__main__':
+    print(torch.cuda.is_available())
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Use the same dataset as in the transformer model
@@ -246,16 +331,31 @@ if __name__ == '__main__':
     # Create dataset
     full_dataset = BreathSeqDataset(data_dir, sample_rate=44100, n_mels=40, n_fft=1024, hop_length=512)
 
-    # Split dataset into train and validation sets
-    num_samples = len(full_dataset)
+    print(f"Found {len(full_dataset)} audio files in {data_dir}")
+
+    # Filter out silence samples - train only on inhale/exhale
+    non_silence_indices = filter_non_silence_samples(full_dataset)
+    non_silence_dataset = Subset(full_dataset, non_silence_indices)
+
+    print(f"Filtered dataset contains {len(non_silence_dataset)} non-silence (inhale/exhale) samples")
+
+    # Estimate silence threshold
+    silence_threshold = estimate_silence_threshold(full_dataset)
+    print(f"Estimated silence threshold: {silence_threshold:.6f}")
+
+    # Save silence threshold for later use
+    with open('silence_threshold.json', 'w') as f:
+        json.dump({"threshold": float(silence_threshold)}, f)
+
+    # Split filtered dataset into train and validation sets
+    num_samples = len(non_silence_dataset)
     indices = list(range(num_samples))
+    np.random.shuffle(indices)  # Shuffle to ensure random split
     split = int(0.8 * num_samples)
     train_indices, val_indices = indices[:split], indices[split:]
 
-    from torch.utils.data import Subset
-
-    train_dataset = Subset(full_dataset, train_indices)
-    val_dataset = Subset(full_dataset, val_indices)
+    train_dataset = Subset(non_silence_dataset, train_indices)
+    val_dataset = Subset(non_silence_dataset, val_indices)
 
     # Create data loaders
     batch_size = 8
@@ -265,7 +365,7 @@ if __name__ == '__main__':
     # Initialize autoencoder
     autoencoder = BreathingAutoencoder(n_mels=40, latent_dim=16)
 
-    # Train autoencoder
+    # Train autoencoder (only on inhale/exhale samples)
     train_losses, val_losses = train_autoencoder(
         autoencoder=autoencoder,
         train_loader=train_loader,
@@ -298,14 +398,33 @@ if __name__ == '__main__':
     plt.close()
 
     # Save threshold for later use
-    import json
-
     with open('anomaly_threshold.json', 'w') as f:
         json.dump({"threshold": float(threshold)}, f)
 
     # Example usage for anomaly detection
     print("\nExample anomaly detection:")
-    for i in range(5):  # Check first 5 samples from validation set
-        mel_spec, _ = full_dataset[val_indices[i]]
-        is_anomalous, error = is_anomaly(autoencoder, mel_spec, threshold, device)
-        print(f"Sample {i}: {'Anomaly' if is_anomalous else 'Normal'} (Error: {error:.6f})")
+
+    # Test on a mix of samples (including some silence samples)
+    test_indices = val_indices[:3] + [i for i in range(len(full_dataset)) if i % 50 == 0][:3]
+
+    for i, idx in enumerate(test_indices):
+        if idx < len(non_silence_dataset):
+            # For non-silence samples from validation set
+            sample_idx = non_silence_dataset.indices[idx]
+            mel_spec, label = full_dataset[sample_idx]
+        else:
+            # For potentially silence samples
+            mel_spec, label = full_dataset[idx]
+
+        # Calculate audio RMS (approximation from mel spec)
+        power = torch.exp(mel_spec) - 1e-9
+        rms = torch.sqrt(torch.mean(power ** 2)).item()
+
+        # Check silence first
+        if rms < silence_threshold:
+            print(f"Sample {i}: SILENCE (Valid) (RMS: {rms:.6f}, Label: {label})")
+        else:
+            # If not silence, check with autoencoder
+            is_anomalous, error = is_anomaly(autoencoder, mel_spec, threshold, device)
+            result = 'Anomaly' if is_anomalous else 'Normal'
+            print(f"Sample {i}: {result} (Error: {error:.6f}, RMS: {rms:.6f}, Label: {label})")

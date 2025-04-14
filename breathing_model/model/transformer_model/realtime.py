@@ -331,7 +331,7 @@ def update_plot(frames, current_prediction):
 
 if __name__ == '__main__':
     audio = SharedAudioResource()
-    classifier = RealTimeAudioClassifier(MODEL_PATH, PredictionModes.SOCKET, socket_server_port=50000)
+    classifier = RealTimeAudioClassifier(MODEL_PATH, PredictionModes.LOCAL, socket_server_port=50000)
 
     while running:
         start_time = time.time()

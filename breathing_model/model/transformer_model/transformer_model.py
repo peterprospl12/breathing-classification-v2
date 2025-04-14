@@ -9,6 +9,9 @@ import torch.optim as optim
 import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
+import soundfile as sf
+import librosa
+import warnings
 
 #########################################
 # 1. Dataset definition for sequential recordings
@@ -24,6 +27,7 @@ class BreathSeqDataset(Dataset):
       1: inhale
       2: silence
     """
+
     def __init__(self, data_dir, sample_rate=44100, n_mels=40, n_fft=1024, hop_length=512, transform=None):
         """
         Args:
@@ -34,9 +38,13 @@ class BreathSeqDataset(Dataset):
             hop_length (int): Hop length for spectrogram calculation
             transform (callable, optional): Additional transformation for the spectrogram
         """
-        self.data_dir = data_dir
+        self.data_dir = os.path.abspath(data_dir)  # Convert to absolute path
         # Search for all WAV files in the folder
-        self.audio_files = glob.glob(os.path.join(data_dir, "*.wav"))
+        self.audio_files = glob.glob(os.path.join(self.data_dir, "*.wav"))
+        if not self.audio_files:
+            raise ValueError(f"No .wav files found in directory: {self.data_dir}")
+        print(f"Found {len(self.audio_files)} audio files in {self.data_dir}")
+
         self.sample_rate = sample_rate
         self.n_mels = n_mels
         self.n_fft = n_fft
@@ -49,8 +57,58 @@ class BreathSeqDataset(Dataset):
             n_mels=n_mels
         )
 
+        # Sprawdź czy zainstalowano wymagane biblioteki
+        try:
+            import soundfile as sf
+        except ImportError:
+            warnings.warn("Pakiet soundfile nie jest zainstalowany. Instalacja: pip install soundfile")
+
+        try:
+            import librosa
+        except ImportError:
+            warnings.warn("Pakiet librosa nie jest zainstalowany. Instalacja: pip install librosa")
+
     def __len__(self):
         return len(self.audio_files)
+
+    def load_audio_with_fallback(self, audio_path):
+        """
+        Try multiple methods to load an audio file, with fallbacks if one method fails.
+        """
+        # Method 1: Use torchaudio
+        try:
+            waveform, sr = torchaudio.load(audio_path, normalize=True)
+            return waveform, sr
+        except Exception as e:
+            print(f"torchaudio failed to load {audio_path}: {e}")
+
+        # Method 2: Use soundfile
+        try:
+            import soundfile as sf
+            audio_data, sr = sf.read(audio_path)
+            # Convert to torch tensor and reshape to [1, samples] for mono
+            waveform = torch.tensor(audio_data).float()
+            if len(waveform.shape) == 1:
+                waveform = waveform.unsqueeze(0)  # Add channel dimension
+            else:
+                waveform = waveform.transpose(0, 1)  # [samples, channels] -> [channels, samples]
+                if waveform.shape[0] > 1:
+                    waveform = waveform.mean(dim=0, keepdim=True)  # Convert to mono
+            return waveform, sr
+        except Exception as e:
+            print(f"soundfile failed to load {audio_path}: {e}")
+
+        # Method 3: Use librosa
+        try:
+            import librosa
+            audio_data, sr = librosa.load(audio_path, sr=None)
+            waveform = torch.tensor(audio_data).float().unsqueeze(0)  # Add channel dimension
+            return waveform, sr
+        except Exception as e:
+            print(f"librosa failed to load {audio_path}: {e}")
+
+        # If all methods fail, raise error
+        raise RuntimeError(f"All methods failed to load audio file: {audio_path}")
 
     def __getitem__(self, idx):
         # Get the path to the audio file
@@ -58,51 +116,86 @@ class BreathSeqDataset(Dataset):
         base_name = os.path.splitext(os.path.basename(audio_path))[0]
         csv_path = os.path.join(self.data_dir, base_name + ".csv")
 
-        # Load the audio (waveform has shape (channels, num_samples))
-        waveform, sr = torchaudio.load(audio_path)
+        # Check if files exist
+        if not os.path.exists(audio_path):
+            raise FileNotFoundError(f"Audio file not found: {audio_path}")
+        if not os.path.exists(csv_path):
+            raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
-        # Convert to mono if the recording has more than one channel
-        if waveform.shape[0] > 1:
-            print("Warning: stereo audio converted to mono.")
-            waveform = waveform.mean(dim=0, keepdim=True)
+        try:
+            # Load the audio with fallback options
+            waveform, sr = self.load_audio_with_fallback(audio_path)
 
-        # Resample to the target sample_rate (44100 Hz)
-        if sr != self.sample_rate:
-            resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=self.sample_rate)
-            waveform = resampler(waveform)
+            # Resample to the target sample_rate if needed
+            if sr != self.sample_rate:
+                resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=self.sample_rate)
+                waveform = resampler(waveform)
 
-        # Compute the mel spectrogram and apply log transformation (prevents numerical issues)
-        mel_spec = self.mel_transform(waveform)  # kształt: (channels, n_mels, time_steps)
-        mel_spec = torch.log(mel_spec + 1e-9)
+            # Compute the mel spectrogram and apply log transformation
+            mel_spec = self.mel_transform(waveform)  # shape: (channels, n_mels, time_steps)
+            mel_spec = torch.log(mel_spec + 1e-9)
 
-        # Load labels from the CSV file
-        df = pd.read_csv(csv_path)
-        time_steps = mel_spec.shape[-1]
-        # Initialize the label sequence – for each spectrogram step (assuming labels cover the entire signal)
-        label_seq = np.zeros(time_steps, dtype=np.int64)
-        # For each row in the CSV, determine which spectrogram frames (based on hop_length) will receive the given label
-        for _, row in df.iterrows():
-            phase_code = str(row['class'])
-            if phase_code == 'exhale':
-                phase_code = 0
-            elif phase_code == 'inhale':
-                phase_code = 1
-            elif phase_code == 'silence':
-                phase_code = 2
-            start_sample = int(row['start_sample'])
-            end_sample = int(row['end_sample'])
-            # Calculate frame numbers – assuming a frame corresponds to a sample: i * hop_length
-            start_frame = int(np.floor(start_sample / self.hop_length))
-            end_frame = int(np.ceil(end_sample / self.hop_length))
-            end_frame = min(end_frame, time_steps)  # zabezpieczenie, gdyby wykraczało poza liczbę klatek
-            label_seq[start_frame:end_frame] = phase_code
+            # Load labels from the CSV file
+            df = pd.read_csv(csv_path)
+            time_steps = mel_spec.shape[-1]
+            # Initialize the label sequence
+            label_seq = np.zeros(time_steps, dtype=np.int64)
 
-        label_seq = torch.tensor(label_seq, dtype=torch.long)  # kształt: (time_steps,)
+            # Map phases to codes
+            for _, row in df.iterrows():
+                # Check for different possible column names for class
+                phase_code = None
+                for col_name in ['class', 'phase_code', 'phase']:
+                    if col_name in df.columns:
+                        phase_code = str(row[col_name])
+                        break
 
-        if self.transform:
-            mel_spec = self.transform(mel_spec)
-        # Ensure mel_spec has shape (1, n_mels, time_steps)
-        return mel_spec, label_seq
+                if phase_code is None:
+                    print(f"Warning: No recognized class column in CSV: {csv_path}")
+                    continue
+
+                # Convert string phase name to code
+                if phase_code == 'exhale':
+                    phase_code = 0
+                elif phase_code == 'inhale':
+                    phase_code = 1
+                elif phase_code == 'silence':
+                    phase_code = 2
+                else:
+                    try:
+                        phase_code = int(phase_code)
+                    except ValueError:
+                        print(f"Warning: Unknown phase code '{phase_code}' in {csv_path}, using 'silence' (2)")
+                        phase_code = 2
+
+                # Get sample boundaries
+                start_sample = int(row['start_sample'])
+                end_sample = int(row['end_sample'])
+
+                # Calculate corresponding frames in the spectrogram
+                start_frame = int(np.floor(start_sample / self.hop_length))
+                end_frame = int(np.ceil(end_sample / self.hop_length))
+                end_frame = min(end_frame, time_steps)  # make sure it doesn't exceed the number of frames
+
+                # Assign the phase code to all frames in this segment
+                label_seq[start_frame:end_frame] = phase_code
+
+            # Convert to PyTorch tensor
+            label_seq = torch.tensor(label_seq, dtype=torch.long)  # shape: (time_steps,)
+
+            if self.transform:
+                mel_spec = self.transform(mel_spec)
+
+            return mel_spec, label_seq
+
+        except Exception as e:
+            print(f"Error processing {audio_path}: {str(e)}")
+            # Tutaj możemy utworzyć "dummy data" zamiast rzucać wyjątek
+            # Może to być użyteczne do debugowania, ale w produkcji lepiej rzucić wyjątek
+            dummy_spec = torch.zeros((1, self.n_mels, 100))
+            dummy_labels = torch.zeros(100, dtype=torch.long)
+            print(f"Returning dummy data for {audio_path}")
+            return dummy_spec, dummy_labels
 
 #########################################
 # 2. Positional encoding for Transformer
