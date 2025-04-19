@@ -8,7 +8,8 @@ import math
 import requests
 from enum import Enum
 
-#from torch.distributed.rpc.internal import serialize
+
+# from torch.distributed.rpc.internal import serialize
 
 
 #############################################
@@ -21,15 +22,16 @@ class PositionalEncoding(torch.nn.Module):
         self.dropout = torch.nn.Dropout(p=dropout)
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0)/ d_model))
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)  # shape: (1, max_len, d_model)
         self.register_buffer('pe', pe)
-    
+
     def forward(self, x):
         x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)
+
 
 class BreathPhaseTransformerSeq(torch.nn.Module):
     def __init__(self, n_mels=40, num_classes=3, d_model=128, nhead=4, num_transformer_layers=2):
@@ -37,25 +39,25 @@ class BreathPhaseTransformerSeq(torch.nn.Module):
         self.conv1 = torch.nn.Conv2d(1, 32, kernel_size=(3, 3), stride=1, padding=1)
         self.bn1 = torch.nn.BatchNorm2d(32)
         self.pool1 = torch.nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1))
-        
+
         self.conv2 = torch.nn.Conv2d(32, 64, kernel_size=(3, 3), stride=1, padding=1)
         self.bn2 = torch.nn.BatchNorm2d(64)
         self.pool2 = torch.nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1))
-        
+
         self.conv3 = torch.nn.Conv2d(64, 128, kernel_size=(3, 3), stride=1, padding=1)
         self.bn3 = torch.nn.BatchNorm2d(128)
         self.pool3 = torch.nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1))
-        
+
         self.out_freq = n_mels // 8
         cnn_feature_dim = 128 * self.out_freq
-        
+
         self.fc_proj = torch.nn.Linear(cnn_feature_dim, d_model)
         encoder_layer = torch.nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dropout=0.1, batch_first=True)
         self.transformer = torch.nn.TransformerEncoder(encoder_layer, num_layers=num_transformer_layers)
         self.pos_encoder = PositionalEncoding(d_model=d_model, dropout=0.1)
         self.dropout = torch.nn.Dropout(0.3)
         self.fc_out = torch.nn.Linear(d_model, num_classes)
-    
+
     def forward(self, x):
         # x: (batch, 1, n_mels, time_steps)
         x = torch.relu(self.bn1(self.conv1(x)))
@@ -75,16 +77,17 @@ class BreathPhaseTransformerSeq(torch.nn.Module):
         logits = self.fc_out(x)  # (batch, time_steps, num_classes)
         return logits
 
+
 #############################################
 # Settings and constants
 #############################################
 MODEL_PATH = 'best_breath_seq_transformer_model_CURR_BEST.pth'  # Path to the trained model
 
-REFRESH_TIME = 0.3      # time in seconds to read audio
+REFRESH_TIME = 0.3  # time in seconds to read audio
 FORMAT = pyaudio.paInt16
-CHANNELS = 1           # 1 mono | 2 stereo
-RATE = 44100           # sampling rate
-DEVICE_INDEX = 1       # microphone device index (listed in the console output)
+CHANNELS = 1  # 1 mono | 2 stereo
+RATE = 44100  # sampling rate
+DEVICE_INDEX = 1  # microphone device index (listed in the console output)
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
 
 INHALE_COUNTER = 0
@@ -93,6 +96,7 @@ EXHALE_COUNTER = 0
 running = True
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 #############################################
 # Audio handling class
@@ -107,9 +111,11 @@ class SharedAudioResource:
         self.stream = self.p.open(format=FORMAT, channels=CHANNELS, rate=RATE,
                                   input=True, frames_per_buffer=self.buffer_size,
                                   input_device_index=DEVICE_INDEX)
+
     def read(self):
         data = self.stream.read(self.buffer_size, exception_on_overflow=False)
         return np.frombuffer(data, dtype=np.int16)
+
     def close(self):
         self.stream.stop_stream()
         self.stream.close()
@@ -124,6 +130,7 @@ class MelTransformer:
             hop_length=512,
             n_mels=40
         )
+
     def get_mel_transform(self, y, sr=RATE):
         # y: int16 signal; convert to float32 in the range [-1, 1]
         y = y.astype(np.float32) / 32768.0
@@ -267,6 +274,7 @@ class RealTimeAudioClassifier:
             except:
                 pass
 
+
 #############################################
 # Plot configuration
 # #############################################
@@ -279,6 +287,7 @@ predictions = np.zeros((int(PLOT_TIME_HISTORY / REFRESH_TIME), 1))
 fig, ax = plt.subplots(figsize=(10, 5))
 ax.plot(plot_data, color='white')
 
+
 def on_key(event):
     global running, INHALE_COUNTER, EXHALE_COUNTER
     if event.key == ' ':
@@ -288,6 +297,7 @@ def on_key(event):
         INHALE_COUNTER = 0
         EXHALE_COUNTER = 0
 
+
 fig.canvas.manager.set_window_title('Realtime Breath Detector (Press [SPACE] to stop, [R] to reset counter)')
 fig.suptitle(f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER}   (Red - Inhale, Green - Exhale, Blue - Silence)')
 fig.canvas.mpl_connect('key_press_event', on_key)
@@ -295,6 +305,7 @@ y_lim = (-500, 500)
 face_color = (0, 0, 0)
 ax.set_facecolor(face_color)
 ax.set_ylim(y_lim)
+
 
 def update_plot(frames, current_prediction):
     global plot_data, predictions, ax, INHALE_COUNTER, EXHALE_COUNTER
@@ -313,20 +324,20 @@ def update_plot(frames, current_prediction):
     # For each segment (REFRESH_TIME window) plot the signal with color based on prediction
     for i in range(len(predictions)):
         if predictions[i] == 0:
-            color = 'green'   # exhale
+            color = 'green'  # exhale
         elif predictions[i] == 1:
-            color = 'red'     # inhale
+            color = 'red'  # inhale
         else:
-            color = 'blue'    # silence
+            color = 'blue'  # silence
         start = i * PLOT_CHUNK_SIZE
-        end = (i+1) * PLOT_CHUNK_SIZE
+        end = (i + 1) * PLOT_CHUNK_SIZE
         ax.plot(x_line_space[start:end], plot_data[start:end] / 4, color=color)
     ax.set_facecolor(face_color)
     ax.set_ylim(y_lim)
-    fig.suptitle(f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER}   (Red - Inhale, Green - Exhale, Blue - Silence)')
+    fig.suptitle(
+        f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER}   (Red - Inhale, Green - Exhale, Blue - Silence)')
     plt.draw()
     plt.pause(0.01)
-
 
 
 if __name__ == '__main__':

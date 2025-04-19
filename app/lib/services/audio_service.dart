@@ -2,29 +2,26 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 import '../models/breath_classifier.dart';
-import './socket_service.dart';
 import './audio_recording_service.dart';
 import './breath_tracking_service.dart';
 import './audio_file_service.dart';
 
 class AudioService extends ChangeNotifier {
-  // Services
+  // Usługi
   final AudioRecordingService _recordingService;
   final BreathTrackingService _breathTrackingService;
   final AudioFileService _fileService;
-  final SocketService _socketService;
   final BreathClassifier _classifier;
 
   // Timer
   Timer? _audioProcessingTimer;
-  
-  // Getters for accessing services
+
+  // Gettery dla dostępu do serwisów
   AudioRecordingService get recordingService => _recordingService;
   BreathTrackingService get breathTrackingService => _breathTrackingService;
   AudioFileService get fileService => _fileService;
-  SocketService get socketService => _socketService;
-  
-  // Forward key properties from services
+
+  // Przekazywanie kluczowych właściwości z serwisów
   bool get isRecording => _recordingService.isRecording;
   Stream<BreathPhase> get breathPhasesStream => _breathTrackingService.breathPhasesStream;
   int get inhaleCount => _breathTrackingService.inhaleCount;
@@ -36,50 +33,93 @@ class AudioService extends ChangeNotifier {
   bool get isLoadingDevices => _recordingService.isLoadingDevices;
   List<int> get audioBuffer => _recordingService.audioBuffer;
 
-  // Configuration constants
-  static const int audioProcessingInterval = 300; // milliseconds
+  // Konfiguracja stała
+  static const int audioProcessingInterval = 300; // milisekundy
+  static const int bufferSize = 13230; // 0.3 sekundy
+
+  // Dodaj te zmienne członkowskie klasy
+  final List<int> _audioBufferForClassification = [];
+  bool _isProcessing = false;
 
   AudioService({
     AudioRecordingService? recordingService,
     BreathTrackingService? breathTrackingService,
     AudioFileService? fileService,
-    SocketService? socketService,
     BreathClassifier? classifier,
-  }) : 
+  }) :
     _recordingService = recordingService ?? AudioRecordingService(),
     _breathTrackingService = breathTrackingService ?? BreathTrackingService(),
     _fileService = fileService ?? AudioFileService(),
-    _socketService = socketService ?? SocketService(),
     _classifier = classifier ?? BreathClassifier() {
     _initialize();
   }
 
   Future<void> _initialize() async {
-    // Initialize classifier
+    // Inicjalizacja klasyfikatora
     await _classifier.initialize();
-    
-    // Load available input devices
+
+    // Wczytanie dostępnych urządzeń wejściowych
     await _recordingService.loadInputDevices();
-    
-    // Setup audio processing and socket communication
+
+    // Ustawienie przetwarzania audio
     _setupAudioProcessing();
-    
+
     notifyListeners();
   }
 
   void _setupAudioProcessing() {
-    // Listen to predictions from socket
-    _socketService.predictionStream.listen((phase) {
-      _breathTrackingService.addBreathPhase(phase);
-      notifyListeners();
-    });
-
-    // Connect audio stream to socket
     _recordingService.audioStream.listen((audioData) {
       if (isRecording) {
-        _socketService.sendAudioData(audioData);
+        // Dodaj dane do bufora klasyfikacji
+        _audioBufferForClassification.addAll(audioData);
+        
+        // Sprawdź czy uzbieraliśmy wystarczająco dużo próbek i nie trwa przetwarzanie
+        if (_audioBufferForClassification.length >= bufferSize && !_isProcessing) {
+          _isProcessing = true;
+          
+          // Weź dokładnie 0.3s najnowszych danych
+          final samplesToProcess = _audioBufferForClassification.sublist(
+            _audioBufferForClassification.length - bufferSize
+          );
+          
+          // Wyczyść bufor z próbkami
+          _audioBufferForClassification.clear();
+
+          // Przetwarzaj dane
+          _processAudioData(samplesToProcess).then((_) {
+            // Po zakończeniu przetwarzania, zezwól na kolejne
+            _isProcessing = false;
+          });
+        }
       }
     });
+  }
+
+  Future<void> _processAudioData(List<int> audioData) async {
+    final dataLength = audioData.length;
+    if (kDebugMode) {
+      print('Przetwarzam bufor o długości: $dataLength');
+    }
+    
+    if (dataLength != bufferSize) return;
+
+    try {
+
+      // Klasyfikacja danych audio
+      final phase = await _classifier.classify(audioData);
+
+      // Dodanie wyniku klasyfikacji do systemu śledzenia oddechów
+      _breathTrackingService.addBreathPhase(phase);
+      notifyListeners();
+
+      if (kDebugMode) {
+        print('Lokalna klasyfikacja: ${_classifier.getLabelForPhase(phase)}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Błąd podczas przetwarzania audio: $e');
+      }
+    }
   }
 
   StreamSubscription<List<int>> subscribeToAudioStream(void Function(List<int> audioData) onData) {
@@ -88,19 +128,20 @@ class AudioService extends ChangeNotifier {
 
   Future<void> startRecording() async {
     if (isRecording) return;
+
+    // Wyczyść bufor przy rozpoczęciu nagrywania
+    _audioBufferForClassification.clear();
+    _isProcessing = false;
     
-    await _socketService.connect();
     await _recordingService.startRecording();
-    
     notifyListeners();
   }
 
   Future<void> stopRecording() async {
     if (!isRecording) return;
-    
+
     await _recordingService.stopRecording();
-    _socketService.disconnect();
-    
+
     notifyListeners();
   }
 
@@ -136,7 +177,7 @@ class AudioService extends ChangeNotifier {
     _audioProcessingTimer?.cancel();
     _recordingService.dispose();
     _breathTrackingService.dispose();
-    _socketService.dispose();
+    _classifier.dispose();
     super.dispose();
   }
 }

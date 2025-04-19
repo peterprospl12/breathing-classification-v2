@@ -19,7 +19,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
   StreamSubscription<List<int>>? _audioSubscription;
   StreamSubscription<BreathPhase>? _breathPhaseSubscription;
   List<int> _audioData = [];
-  List<BreathPhase> _breathPhases = [];
+  final List<BreathPhase> _breathPhases = [];
   
   // Maximum number of breath phases to store
   static const int _maxBreathPhasesToStore = 20;

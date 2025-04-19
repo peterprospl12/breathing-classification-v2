@@ -16,8 +16,7 @@ dependencies:
   mic_stream: ^0.7.2
   flutter_animate: ^4.5.0
   record: ^5.2.1
-  socket_io_client: ^3.0.2
-
+  onnxruntime: ^1.4.1
 
 dev_dependencies:
   flutter_test:
@@ -30,6 +29,8 @@ flutter:
     - assets/models/
     - assets/images/
     - assets/fonts/
+    - assets/models/breath_classifier_model_audio_input.onnx
+    - assets/models/breath_classifier_model_audio_input.onnx.data
   fonts:
     - family: Poppins
       fonts:
