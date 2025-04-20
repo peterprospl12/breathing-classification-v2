@@ -1,7 +1,8 @@
 import socket
-import numpy as np
 import traceback
-from server_dependencies.server_dependecies import RealTimeAudioClassifier, MelTransformer, device
+import numpy as np
+
+from server_dependencies.server_dependecies import RealTimeAudioClassifier, MelTransformer
 
 MODEL_PATH = 'server_dependencies/best_breath_seq_transformer_model_CURR_BEST.pth'
 classifier = RealTimeAudioClassifier(MODEL_PATH)
@@ -66,7 +67,8 @@ def handle_client(conn, addr):
                     mel_spec, dont_calc_mel=True
                 )
 
-                print(f"Prediction: {prediction} ({prediction_name}) - Confidence: {confidence:.4f}")
+                print(f"Prediction: {prediction} "
+                      f"({prediction_name}) - Confidence: {confidence:.4f}")
 
                 # Send back prediction (4 bytes)
                 conn.sendall(prediction.to_bytes(4, byteorder='big'))
@@ -75,39 +77,42 @@ def handle_client(conn, addr):
                 print(f"Connection with {addr} timed out")
                 break
 
+                # Unreacheable code, but kept for reference
+                # if len(data) == data_size:
+                #     try:
+                #         # Convert raw binary data to numpy array
+                #         # Assuming 16-bit PCM audio format (int16)
+                #         audio_data = np.frombuffer(data, dtype=np.int16)
 
-                if len(data) == data_size:
-                    try:
-                        # Convert raw binary data to numpy array
-                        # Assuming 16-bit PCM audio format (int16)
-                        audio_data = np.frombuffer(data, dtype=np.int16)
-                        
-                        # If needed, reshape the array based on expected dimensions
-                        # If stereo, you might need to reshape: audio_data = audio_data.reshape(-1, 2)
-                        
-                        print(f"Received audio data shape: {audio_data.shape}")
-                        
-                        # Calculate mel spectrogram
-                        mel_spec = mel_transformer.get_mel_transform(audio_data)
-                        
-                        # Predict using the model
-                        prediction, prediction_name, confidence = classifier.predict(
-                            mel_spec, dont_calc_mel=True
-                        )
-                        
-                        print(f"Prediction: {prediction} ({prediction_name}) - Confidence: {confidence:.4f}")
-                        
-                        # Send back prediction (4 bytes)
-                        conn.sendall(prediction.to_bytes(4, byteorder='big'))
-                    except Exception as e:
-                        print(f"Error processing audio data: {e}")
-                        # First few bytes might help diagnose the issue
-                        print(f"First 20 bytes of data: {data[:20]}")
-                        conn.sendall((0).to_bytes(4, byteorder='big'))  # Send error code
-                else:
-                    print(f"Incomplete data received: got {len(data)} bytes, expected {data_size}")
-                    conn.sendall((0).to_bytes(4, byteorder='big'))  # Send error code
-            except Exception as e:
+                #         # If needed, reshape the array based on expected dimensions
+                #         # If stereo, you might need to reshape:
+                #           audio_data = audio_data.reshape(-1, 2)
+
+                #         print(f"Received audio data shape: {audio_data.shape}")
+
+                #         # Calculate mel spectrogram
+                #         mel_spec = mel_transformer.get_mel_transform(audio_data)
+
+                #         # Predict using the model
+                #         prediction, prediction_name, confidence = classifier.predict(
+                #             mel_spec, dont_calc_mel=True
+                #         )
+
+                #         print(f"Prediction: {prediction} ({prediction_name}) - "
+                #               f"Confidence: {confidence:.4f}")
+
+                #         # Send back prediction (4 bytes)
+                #         conn.sendall(prediction.to_bytes(4, byteorder='big'))
+                #     except Exception as e:
+                #         print(f"Error processing audio data: {e}")
+                #         # First few bytes might help diagnose the issue
+                #         print(f"First 20 bytes of data: {data[:20]}")
+                #         conn.sendall((0).to_bytes(4, byteorder='big'))  # Send error code
+                # else:
+                #     print(f"Incomplete data received: got {len(data)}
+                #            bytes, expected {data_size}")
+                #     conn.sendall((0).to_bytes(4, byteorder='big'))  # Send error code
+            except (ValueError, OSError) as e:
                 print(f"Error processing request from {addr}: {e}")
                 traceback.print_exc()
                 break

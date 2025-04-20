@@ -1,16 +1,17 @@
+import base64
+from dataclasses import dataclass
+from typing import List, Optional
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import torch
 import numpy as np
 import uvicorn
-import base64
-import io
-from typing import List, Optional
+
 
 from server_dependencies.server_dependecies import (
     RealTimeAudioClassifier,
-    MelTransformer,
     RATE,
     device
 )
@@ -28,22 +29,23 @@ app.add_middleware(
 )
 
 # Zmienna globalna dla klasyfikatora
-classifier = None
+CLASSIFIER = None
 
 
 # Model wejściowy dla surowych danych audio
+@dataclass
 class AudioData(BaseModel):
     """Model dla danych audio w formacie base64"""
     audio_data: str  # Dane audio w formacie base64
     sample_rate: int = RATE
 
-
+@dataclass
 # Model wejściowy dla danych mel spectrogramu
 class MelData(BaseModel):
     """Model dla pre-obliczonego mel spectrogramu"""
     mel_data: List
 
-
+@dataclass
 # Model odpowiedzi z prognozą
 class PredictionResponse(BaseModel):
     """Model odpowiedzi dla prognoz"""
@@ -55,8 +57,8 @@ class PredictionResponse(BaseModel):
 # Funkcja uruchamiana podczas startu aplikacji
 @app.on_event("startup")
 async def startup_event():
-    global classifier
-    classifier = RealTimeAudioClassifier(
+    global CLASSIFIER # pylint: disable=global-statement
+    CLASSIFIER = RealTimeAudioClassifier(
         model_path=MODEL_PATH # Używamy pre-obliczonego mel spectrogramu
     )
     print(f"Model załadowany z {MODEL_PATH}")
@@ -72,18 +74,18 @@ async def read_root():
 @app.post("/predict/audio")
 async def predict_audio(data: AudioData):
     """Klasyfikacja fazy oddychania na podstawie surowych danych audio"""
-    if not classifier:
+    if not CLASSIFIER:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     # Konwersja audio z base64 na surowe dane
     try:
         audio_bytes = base64.b64decode(data.audio_data)
         audio_array = np.frombuffer(audio_bytes, dtype=np.float32)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail="Invalid audio data format")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid audio data format") from exc
 
     # Klasyfikacja
-    prediction, prediction_name, confidence = classifier.predict(audio_array, data.sample_rate)
+    prediction, prediction_name, confidence = CLASSIFIER.predict(audio_array, data.sample_rate)
 
     return PredictionResponse(
         prediction=prediction,
@@ -96,7 +98,7 @@ async def predict_audio(data: AudioData):
 @app.post("/predict/mel")
 async def predict_mel(data: MelData):
     """Klasyfikacja fazy oddychania na podstawie pre-obliczonego mel spectrogramu"""
-    if not classifier:
+    if not CLASSIFIER:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     try:
@@ -108,7 +110,7 @@ async def predict_mel(data: MelData):
             raise HTTPException(status_code=400, detail="Invalid mel spectrogram shape")
 
         # Klasyfikacja
-        prediction, prediction_name, confidence = classifier.predict(mel_tensor, dont_calc_mel=True)
+        prediction, prediction_name, confidence = CLASSIFIER.predict(mel_tensor, dont_calc_mel=True)
 
         return PredictionResponse(
             prediction=prediction,
@@ -116,7 +118,7 @@ async def predict_mel(data: MelData):
             confidence=confidence
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing mel data: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error processing mel data: {str(e)}") from e
 
 
 # Uruchomienie aplikacji FastAPI z Uvicorn

@@ -1,8 +1,9 @@
+import math
+from enum import Enum
+
 import numpy as np
 import torch
 import torchaudio
-import math
-from enum import Enum
 
 RATE = 44100           # sampling rate
 
@@ -49,7 +50,10 @@ class BreathPhaseTransformerSeq(torch.nn.Module):
         cnn_feature_dim = 128 * self.out_freq
 
         self.fc_proj = torch.nn.Linear(cnn_feature_dim, d_model)
-        encoder_layer = torch.nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dropout=0.1, batch_first=True)
+        encoder_layer = torch.nn.TransformerEncoderLayer(d_model=d_model,
+                                                          nhead=nhead,
+                                                          dropout=0.1,
+                                                          batch_first=True)
         self.transformer = torch.nn.TransformerEncoder(encoder_layer, num_layers=num_transformer_layers)
         self.pos_encoder = PositionalEncoding(d_model=d_model, dropout=0.1)
         self.dropout = torch.nn.Dropout(0.3)
@@ -127,4 +131,3 @@ class RealTimeAudioClassifier:
             preds = np.argmax(probs_np, axis=1)
             predicted_class = int(np.bincount(preds).argmax())
         return predicted_class, BreathPhase(predicted_class).name, probs_np.max()
-    
