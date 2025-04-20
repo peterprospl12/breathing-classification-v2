@@ -42,4 +42,4 @@ jobs:
             echo "No Python files to lint"
             exit 0
           fi
-          pylint $files --disable=E0401
+          pylint "$files" --disable=E0401
