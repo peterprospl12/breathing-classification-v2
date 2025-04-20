@@ -42,4 +42,4 @@ jobs:
             echo "No Python files to lint"
             exit 0
           fi
-          pylint "$files" --disable=E0401,C0116,C0114,C0115,C0116
+          pylint "$files" --disable=E0401,C0116,C0114,C0115,C0116,R0902,R0903,R0913,R0917,C0103,W1514

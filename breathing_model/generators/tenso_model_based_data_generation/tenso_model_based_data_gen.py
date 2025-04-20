@@ -3,7 +3,8 @@ import csv
 import os
 import pandas as pd
 import numpy as np
-from tenso_model.tenso_model_interpreter import TFLiteModelWrapper  # Import wcześniej stworzonej klasy
+# Import wcześniej stworzonej klasy
+from tenso_model.tenso_model_interpreter import TFLiteModelWrapper
 
 # Ścieżki do plików
 ROW_SOUND_DATA_PATH = "./data/row_sound/"
@@ -25,6 +26,8 @@ for label in ['inhale', 'exhale', 'silence']:
 state_labels = {2: "inhale", 0: "exhale", 3: "silence", 1: "silence"}
 
 # Funkcja do przetwarzania pliku WAV
+
+
 def process_audio_file(wav_file_path, tensometer_data):
     audio = AudioSegment.from_wav(wav_file_path)
     current_state = None
@@ -32,7 +35,8 @@ def process_audio_file(wav_file_path, tensometer_data):
     state_buffer = []
 
     # Uzyskaj timestamp z nazwy pliku
-    timestamp = wav_file_path.split('/')[-1].split('.')[0].split('_')[3] + '_' + wav_file_path.split('/')[-1].split('.')[0].split('_')[4]
+    timestamp = wav_file_path.split('/')[-1].split('.')[0].split(
+        '_')[3] + '_' + wav_file_path.split('/')[-1].split('.')[0].split('_')[4]
 
     for i, (time_sec, state) in enumerate(tensometer_data):
         # Pomijamy pierwsze 25 wierszy
@@ -55,7 +59,8 @@ def process_audio_file(wav_file_path, tensometer_data):
                 if duration_ms >= 500:  # Sprawdzamy, czy fragment jest dłuższy niż 0,5 sekundy
                     fragment = audio[start_time:end_time]
                     label = state_labels.get(current_state, "unknown")
-                    output_path = os.path.join(OUTPUT_DIR, label, f"{timestamp}_{start_time/1000:.2f}_{end_time/1000:.2f}.wav")
+                    output_path = os.path.join(
+                        OUTPUT_DIR, label, f"{timestamp}_{start_time/1000:.2f}_{end_time/1000:.2f}.wav")
                     fragment.export(output_path, format="wav")
             current_state = state
             start_time = time_sec * 1000
@@ -65,10 +70,13 @@ def process_audio_file(wav_file_path, tensometer_data):
         if duration_ms >= 250:  # Sprawdzamy, czy końcowy fragment jest dłuższy niż 0,5 sekundy
             fragment = audio[start_time:]
             label = state_labels.get(current_state, "unknown")
-            output_path = os.path.join(OUTPUT_DIR, label, f"{timestamp}_{start_time/1000:.2f}_end.wav")
+            output_path = os.path.join(
+                OUTPUT_DIR, label, f"{timestamp}_{start_time/1000:.2f}_end.wav")
             fragment.export(output_path, format="wav")
 
 # Funkcja do wczytywania danych tensometrycznych
+
+
 def load_tensometer_data(tensometer_data_path):
     tensometer_data = []
     with open(tensometer_data_path, 'r') as file:
@@ -81,15 +89,21 @@ def load_tensometer_data(tensometer_data_path):
     return tensometer_data
 
 # Funkcja do dopasowywania plików WAV do plików CSV
+
+
 def get_matching_tensometer_file(wav_filename):
-    timestamp = wav_filename.split('_')[3] + '_' + wav_filename.split('_')[4].split('.')[0]
+    timestamp = wav_filename.split(
+        '_')[3] + '_' + wav_filename.split('_')[4].split('.')[0]
     matching_csv_filename = f"row_tenso_data_{timestamp}_tagged.txt"
-    matching_csv_path = os.path.join(LABELLED_TENS_DATA_PATH, matching_csv_filename)
+    matching_csv_path = os.path.join(
+        LABELLED_TENS_DATA_PATH, matching_csv_filename)
     if os.path.exists(matching_csv_path):
         return matching_csv_path
     else:
         print(f"Brak pasującego pliku tensometru dla: {wav_filename}")
         return None
+
+
 def process_single_file(file_name):
     """
     Przetwarza pojedynczy plik .txt z TENS_ROW_DATA_PATH, konwertuje znaczniki czasu na sekundy
@@ -99,13 +113,14 @@ def process_single_file(file_name):
     - file_name (str): Nazwa wejściowego pliku .txt.
     """
     input_path = os.path.join(TENS_ROW_DATA_PATH, file_name)
-    output_path = os.path.join(TENS_CONVERTED_ROW_DATA_PATH, os.path.splitext(file_name)[0] + ".csv")
+    output_path = os.path.join(
+        TENS_CONVERTED_ROW_DATA_PATH, os.path.splitext(file_name)[0] + ".csv")
 
     # Sprawdzenie, czy plik wejściowy istnieje
     if not os.path.isfile(input_path):
         print(f"Plik {input_path} nie istnieje.")
         return
-    
+
     # Odczyt pliku .txt
     df = pd.read_csv(input_path, delimiter=",", header=None)
 
@@ -160,7 +175,7 @@ def moving_average(data, window_size):
 def predict_tags(data: list[float], model_path: str, window_size: int) -> list[int]:
     """
     Przewiduje tagi na podstawie danych przy użyciu modelu TensorFlow Lite.
-    
+
     Args:
     - data-raw (list[float]): Dane wejściowe.
     - model_path (str): Ścieżka do modelu TensorFlow Lite.
@@ -174,20 +189,18 @@ def predict_tags(data: list[float], model_path: str, window_size: int) -> list[i
     tags = []
     data_to_predict = []
     for i in range(len(data) - 5):
-        numbers = data[i : i + 5]
-        numbers.extend([abs(max(data[i : i + 5]) - min(data[i : i + 5]))])
+        numbers = data[i: i + 5]
+        numbers.extend([abs(max(data[i: i + 5]) - min(data[i: i + 5]))])
         data_to_predict.append(numbers)
     print(f"data-raw to pred{data_to_predict}")
     tags.append(model.predict(np.array(data_to_predict)))
     return tags[0]
 
 
-
-
 def save_tagged_data(data, tags, time, filename):
     """
     Zapisuje dane z tagami do pliku w katalogu TENS_LABELLED_DATA_PATH.
-    
+
     Args:
     - data-raw (list[float]): Dane wejściowe.
     - tags (list[int]): Przewidziane tagi.
@@ -200,6 +213,7 @@ def save_tagged_data(data, tags, time, filename):
         for i in range(len(data)):
             file.write(f"{data[i]},{tags[i]},{time[i]}\n")
     print(f"Zapisano dane z tagami do: {output_path}")
+
 
 def load_raw_data(filename: str) -> tuple[list[float], list[float]]:
     numbers = []
@@ -223,12 +237,13 @@ def process_directory():
         if file_name.endswith("P.txt"):
             print(f"Plik {file_name} już został przetworzony. Pomijanie...")
             continue
-        
+
         process_single_file(file_name)
 
         # Zmienianie nazwy przetworzonego pliku
         original_path = os.path.join(TENS_ROW_DATA_PATH, file_name)
-        processed_path = os.path.join(TENS_ROW_DATA_PATH, file_name.replace(".txt", "P.txt"))
+        processed_path = os.path.join(
+            TENS_ROW_DATA_PATH, file_name.replace(".txt", "P.txt"))
         os.rename(original_path, processed_path)
         print(f"Plik {file_name} oznaczono jako przetworzony: {processed_path}")
 
@@ -259,30 +274,30 @@ def process_directory():
         )
 
         # Zmienianie nazwy przetworzonego pliku
-        processed_path = os.path.join(TENS_CONVERTED_ROW_DATA_PATH, file_name.replace(".csv", "P.csv"))
+        processed_path = os.path.join(
+            TENS_CONVERTED_ROW_DATA_PATH, file_name.replace(".csv", "P.csv"))
         os.rename(input_path, processed_path)
         print(f"Plik {file_name} oznaczono jako przetworzony: {processed_path}")
 
 
-
-#process_directory()
-
+# process_directory()
 # Przetwórz wszystkie pliki WAV w folderze
 for filename in os.listdir(ROW_SOUND_DATA_PATH):
     if filename.endswith(".wav"):
         if filename.endswith("P.wav"):  # Pomijaj przetworzone pliki
             print(f"Plik {filename} już został przetworzony. Pomijanie...")
            # continue
-        
+
         wav_file_path = os.path.join(ROW_SOUND_DATA_PATH, filename)
         tensometer_data_path = get_matching_tensometer_file(filename)
-        
+
         if tensometer_data_path:
             tensometer_data = load_tensometer_data(tensometer_data_path)
             process_audio_file(wav_file_path, tensometer_data)
-            
+
             # Oznacz plik jako przetworzony przez dodanie "P" do nazwy
             new_filename = filename.replace(".wav", "P.wav")
             new_wav_file_path = os.path.join(ROW_SOUND_DATA_PATH, new_filename)
             os.rename(wav_file_path, new_wav_file_path)
-            print(f"Plik {filename} przetworzony i oznaczony jako {new_filename}.")
+            print(
+                f"Plik {filename} przetworzony i oznaczony jako {new_filename}.")

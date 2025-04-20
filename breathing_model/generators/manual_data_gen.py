@@ -72,7 +72,8 @@ class SharedAudioResource:
 def draw_text(text, pos, font, screen):
     """Draws text on the screen."""
     text_surface, _ = font.render(text, (255, 255, 255))
-    screen.blit(text_surface, (pos[0] - text_surface.get_width() // 2, pos[1] - text_surface.get_height() // 2))
+    screen.blit(text_surface, (pos[0] - text_surface.get_width() //
+                2, pos[1] - text_surface.get_height() // 2))
 
 
 def pygame_thread(audio):
@@ -120,17 +121,20 @@ def pygame_thread(audio):
                     save_audio()
                     recording = False
                 elif event.key in (pygame.K_w, pygame.K_e, pygame.K_r):
-                    label = {pygame.K_w: "inhale", pygame.K_e: "exhale", pygame.K_r: "silence"}[event.key]
+                    label = {pygame.K_w: "inhale", pygame.K_e: "exhale",
+                             pygame.K_r: "silence"}[event.key]
                     if recording:
                         save_audio()
                     start_recording(label)
 
         if recording:
             elapsed_time = time.time() - start_time
-            draw_text(f"Recording: {elapsed_time:.2f}s", (WIDTH // 2, HEIGHT // 2), font, screen)
+            draw_text(f"Recording: {elapsed_time:.2f}s",
+                      (WIDTH // 2, HEIGHT // 2), font, screen)
             frames.append(audio.read(AUDIO_CHUNK))
         else:
-            draw_text("W: Inhale | E: Exhale | R: Silence | S: Stop", (WIDTH // 2, HEIGHT // 2), font, screen)
+            draw_text("W: Inhale | E: Exhale | R: Silence | S: Stop",
+                      (WIDTH // 2, HEIGHT // 2), font, screen)
 
         pygame.display.flip()
         clock.tick(60)
@@ -164,7 +168,8 @@ def plot_audio(audio):
 
 if __name__ == "__main__":
     audio = SharedAudioResource()
-    pygame_thread_instance = threading.Thread(target=pygame_thread, args=(audio,))
+    pygame_thread_instance = threading.Thread(
+        target=pygame_thread, args=(audio,))
     pygame_thread_instance.start()
     plot_audio(audio)
     pygame_thread_instance.join()

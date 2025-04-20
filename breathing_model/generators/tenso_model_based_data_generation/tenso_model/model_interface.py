@@ -10,8 +10,9 @@ ROW_CONVERTED_DATA_PATH = "../data/tenso_row_converted_data"
 LABELD_DATA_PATH = "../data/tenso_labeled_data"
 SAVED_MODEL_PATH = "./saved_models/GRUModel_tens.tflite"
 
+
 class TFLiteModel:
-    def __init__(self, model_path = SAVED_MODEL_PATH):
+    def __init__(self, model_path=SAVED_MODEL_PATH):
         self.interpreter = tf.lite.Interpreter(model_path=model_path)
         self.interpreter.allocate_tensors()
 
@@ -19,7 +20,7 @@ class TFLiteModel:
         self.convert_timestamps(file_name=file_name)
         data_path = os.path.join(ROW_CONVERTED_DATA_PATH, file_name)
         times, numbers = self.load_data(data_path)
-        
+
         numbers = self.moving_average(numbers, WINNDOW_SIZE)
         number = self.normalize(numbers, 150)
 
@@ -28,7 +29,7 @@ class TFLiteModel:
 
         if len(X.shape) == len(input_details[0]['shape']):
             X = np.expand_dims(X, axis=0)
-        
+
         X = X.astype(input_details[0]['dtype'])
 
         self.interpreter.set_tensor(input_details[0]['index'], X)
@@ -38,7 +39,7 @@ class TFLiteModel:
         output = self.interpreter.get_tensor(output_details[0]['index'])
 
         return output
-    
+
     def load_data(self, filename):
         numbers = []
         times = []
@@ -48,7 +49,7 @@ class TFLiteModel:
                 numbers.append(float(data_line[1]))
                 times.append(float(data_line[0]))
         return times, numbers
-    
+
     def save_tagged_data(self, data, tags, time, file_name):
         output_path = os.path.join(LABELD_DATA_PATH, file_name)
         with open(output_path, "w") as file:
@@ -70,21 +71,19 @@ class TFLiteModel:
         output_path = os.path.join(ROW_CONVERTED_DATA_PATH, file_name)
 
         df = pd.read_csv(input_path, delimiter=",", header=None)
-        
+
         df[0] = pd.to_datetime(df[0])
-        
+
         df[0] = (df[0] - df[0].min()).dt.total_seconds()
 
         df.columns = ["seconds", "data-raw"]
-        
+
         df.to_csv(output_path, index=False)
 
         print(f"Plik zapisany w: {output_path}")
 
-        
-
     def normalize(self, numbers, normalization_range):
-        
+
         def normalize_window(window):
             min_val = min(window)
             max_val = max(window)
@@ -94,11 +93,11 @@ class TFLiteModel:
 
             normalized = [(-1 + 2 * (x - min_val) / range_val) for x in window]
             return normalized
-        
+
         normalized_values = []
 
         for i in range(len(numbers)):
-            window = numbers[max(0, i - normalization_range) : i]
+            window = numbers[max(0, i - normalization_range): i]
             try:
                 normalized_window_values = normalize_window(window)
                 normalized_values.append(normalized_window_values[-1])
@@ -106,7 +105,6 @@ class TFLiteModel:
                 continue
 
         return normalized_values
-
 
     def moving_average(self, data, window_size):
         return np.convolve(data, np.ones(window_size) / window_size, mode="valid")
