@@ -185,12 +185,12 @@ void AudioDeviceInfoWindowsPlugin::GetAudioInputDevices(
   // Get the default capture device
   ComPtr<IMMDevice> default_device;
   hr = device_enumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &default_device);
-  std::wstring default_device_id;
+  WCHAR default_device_id[256] = {0};
   if (SUCCEEDED(hr)) {
     LPWSTR temp_id = nullptr;
     default_device->GetId(&temp_id);
     if (temp_id) {
-      default_device_id = std::wstring(temp_id);
+      wcscpy_s(default_device_id, temp_id);
       CoTaskMemFree(temp_id);
     }
   }
