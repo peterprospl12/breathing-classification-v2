@@ -1,7 +1,6 @@
 import time
 import math
 from enum import Enum
-
 import requests
 import torch
 import torchaudio
@@ -22,8 +21,7 @@ class PositionalEncoding(torch.nn.Module):
         self.dropout = torch.nn.Dropout(p=dropout)
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(
-            0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)  # shape: (1, max_len, d_model)
@@ -42,13 +40,11 @@ class BreathPhaseTransformerSeq(torch.nn.Module):
         self.bn1 = torch.nn.BatchNorm2d(32)
         self.pool1 = torch.nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1))
 
-        self.conv2 = torch.nn.Conv2d(
-            32, 64, kernel_size=(3, 3), stride=1, padding=1)
+        self.conv2 = torch.nn.Conv2d(32, 64, kernel_size=(3, 3), stride=1, padding=1)
         self.bn2 = torch.nn.BatchNorm2d(64)
         self.pool2 = torch.nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1))
 
-        self.conv3 = torch.nn.Conv2d(
-            64, 128, kernel_size=(3, 3), stride=1, padding=1)
+        self.conv3 = torch.nn.Conv2d(64, 128, kernel_size=(3, 3), stride=1, padding=1)
         self.bn3 = torch.nn.BatchNorm2d(128)
         self.pool3 = torch.nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1))
 
@@ -91,11 +87,11 @@ class BreathPhaseTransformerSeq(torch.nn.Module):
 # Path to the trained model
 MODEL_PATH = 'best_breath_seq_transformer_model_CURR_BEST.pth'
 
-REFRESH_TIME = 0.3      # time in seconds to read audio
+REFRESH_TIME = 0.3  # time in seconds to read audio
 FORMAT = pyaudio.paInt16
-CHANNELS = 1           # 1 mono | 2 stereo
-RATE = 44100           # sampling rate
-DEVICE_INDEX = 1       # microphone device index (listed in the console output)
+CHANNELS = 1  # 1 mono | 2 stereo
+RATE = 44100  # sampling rate
+DEVICE_INDEX = 1  # microphone device index (listed in the console output)
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
 
 INHALE_COUNTER = 0
@@ -104,6 +100,7 @@ EXHALE_COUNTER = 0
 running = True
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 #############################################
 # Audio handling class
@@ -140,7 +137,7 @@ class MelTransformer:
             n_mels=40
         )
 
-    def get_mel_transform(self, y):
+    def get_mel_transform(self, y, sr=RATE):
         # y: int16 signal; convert to float32 in the range [-1, 1]
         y = y.astype(np.float32) / 32768.0
         # Ensure the signal is mono
@@ -311,11 +308,8 @@ def on_key(event):
         EXHALE_COUNTER = 0
 
 
-fig.canvas.manager.set_window_title(
-    'Realtime Breath Detector (Press [SPACE] to stop, [R] to reset counter)')
-fig.suptitle(
-    f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER} \
-              (Red - Inhale, Green - Exhale, Blue - Silence)')
+fig.canvas.manager.set_window_title('Realtime Breath Detector (Press [SPACE] to stop, [R] to reset counter)')
+fig.suptitle(f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER}   (Red - Inhale, Green - Exhale, Blue - Silence)')
 fig.canvas.mpl_connect('key_press_event', on_key)
 y_lim = (-500, 500)
 face_color = (0, 0, 0)
@@ -340,19 +334,18 @@ def update_plot(frames, current_prediction):
     # For each segment (REFRESH_TIME window) plot the signal with color based on prediction
     for i in range(len(predictions)):
         if predictions[i] == 0:
-            color = 'green'   # exhale
+            color = 'green'  # exhale
         elif predictions[i] == 1:
-            color = 'red'     # inhale
+            color = 'red'  # inhale
         else:
-            color = 'blue'    # silence
+            color = 'blue'  # silence
         start = i * PLOT_CHUNK_SIZE
-        end = (i+1) * PLOT_CHUNK_SIZE
+        end = (i + 1) * PLOT_CHUNK_SIZE
         ax.plot(x_line_space[start:end], plot_data[start:end] / 4, color=color)
     ax.set_facecolor(face_color)
     ax.set_ylim(y_lim)
     fig.suptitle(
-        f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER} \
-                (Red - Inhale, Green - Exhale, Blue - Silence)')
+        f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER}   (Red - Inhale, Green - Exhale, Blue - Silence)')
     plt.draw()
     plt.pause(0.01)
 

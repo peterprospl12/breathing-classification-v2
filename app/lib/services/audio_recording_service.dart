@@ -5,7 +5,7 @@ import 'package:record/record.dart';
 
 class AudioRecordingService {
   // Audio configuration
-  static const int sampleRate = 48000;
+  static const int sampleRate = 44100;
   static const double refreshTime = 0.3;
   static final int chunkSize = (sampleRate * refreshTime).round();
   static const int maxMicrophoneBufferSize = sampleRate * 5;
@@ -104,7 +104,7 @@ class AudioRecordingService {
     final config = RecordConfig(
       encoder: AudioEncoder.pcm16bits,
       sampleRate: sampleRate,
-      numChannels: 2,
+      numChannels: 1,
       device: _selectedDevice!,
     );
     

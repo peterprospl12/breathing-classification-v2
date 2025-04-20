@@ -18,7 +18,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   BreathPhase _currentPhase = BreathPhase.silence;
   bool _showInfo = false;
   StreamSubscription<BreathPhase>? _breathPhaseSubscription;
-  List<BreathPhase> _breathPhases = [];
+  final List<BreathPhase> _breathPhases = [];
   StreamSubscription<List<int>>? _audioSubscription;
   List<int> _audioData = [];
 
@@ -489,7 +489,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         const SizedBox(height: 8),
         Text(
           label,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w500,
             color: Colors.white,
