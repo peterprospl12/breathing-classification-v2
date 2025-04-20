@@ -1,9 +1,10 @@
 import os
 import random
-from pydub import AudioSegment
 import csv
 from collections import deque
 
+from pydub import AudioSegment
+# pylint: disable=R0914,R0912,R0915
 NUM_SEQUENCES = 300  # Number of data-sequences to generate
 NUM_SEGMENTS = 20  # Number of phases in each sequence
 
@@ -125,7 +126,7 @@ def create_sequence_with_rules(num_segments):
             clip = base_clip[:clip_duration]
 
         # Append the selected clip to the sequence
-        sequence += clip
+        sequence += clip  # pylint: disable=E0606
 
         # Calculate the number of samples in the clip
         # clip duration (in seconds) = len(clip) / 1000.0
@@ -204,7 +205,8 @@ def finalize_sequence(sequence, labels):
     elif len(sequence) < FINAL_DURATION_MS:
         # Pad with silence if the sequence is shorter than 30 seconds
         pad_duration = FINAL_DURATION_MS - len(sequence)
-        pad = AudioSegment.silent(duration=pad_duration, frame_rate=TARGET_FRAME_RATE)
+        pad = AudioSegment.silent(
+            duration=pad_duration, frame_rate=TARGET_FRAME_RATE)
         final_sequence = sequence + pad
     else:
         final_sequence = sequence

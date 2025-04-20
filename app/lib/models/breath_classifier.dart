@@ -5,6 +5,10 @@ import 'dart:typed_data';
 
 enum BreathPhase { exhale, inhale, silence }
 
+// Currently just Mocking the classifier
+// In the future, this would load a real ML model for breath phase classification
+// or it should be removed
+
 class BreathClassifier {
   OrtSession? _session;
   bool _isInitialized = false;
