@@ -26,6 +26,7 @@ class AudioClassifierLSTM(nn.Module):
         outputs = self.fc(outputs)
         return outputs, hidden
 
+
 class AudioDataset(Dataset):
     def __init__(self, data):
         self.data = data
@@ -43,11 +44,13 @@ class AudioDataset(Dataset):
         labels = [item[1] for item in sequence]
 
         # Convert the lists to PyTorch tensors
-        mfcc_sequence = torch.tensor(np.array(mfcc_sequence), dtype=torch.float32)
+        mfcc_sequence = torch.tensor(
+            np.array(mfcc_sequence), dtype=torch.float32)
         labels = torch.tensor(labels, dtype=torch.long)
 
         # Return lists of MFCC coefficients and labels
         return mfcc_sequence, labels
+
 
 if __name__ == '__main__':
     print("LSTM summary")
