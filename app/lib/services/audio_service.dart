@@ -4,13 +4,11 @@ import 'package:record/record.dart';
 import '../models/breath_classifier.dart';
 import './audio_recording_service.dart';
 import './breath_tracking_service.dart';
-import './audio_file_service.dart';
 
 class AudioService extends ChangeNotifier {
   // Usługi
   final AudioRecordingService _recordingService;
   final BreathTrackingService _breathTrackingService;
-  final AudioFileService _fileService;
   final BreathClassifier _classifier;
 
   // Timer
@@ -19,15 +17,14 @@ class AudioService extends ChangeNotifier {
   // Gettery dla dostępu do serwisów
   AudioRecordingService get recordingService => _recordingService;
   BreathTrackingService get breathTrackingService => _breathTrackingService;
-  AudioFileService get fileService => _fileService;
 
   // Przekazywanie kluczowych właściwości z serwisów
   bool get isRecording => _recordingService.isRecording;
   Stream<BreathPhase> get breathPhasesStream => _breathTrackingService.breathPhasesStream;
   int get inhaleCount => _breathTrackingService.inhaleCount;
   int get exhaleCount => _breathTrackingService.exhaleCount;
-  bool get isSaving => _fileService.isSaving;
-  String? get lastSavedFilePath => _fileService.lastSavedFilePath;
+  bool get isSaving => false; // Zamiast _fileService.isSaving
+  String? get lastSavedFilePath => null; // Zamiast _fileService.lastSavedFilePath
   List<InputDevice> get inputDevices => _recordingService.inputDevices;
   InputDevice? get selectedDevice => _recordingService.selectedDevice;
   bool get isLoadingDevices => _recordingService.isLoadingDevices;
@@ -47,12 +44,10 @@ class AudioService extends ChangeNotifier {
   AudioService({
     AudioRecordingService? recordingService,
     BreathTrackingService? breathTrackingService,
-    AudioFileService? fileService,
     BreathClassifier? classifier,
   }) :
     _recordingService = recordingService ?? AudioRecordingService(),
     _breathTrackingService = breathTrackingService ?? BreathTrackingService(),
-    _fileService = fileService ?? AudioFileService(),
     _classifier = classifier ?? BreathClassifier() {
     _initialize();
   }
@@ -193,15 +188,6 @@ class AudioService extends ChangeNotifier {
   Future<void> loadInputDevices() async {
     await _recordingService.loadInputDevices();
     notifyListeners();
-  }
-
-  Future<String?> saveRecording() async {
-    final result = await _fileService.saveRecording(
-      _recordingService.audioBuffer,
-      AudioRecordingService.sampleRate
-    );
-    notifyListeners();
-    return result;
   }
 
   @override
