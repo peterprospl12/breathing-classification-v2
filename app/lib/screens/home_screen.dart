@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/breath_classifier.dart';
 import '../services/audio_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/audio_display_toggle.dart'; 
+import '../widgets/audio_display_toggle.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,7 +22,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   StreamSubscription<List<int>>? _audioSubscription;
   List<int> _audioData = [];
 
-  // Maximum number of breath phases to store
   static const int _maxBreathPhasesToStore = 20;
 
   @override
@@ -32,30 +31,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       vsync: this,
       duration: const Duration(seconds: 3),
     )..repeat(reverse: true);
-    
-    // Initialize stream subscriptions after the first frame
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _subscribeToStreams();
     });
   }
-  
+
   void _subscribeToStreams() {
     final audioService = Provider.of<AudioService>(context, listen: false);
-    
-    // Subscribe to breath phases stream
+
     _breathPhaseSubscription = audioService.breathPhasesStream.listen((phase) {
       setState(() {
         _currentPhase = phase;
-        
-        // Also maintain a history of breath phases for the visualization
+
         _breathPhases.add(phase);
         if (_breathPhases.length > _maxBreathPhasesToStore) {
           _breathPhases.removeAt(0);
         }
       });
     });
-    
-    // Subscribe to audio stream for visualization
+
     _audioSubscription = audioService.subscribeToAudioStream((audioData) {
       setState(() {
         _audioData = audioData;
@@ -75,7 +70,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final audioService = Provider.of<AudioService>(context);
     final classifier = Provider.of<BreathClassifier>(context, listen: false);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Column(
@@ -141,8 +136,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   const Padding(
                     padding: EdgeInsets.only(right: 16.0),
                     child: SizedBox(
-                      width: 16, 
-                      height: 16, 
+                      width: 16,
+                      height: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
@@ -169,10 +164,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               _buildCombinedCounterAndStatus(
                 context,
                 audioService,
-                _currentPhase, 
+                _currentPhase,
                 classifier
               ),
-              
+
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: AudioDisplayToggle(
@@ -184,7 +179,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
               if (_showInfo)
                 _buildInfoPanel(),
-                            
+
               _buildLegend(),
             ],
           ),
@@ -201,7 +196,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   ) {
     final color = classifier.getColorForPhase(phase);
     final label = classifier.getLabelForPhase(phase);
-    
+
     return Card(
       margin: const EdgeInsets.all(16),
       child: Padding(
@@ -213,25 +208,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildCounterItem(
-                  context, 
-                  'INHALE', 
-                  audioService.inhaleCount, 
+                  context,
+                  'INHALE',
+                  audioService.inhaleCount,
                   AppTheme.inhaleColor
                 ),
                 Container(
-                  height: 50, 
-                  width: 1, 
+                  height: 50,
+                  width: 1,
                   color: Colors.grey.withOpacity(0.3)
                 ),
                 _buildCounterItem(
-                  context, 
-                  'EXHALE', 
-                  audioService.exhaleCount, 
+                  context,
+                  'EXHALE',
+                  audioService.exhaleCount,
                   AppTheme.exhaleColor
                 ),
               ],
             ),
-            
+
             // Reset button
             TextButton.icon(
               onPressed: audioService.resetCounters,
@@ -242,12 +237,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 padding: EdgeInsets.zero,
               ),
             ),
-            
+
             const Divider(height: 24),
-            
+
             // Bottom section: Current Status
             Row(
-              mainAxisAlignment: MainAxisAlignment.center, 
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 AnimatedBuilder(
                   animation: _animationController,
@@ -274,7 +269,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 const SizedBox(width: 16),
                 Column(
-                  crossAxisAlignment: CrossAxisAlignment.center, 
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
@@ -299,11 +294,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
     );
   }
-  
+
   Widget _buildCounterItem(
-    BuildContext context, 
-    String label, 
-    int count, 
+    BuildContext context,
+    String label,
+    int count,
     Color color
   ) {
     return Expanded(
@@ -332,10 +327,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   void _showDeviceSelectionDialog() {
     final audioService = Provider.of<AudioService>(context, listen: false);
-    
+
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder( 
+      builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           title: Row(
             children: [
@@ -376,7 +371,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     itemBuilder: (context, index) {
                       final device = audioService.inputDevices[index];
                       final bool isSelected = audioService.selectedDevice?.id == device.id;
-                      
+
                       return ListTile(
                         title: Text(device.label),
                         leading: const Icon(Icons.mic),

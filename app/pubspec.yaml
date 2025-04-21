@@ -16,6 +16,7 @@ dependencies:
   path_provider: ^2.1.2
   flutter_animate: ^4.5.0
   record: ^5.2.1
+  logging: ^1.3.0
   audio_device_info_windows:
     path: ./plugins/audio_device_info_windows
 

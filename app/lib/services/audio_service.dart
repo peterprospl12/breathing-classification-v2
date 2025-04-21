@@ -4,38 +4,36 @@ import 'package:record/record.dart';
 import '../models/breath_classifier.dart';
 import './audio_recording_service.dart';
 import './breath_tracking_service.dart';
+import 'package:logging/logging.dart';
+import 'package:breathing_app/utils/logger.dart';
 
 class AudioService extends ChangeNotifier {
-  // Usługi
+  final Logger _logger = LoggerService.getLogger('AudioService');
+
   final AudioRecordingService _recordingService;
   final BreathTrackingService _breathTrackingService;
   final BreathClassifier _classifier;
 
-  // Timer
   Timer? _audioProcessingTimer;
 
-  // Gettery dla dostępu do serwisów
   AudioRecordingService get recordingService => _recordingService;
   BreathTrackingService get breathTrackingService => _breathTrackingService;
 
-  // Przekazywanie kluczowych właściwości z serwisów
   bool get isRecording => _recordingService.isRecording;
   Stream<BreathPhase> get breathPhasesStream => _breathTrackingService.breathPhasesStream;
   int get inhaleCount => _breathTrackingService.inhaleCount;
   int get exhaleCount => _breathTrackingService.exhaleCount;
-  bool get isSaving => false; // Zamiast _fileService.isSaving
-  String? get lastSavedFilePath => null; // Zamiast _fileService.lastSavedFilePath
+  bool get isSaving => false;
+  String? get lastSavedFilePath => null;
   List<InputDevice> get inputDevices => _recordingService.inputDevices;
   InputDevice? get selectedDevice => _recordingService.selectedDevice;
   bool get isLoadingDevices => _recordingService.isLoadingDevices;
   List<int> get audioBuffer => _recordingService.audioBuffer;
 
-  // Konfiguracja stała
-  static const int audioProcessingInterval = 300; // milisekundy
-  // Bufor dla 300ms (0.3s) próbek audio przy 44.1kHz mono (16-bit)
+  static const int audioProcessingInterval = 300; // ms
+
   static const int bufferSize = 13230;
 
-  // Członki klasy do obsługi klasyfikacji
   final List<int> _audioBufferForClassification = [];
   bool _isProcessing = false;
   int _classificationErrors = 0;
@@ -53,23 +51,15 @@ class AudioService extends ChangeNotifier {
   }
 
   Future<void> _initialize() async {
-    // Inicjalizacja klasyfikatora
     try {
       await _classifier.initialize();
-      if (kDebugMode) {
-        print('Klasyfikator oddechów zainicjalizowany pomyślnie');
-      }
+      _logger.info('Breath classifier successfully initialized');
     } catch (e) {
-      if (kDebugMode) {
-        print('Błąd podczas inicjalizacji klasyfikatora: $e');
-      }
-      // Kontynuuj mimo błędu - aplikacja będzie działać bez klasyfikacji
+      _logger.severe('Error during classifier initialization: $e');
     }
 
-    // Wczytanie dostępnych urządzeń wejściowych
     await _recordingService.loadInputDevices();
 
-    // Ustawienie przetwarzania audio
     _setupAudioProcessing();
 
     notifyListeners();
@@ -78,24 +68,18 @@ class AudioService extends ChangeNotifier {
   void _setupAudioProcessing() {
     _recordingService.audioStream.listen((audioData) {
       if (isRecording) {
-        // Dodaj dane do bufora klasyfikacji
         _audioBufferForClassification.addAll(audioData);
 
-        // Sprawdź czy uzbieraliśmy wystarczająco dużo próbek i nie trwa przetwarzanie
         if (_audioBufferForClassification.length >= bufferSize && !_isProcessing) {
           _isProcessing = true;
 
-          // Weź dokładnie 0.3s najnowszych danych
           final samplesToProcess = _audioBufferForClassification.sublist(
             _audioBufferForClassification.length - bufferSize
           );
 
-          // Wyczyść bufor z próbkami
           _audioBufferForClassification.clear();
 
-          // Przetwarzaj dane asynchronicznie
           _processAudioData(samplesToProcess).then((_) {
-            // Po zakończeniu przetwarzania, zezwól na kolejne
             _isProcessing = false;
           });
         }
@@ -105,48 +89,33 @@ class AudioService extends ChangeNotifier {
 
   Future<void> _processAudioData(List<int> audioData) async {
     final dataLength = audioData.length;
-    if (kDebugMode) {
-      print('Przetwarzam bufor audio o długości: $dataLength');
-    }
+    _logger.fine('Przetwarzam bufor audio o długości: $dataLength');
 
     if (dataLength != bufferSize) return;
 
     try {
-      // Klasyfikacja danych audio za pomocą natywnego wrappera
       final phase = await _classifier.classify(audioData);
 
-      // Dodanie wyniku klasyfikacji do systemu śledzenia oddechów
       _breathTrackingService.addBreathPhase(phase);
 
-      // Resetuj licznik błędów po udanej klasyfikacji
       _classificationErrors = 0;
 
       notifyListeners();
 
-      if (kDebugMode) {
-        print('Klasyfikacja oddechu: ${_classifier.getLabelForPhase(phase)}');
-      }
+      _logger.fine('Breath classification: ${_classifier.getLabelForPhase(phase)}');
     } catch (e) {
-      // Zwiększ licznik błędów
       _classificationErrors++;
 
-      if (kDebugMode) {
-        print('Błąd podczas przetwarzania audio ($e). Błąd #$_classificationErrors');
-      }
+      _logger.warning('Error during audio processing ($e). Error #$_classificationErrors');
 
-      // Jeśli mamy zbyt wiele błędów pod rząd, zrestartuj klasyfikator
       if (_classificationErrors >= maxConsecutiveErrors) {
-        if (kDebugMode) {
-          print('Za dużo błędów klasyfikacji pod rząd. Próba reinicjalizacji klasyfikatora...');
-        }
+        _logger.warning('Too many classification errors in a row. Attempting to reinitialize the classifier...');
 
         try {
           await _classifier.initialize();
           _classificationErrors = 0;
         } catch (reinitError) {
-          if (kDebugMode) {
-            print('Reinicjalizacja klasyfikatora nie powiodła się: $reinitError');
-          }
+          _logger.severe('Reinitialization of the classifier failed: $reinitError');
         }
       }
     }
@@ -159,7 +128,6 @@ class AudioService extends ChangeNotifier {
   Future<void> startRecording() async {
     if (isRecording) return;
 
-    // Wyczyść bufor przy rozpoczęciu nagrywania
     _audioBufferForClassification.clear();
     _isProcessing = false;
     _classificationErrors = 0;
@@ -192,9 +160,7 @@ class AudioService extends ChangeNotifier {
 
   @override
   void dispose() {
-    if (kDebugMode) {
-      print('Disposing AudioService');
-    }
+    _logger.info('Disposing AudioService');
     _audioProcessingTimer?.cancel();
     _recordingService.dispose();
     _breathTrackingService.dispose();
