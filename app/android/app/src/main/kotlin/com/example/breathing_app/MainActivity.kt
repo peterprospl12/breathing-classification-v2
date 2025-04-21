@@ -78,8 +78,8 @@ class MainActivity: FlutterActivity() {
                             return@setMethodCallHandler
                         }
 
-                        logInfo("🔊 Klasyfikacja danych audio o rozmiarze: ${audioData.size} bajtów")
                         val floatData = convertInt16ByteArrayToFloatArray(audioData)
+                        logInfo("🔊 Klasyfikacja danych audio o rozmiarze: ${floatData.size} floatów")
                         val classificationResult = breathClassifierWrapper.classifyAudio(floatData)
                         logInfo("🏷️ Wynik klasyfikacji: $classificationResult")
                         result.success(classificationResult)

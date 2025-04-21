@@ -39,14 +39,13 @@ def export_model_to_onnx(model_path, onnx_path, audio_length=13230):
     # Dummy input jako float32 i już znormalizowany (zakres [-1, 1])
     dummy_input = torch.randn(1, audio_length, dtype=torch.float32)
 
-    input_names = ["audio_signal"]
+    input_names = ["input"]
     output_names = ["output"]
 
     torch.onnx.export(
         full_model,
         dummy_input,
         onnx_path,
-        opset_version=5,
         export_params=True,
         do_constant_folding=True,
         input_names=input_names,

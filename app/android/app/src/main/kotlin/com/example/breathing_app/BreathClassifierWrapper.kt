@@ -335,41 +335,78 @@ class BreathClassifierWrapper(private val context: Context) {
             // Utwórz tensor wejściowy
             val inputBuffer = FloatBuffer.wrap(audioData)
             val tensor = OnnxTensor.createTensor(env, inputBuffer, shape)
-
+            
             // Uruchom model i pobierz wyniki
             return tensor.use { input ->
                 sess.run(mapOf(inputName to input)).use { output ->
                     val outputTensor = output.get(0) as OnnxTensor
+                    val tensorInfo = outputTensor.info
                     
-                    @Suppress("UNCHECKED_CAST")
-                    val scores = try {
-                        // Sprawdzamy typ tensora i odpowiednio go obsługujemy
-                        val info = outputTensor.info.toString()
-                        
-                        if (info.contains("float")) {
-                            (outputTensor.value as Array<FloatArray>)[0]
-                        } else if (info.contains("double")) {
-                            val doubleScores = (outputTensor.value as Array<DoubleArray>)[0]
-                            doubleScores.map { it.toFloat() }.toFloatArray()
-                        } else {
-                            logError("Nieznany typ tensora: $info, próba konwersji")
-                            (outputTensor.value as Array<*>)[0] as FloatArray
+                    logInfo("Wymiary tensora wyjściowego: ${tensorInfo.shape.contentToString()}")
+                    
+                    // Obsługa tensora wielowymiarowego [1, time_steps, num_classes]
+                    val result = when (val value = outputTensor.value) {
+                        // Obsługa tensora 3D jako tablicy 2D tablic 1D
+                        is Array<*> -> {
+                            if (value.isNotEmpty() && value[0] is Array<*>) {
+                                // Tensor ma kształt [1, time_steps, num_classes]
+                                val timeSteps = value[0] as Array<*>
+                                
+                                // Utworzenie tablicy wyników dla każdego kroku czasowego
+                                val predictions = mutableListOf<Int>()
+                                
+                                for (step in timeSteps) {
+                                    when (step) {
+                                        is FloatArray -> {
+                                            // Znajdź indeks z maksymalną wartością
+                                            var maxIndex = 0
+                                            var maxValue = step[0]
+                                            
+                                            for (i in 1 until step.size) {
+                                                if (step[i] > maxValue) {
+                                                    maxValue = step[i]
+                                                    maxIndex = i
+                                                }
+                                            }
+                                            
+                                            predictions.add(maxIndex)
+                                        }
+                                        is DoubleArray -> {
+                                            // Znajdź indeks z maksymalną wartością
+                                            var maxIndex = 0
+                                            var maxValue = step[0]
+                                            
+                                            for (i in 1 until step.size) {
+                                                if (step[i] > maxValue) {
+                                                    maxValue = step[i]
+                                                    maxIndex = i
+                                                }
+                                            }
+                                            
+                                            predictions.add(maxIndex)
+                                        }
+                                        else -> {
+                                            logError("Nieznany typ kroku czasowego: ${step?.javaClass}")
+                                        }
+                                    }
+                                }
+                                
+                                // Znajdź najczęściej występującą klasę
+                                val counts = predictions.groupingBy { it }.eachCount()
+                                counts.maxByOrNull { it.value }?.key ?: 2
+                            } else {
+                                logError("Tensor ma nieoczekiwaną strukturę: $value")
+                                2 // Domyślnie cisza
+                            }
                         }
-                    } catch (e: Exception) {
-                        // W przypadku błędu konwersji, próbujemy ogólnego podejścia
-                        logError("Błąd podczas interpretacji wyniku: ${e.message}")
-                        val anyArray = outputTensor.value as Array<*>
-                        val firstElement = anyArray[0]
-                        
-                        when (firstElement) {
-                            is FloatArray -> firstElement
-                            is DoubleArray -> firstElement.map { it.toFloat() }.toFloatArray()
-                            else -> throw IllegalStateException("Nieobsługiwany typ wyniku: ${firstElement?.javaClass}")
+                        else -> {
+                            logError("Nieznany format tensora: ${value?.javaClass}")
+                            2 // Domyślnie cisza
                         }
                     }
                     
-                    // Znajdź klasę z najwyższym wynikiem
-                    scores.indices.maxByOrNull { scores[it] } ?: 2
+                    logInfo("Wynik klasyfikacji: $result")
+                    result
                 }
             }
         } catch (e: Exception) {

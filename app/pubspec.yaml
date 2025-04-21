@@ -30,8 +30,6 @@ flutter:
     - assets/models/
     - assets/images/
     - assets/fonts/
-    - assets/models/breath_classifier_model_audio_input.onnx
-    - assets/models/breath_classifier_model_audio_input.onnx.data
   fonts:
     - family: Poppins
       fonts:
