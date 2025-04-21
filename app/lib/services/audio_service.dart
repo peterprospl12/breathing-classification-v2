@@ -89,7 +89,7 @@ class AudioService extends ChangeNotifier {
 
   Future<void> _processAudioData(List<int> audioData) async {
     final dataLength = audioData.length;
-    _logger.fine('Przetwarzam bufor audio o długości: $dataLength');
+    _logger.fine('Processing audio buffer of length: $dataLength');
 
     if (dataLength != bufferSize) return;
 
