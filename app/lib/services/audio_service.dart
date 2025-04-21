@@ -36,7 +36,7 @@ class AudioService extends ChangeNotifier {
   // Konfiguracja stała
   static const int audioProcessingInterval = 300; // milisekundy
   // Bufor dla 300ms (0.3s) próbek audio przy 44.1kHz mono (16-bit)
-  static const int bufferSize = 13230;
+  static const int bufferSize = 13824;
 
   // Członki klasy do obsługi klasyfikacji
   final List<int> _audioBufferForClassification = [];

@@ -10,6 +10,123 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.FloatBuffer
 import java.util.concurrent.locks.ReentrantLock
+import org.jtransforms.fft.FloatFFT_1D
+import kotlin.math.*
+
+class MelSpectrogramExtractor(
+    private val sampleRate: Int = 44100,
+    public val nFFT: Int = 1024,
+    public val hopLength: Int = 512,
+    private val nMels: Int = 40,
+    private val fMin: Float = 0f,
+    private val fMax: Float = (sampleRate / 2).toFloat()
+) {
+    private val fft = FloatFFT_1D(nFFT.toLong())
+    private val melFilterBank: Array<FloatArray>
+
+    init {
+        melFilterBank = createMelFilterBank()
+    }
+
+    private fun hzToMel(freq: Float): Float {
+        return 2595f * log10(1f + freq / 700f)
+    }
+
+    private fun melToHz(mel: Float): Float {
+        return 700f * (10f.pow(mel / 2595f) - 1f)
+    }
+
+    private fun createMelFilterBank(): Array<FloatArray> {
+        val fftBins = nFFT / 2 + 1
+        val melMin = hzToMel(fMin)
+        val melMax = hzToMel(fMax)
+        val melPoints = FloatArray(nMels + 2) { i ->
+            melMin + (melMax - melMin) * i / (nMels + 1)
+        }
+        val hzPoints = melPoints.map { melToHz(it) }
+        val binFrequencies = FloatArray(fftBins) { i -> i * sampleRate.toFloat() / nFFT }
+
+        val filterBank = Array(nMels) { FloatArray(fftBins) }
+        for (m in 1..nMels) {
+            val fLeft = hzPoints[m - 1]
+            val fCenter = hzPoints[m]
+            val fRight = hzPoints[m + 1]
+            for (k in 0 until fftBins) {
+                val freq = binFrequencies[k]
+                val weight = when {
+                    freq < fLeft -> 0f
+                    freq <= fCenter -> (freq - fLeft) / (fCenter - fLeft)
+                    freq <= fRight -> (fRight - freq) / (fRight - fCenter)
+                    else -> 0f
+                }
+                filterBank[m - 1][k] = weight
+            }
+        }
+        return filterBank
+    }
+
+    fun extract(audio: FloatArray): Pair<FloatArray, Int> {
+        // Number of frames
+        val numFrames = 1 + (audio.size - nFFT) / hopLength
+        // Mel-spectrogram: [nMels][numFrames]
+        val melSpec = Array(nMels) { FloatArray(numFrames) }
+        val window = FloatArray(nFFT) { i ->
+            // Hamming window
+            (0.54f - 0.46f * cos(2.0 * PI.toFloat() * i / (nFFT - 1))).toFloat()
+        }
+        val frameBuffer = FloatArray(nFFT * 2) // interleaved real+imag for JTransforms
+
+        for (frame in 0 until numFrames) {
+            val offset = frame * hopLength
+            // Copy windowed signal
+            val real = FloatArray(nFFT) { i ->
+                val idx = offset + i
+                if (idx < audio.size) audio[idx] * window[i] else 0f
+            }
+            // prepare interleaved buffer: real, imag
+            for (i in 0 until nFFT) {
+                frameBuffer[2 * i] = real[i]
+                frameBuffer[2 * i + 1] = 0f
+            }
+            // FFT
+            fft.complexForward(frameBuffer)
+            // power spectrum
+            val fftBins = nFFT / 2 + 1
+            val powerSpec = FloatArray(fftBins) { k ->
+                val re = frameBuffer[2 * k]
+                val im = frameBuffer[2 * k + 1]
+                (re * re + im * im)
+            }
+            // apply mel filter bank
+            for (m in 0 until nMels) {
+                var sum = 0f
+                for (k in 0 until fftBins) {
+                    sum += melFilterBank[m][k] * powerSpec[k]
+                }
+                // log-mel
+                melSpec[m][frame] = ln(sum + 1e-9f)
+            }
+        }
+        // Flatten to [nMels * numFrames]
+        val flat = FloatArray(nMels * numFrames)
+        for (m in 0 until nMels) {
+            for (f in 0 until numFrames) {
+                flat[m * numFrames + f] = melSpec[m][f]
+            }
+        }
+        return Pair(flat, numFrames)
+    }
+
+    /**
+     * Wraps mel-spectrogram into FloatBuffer and returns tensor shape
+     * Shape for ONNX: [1, 1, nMels, numFrames]
+     */
+    fun toTensor(env: OrtEnvironment, melFlat: FloatArray, numFrames: Int): OnnxTensor {
+        val buf = FloatBuffer.wrap(melFlat)
+        val shape = longArrayOf(1, 1, nMels.toLong(), numFrames.toLong())
+        return OnnxTensor.createTensor(env, buf, shape)
+    }
+}
 
 /**
  * Wrapper dla modelu ONNX klasyfikacji oddechów.
@@ -20,10 +137,11 @@ class BreathClassifierWrapper(private val context: Context) {
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private var session: OrtSession? = null
     private val sessionLock = ReentrantLock() // Do bezpiecznego dostępu wielowątkowego
+    private val melExtractor = MelSpectrogramExtractor()
 
     companion object {
-        const val MODEL_NAME = "breath_classifier_model_audio_input.onnx"
-        const val MODEL_DATA_NAME = "breath_classifier_model_audio_input.onnx.data"
+        const val MODEL_NAME = "breath_classifier_model_mel_input.onnx"
+        const val MODEL_DATA_NAME = "breath_classifier_model_mel_input.onnx.data"
         // Różne możliwe ścieżki do modelu w zasobach
         private val POSSIBLE_ASSET_PATHS = arrayOf(
             "flutter_assets/assets/models/$MODEL_NAME",
@@ -62,10 +180,10 @@ class BreathClassifierWrapper(private val context: Context) {
         logInfo("➡️ Rozpoczęcie inicjalizacji klasyfikatora")
         return try {
             logDeviceInfo() // Logowanie informacji o urządzeniu do debugowania
-            
+
             val modelFile = File(context.filesDir, MODEL_NAME)
             val modelDataFile = File(context.filesDir, MODEL_DATA_NAME)
-            
+
             // Wypisz zawartość katalogu assets do debugowania
             logInfo("📁 Zawartość głównego katalogu assets:")
             listAvailableAssets("")
@@ -75,51 +193,51 @@ class BreathClassifierWrapper(private val context: Context) {
             listAvailableAssets("flutter_assets/assets")
             logInfo("📁 Zawartość katalogu flutter_assets/assets/models:")
             listAvailableAssets("flutter_assets/assets/models")
-            
+
             // Kopiowanie pliku modelu
             if (!modelFile.exists()) {
                 logInfo("📦 Model nie istnieje lokalnie, kopiowanie z assets...")
                 copyModelFromAssets(modelFile)
-                
+
                 // Upewnij się, że plik faktycznie został utworzony
                 if (!modelFile.exists() || modelFile.length() == 0L) {
                     throw Exception("Nie udało się prawidłowo skopiować pliku modelu")
                 }
             }
-            
+
             // Kopiowanie pliku danych modelu
             if (!modelDataFile.exists()) {
                 logInfo("📦 Plik danych modelu nie istnieje lokalnie, kopiowanie z assets...")
                 copyModelDataFromAssets(modelDataFile)
             }
-            
+
             // Sprawdź i wypisz stan pliku modelu
             logInfo("📄 Ścieżka do modelu: ${modelFile.absolutePath}, Rozmiar: ${modelFile.length()} bajtów")
             logInfo("📄 Model istnieje: ${modelFile.exists()}, Można czytać: ${modelFile.canRead()}")
-            
+
             if (modelDataFile.exists()) {
                 logInfo("📄 Ścieżka do danych modelu: ${modelDataFile.absolutePath}, Rozmiar: ${modelDataFile.length()} bajtów")
                 logInfo("📄 Plik danych modelu istnieje: ${modelDataFile.exists()}, Można czytać: ${modelDataFile.canRead()}")
             } else {
                 logInfo("⚠️ Plik danych modelu (.data) nie istnieje, kontynuujemy bez niego")
             }
-            
+
             // Wypisz zawartość katalogu z modelem
             val filesDir = context.filesDir
             logInfo("📁 Zawartość katalogu filesDir (${filesDir.absolutePath}):")
             filesDir.listFiles()?.forEach { file ->
                 logInfo("   - ${file.name}: ${file.length()} bajtów")
             }
-            
+
             // Próbujemy utworzyć sesję z pliku
             val success = createSessionFromFile(modelFile)
-            
+
             // Jeśli nie udało się z pliku, próbujemy utworzyć sesję bezpośrednio z bytów modelu
             if (!success) {
                 logInfo("🔄 Próba utworzenia sesji bezpośrednio z bajtów modelu...")
                 createSessionFromBytes()
             }
-            
+
             // Sprawdź czy sesja została utworzona
             val initialized = session != null
             if (initialized) {
@@ -127,7 +245,7 @@ class BreathClassifierWrapper(private val context: Context) {
             } else {
                 logError("❌ Nie udało się utworzyć sesji ONNX")
             }
-            
+
             initialized
         } catch (e: Exception) {
             logError("❌ Błąd inicjalizacji modelu", e)
@@ -143,14 +261,14 @@ class BreathClassifierWrapper(private val context: Context) {
             // Konfiguracja opcji sesji
             val opts = OrtSession.SessionOptions()
             opts.setIntraOpNumThreads(2) // Wykorzystaj maksymalnie 2 wątki do obliczeń
-            
+
             // Utwórz sesję
             sessionLock.lock()
             try {
                 logInfo("🔄 Tworzenie sesji ONNX Runtime z pliku...")
                 session = env.createSession(modelFile.absolutePath, opts)
                 logInfo("✅ Model ONNX załadowany pomyślnie z pliku")
-                
+
                 // Wypisz informacje o wejściach i wyjściach modelu
                 session?.let { sess ->
                     logInfo("📊 Informacje o modelu:")
@@ -173,7 +291,7 @@ class BreathClassifierWrapper(private val context: Context) {
     private fun createSessionFromBytes(): Boolean {
         return try {
             var modelBytes: ByteArray? = null
-            
+
             // Próbujemy każdą możliwą ścieżkę, dopóki odczyt się nie powiedzie
             for (assetPath in POSSIBLE_ASSET_PATHS) {
                 try {
@@ -187,22 +305,22 @@ class BreathClassifierWrapper(private val context: Context) {
                     logError("❌ Nie można odczytać modelu z ścieżki: $assetPath - ${e.message}")
                 }
             }
-            
+
             if (modelBytes == null || modelBytes!!.isEmpty()) {
                 logError("❌ Nie udało się odczytać modelu z żadnej ścieżki")
                 return false
             }
-            
+
             // Konfiguracja opcji sesji
             val opts = OrtSession.SessionOptions()
             opts.setIntraOpNumThreads(2)
-            
+
             sessionLock.lock()
             try {
                 logInfo("🔄 Tworzenie sesji ONNX Runtime z bajtów...")
                 session = env.createSession(modelBytes!!, opts)
                 logInfo("✅ Model ONNX załadowany pomyślnie z bajtów")
-                
+
                 // Wypisz informacje o wejściach i wyjściach modelu
                 session?.let { sess ->
                     logInfo("📊 Informacje o modelu:")
@@ -229,7 +347,7 @@ class BreathClassifierWrapper(private val context: Context) {
         for (assetPath in POSSIBLE_ASSET_PATHS) {
             try {
                 logInfo("🔄 Próba kopiowania modelu z: $assetPath")
-                
+
                 context.assets.open(assetPath).use { input ->
                     FileOutputStream(modelFile).use { output ->
                         val bytes = input.readBytes()
@@ -238,17 +356,17 @@ class BreathClassifierWrapper(private val context: Context) {
                         logInfo("✅ Skopiowano ${bytes.size} bajtów")
                     }
                 }
-                
+
                 logInfo("✅ Model skopiowany z $assetPath do: ${modelFile.absolutePath}, rozmiar: ${modelFile.length()}")
                 copied = true
                 break  // Jeśli kopiowanie się powiodło, kończymy pętlę
-                
+
             } catch (e: Exception) {
                 logError("❌ Nie można skopiować modelu z ścieżki: $assetPath - ${e.message}")
                 // Kontynuuj do następnej ścieżki
             }
         }
-        
+
         if (!copied) {
             // Jeśli żadna ścieżka nie zadziałała, log błąd
             logError("❌ Nie udało się skopiować modelu z żadnej ścieżki.")
@@ -265,7 +383,7 @@ class BreathClassifierWrapper(private val context: Context) {
         for (assetPath in POSSIBLE_DATA_ASSET_PATHS) {
             try {
                 logInfo("🔄 Próba kopiowania danych modelu z: $assetPath")
-                
+
                 context.assets.open(assetPath).use { input ->
                     FileOutputStream(dataFile).use { output ->
                         val bytes = input.readBytes()
@@ -274,17 +392,17 @@ class BreathClassifierWrapper(private val context: Context) {
                         logInfo("✅ Skopiowano ${bytes.size} bajtów danych modelu")
                     }
                 }
-                
+
                 logInfo("✅ Dane modelu skopiowane z $assetPath do: ${dataFile.absolutePath}, rozmiar: ${dataFile.length()}")
                 copied = true
                 break  // Jeśli kopiowanie się powiodło, kończymy pętlę
-                
+
             } catch (e: Exception) {
                 logError("❌ Nie można skopiować danych modelu z ścieżki: $assetPath - ${e.message}")
                 // Kontynuuj do następnej ścieżki
             }
         }
-        
+
         if (!copied) {
             // Jeśli żadna ścieżka nie zadziałała, log błąd
             logError("❌ Nie udało się skopiować danych modelu z żadnej ścieżki. Kontynuujemy bez nich.")
@@ -330,51 +448,43 @@ class BreathClassifierWrapper(private val context: Context) {
         try {
             val sess = session ?: throw IllegalStateException("Sesja nie zainicjalizowana. Wywołaj initialize() najpierw.")
             val inputName = sess.inputNames.first()
-            val shape = longArrayOf(1, audioData.size.toLong())
 
-            // Utwórz tensor wejściowy
-            val inputBuffer = FloatBuffer.wrap(audioData)
-            val tensor = OnnxTensor.createTensor(env, inputBuffer, shape)
+            logInfo("🔊 Klasyfikacja danych audio o rozmiarze: ${audioData.size}")
 
-            // Uruchom model i pobierz wyniki
-            return tensor.use { input ->
+            // --- Padding audio to ensure 26 frames ---
+            val expectedFrames = 26
+            val requiredSamples = melExtractor.run { nFFT + hopLength * (expectedFrames - 1) }
+            val audioInput = if (audioData.size >= requiredSamples) {
+                audioData.copyOfRange(0, requiredSamples)
+            } else {
+                audioData + FloatArray(requiredSamples - audioData.size)
+            }
+            logInfo("🔊 Audio padded/truncated to $requiredSamples samples for $expectedFrames frames")
+
+            // 1. ekstrakcja mel‑spektrogramu
+            val (melFlat, numFrames) = melExtractor.extract(audioInput)
+            val inputTensor = melExtractor.toTensor(env, melFlat, numFrames)
+
+            logInfo("🔊 Kształt tensora wejściowego: ${inputTensor.info.shape.joinToString(", ")}")
+
+            return inputTensor.use { input ->
                 sess.run(mapOf(inputName to input)).use { output ->
                     val outputTensor = output.get(0) as OnnxTensor
-                    
                     @Suppress("UNCHECKED_CAST")
-                    val scores = try {
-                        // Sprawdzamy typ tensora i odpowiednio go obsługujemy
-                        val info = outputTensor.info.toString()
-                        
-                        if (info.contains("float")) {
-                            (outputTensor.value as Array<FloatArray>)[0]
-                        } else if (info.contains("double")) {
-                            val doubleScores = (outputTensor.value as Array<DoubleArray>)[0]
-                            doubleScores.map { it.toFloat() }.toFloatArray()
-                        } else {
-                            logError("Nieznany typ tensora: $info, próba konwersji")
-                            (outputTensor.value as Array<*>)[0] as FloatArray
-                        }
-                    } catch (e: Exception) {
-                        // W przypadku błędu konwersji, próbujemy ogólnego podejścia
-                        logError("Błąd podczas interpretacji wyniku: ${e.message}")
-                        val anyArray = outputTensor.value as Array<*>
-                        val firstElement = anyArray[0]
-                        
-                        when (firstElement) {
-                            is FloatArray -> firstElement
-                            is DoubleArray -> firstElement.map { it.toFloat() }.toFloatArray()
-                            else -> throw IllegalStateException("Nieobsługiwany typ wyniku: ${firstElement?.javaClass}")
-                        }
+                    // Handle output shape [1, numFrames, numClasses]
+                    val rawOutput = outputTensor.value as Array<Array<FloatArray>>
+                    val frameScores = rawOutput[0] // [numFrames][numClasses]
+                    // Aggregate class scores across frames
+                    val numClasses = frameScores[0].size
+                    val classScores = FloatArray(numClasses) { classIdx ->
+                        frameScores.fold(0f) { sum, frameArr -> sum + frameArr[classIdx] }
                     }
-                    
-                    // Znajdź klasę z najwyższym wynikiem
-                    scores.indices.maxByOrNull { scores[it] } ?: 2
+                    classScores.indices.maxByOrNull { classScores[it] } ?: 2
                 }
             }
         } catch (e: Exception) {
             logError("Błąd w czasie klasyfikacji", e)
-            return 2  // Domyślnie zwróć klasę 'silence' w przypadku błędu
+            return 2
         } finally {
             sessionLock.unlock()
         }
@@ -395,7 +505,7 @@ class BreathClassifierWrapper(private val context: Context) {
             sessionLock.lock()
             session?.close()
             sessionLock.unlock()
-            
+
             env.close()
             logInfo("Zasoby zwolnione")
         } catch (e: Exception) {

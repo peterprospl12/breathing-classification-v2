@@ -77,9 +77,10 @@ class MainActivity: FlutterActivity() {
                             result.error("INVALID_ARG", "audioData argument is missing or null", null)
                             return@setMethodCallHandler
                         }
-
+                        logInfo("🔊 Otrzymano dane audio o rozmiarze: ${audioData.size} bajtów")
                         logInfo("🔊 Klasyfikacja danych audio o rozmiarze: ${audioData.size} bajtów")
                         val floatData = convertInt16ByteArrayToFloatArray(audioData)
+                        logInfo("🔊 Konwersja danych audio zakończona, rozmiar: ${floatData.size} elementów")
                         val classificationResult = breathClassifierWrapper.classifyAudio(floatData)
                         logInfo("🏷️ Wynik klasyfikacji: $classificationResult")
                         result.success(classificationResult)

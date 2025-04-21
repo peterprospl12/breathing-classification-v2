@@ -60,6 +60,11 @@ flutter {
 dependencies {
     // Aktualizacja do najnowszej wersji ONNX Runtime
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.21.0")
+    // Add jtransforms dependency
+    implementation("com.github.wendykierp:JTransforms:3.1") {
+        // Exclude the Apache Commons Math dependency if it causes conflicts
+        // exclude(group = "org.apache.commons", module = "commons-math3")
+    }
     // Inne zależności, które mogą być przydatne
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }
