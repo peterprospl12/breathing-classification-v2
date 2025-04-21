@@ -278,84 +278,90 @@ class BreathClassifierWrapper(private val context: Context) {
             val inputBuffer = FloatBuffer.wrap(audioData)
             val tensor = OnnxTensor.createTensor(env, inputBuffer, shape)
 
-            return tensor.use { input ->
-                sess.run(mapOf(inputName to input)).use { output ->
-                    val outputTensor = output.get(0) as OnnxTensor
-                    val tensorInfo = outputTensor.info
-
-                    logInfo("Output tensor dimensions: ${tensorInfo.shape.contentToString()}")
-
-                    // Handle multidimensional tensor [1, time_steps, num_classes]
-                    val result = when (val value = outputTensor.value) {
-                        // Handle 3D tensor as array of 2D arrays of 1D arrays
-                        is Array<*> -> {
-                            if (value.isNotEmpty() && value[0] is Array<*>) {
-                                // Tensor has shape [1, time_steps, num_classes]
-                                val timeSteps = value[0] as Array<*>
-
-                                // Create array of results for each time step
-                                val predictions = mutableListOf<Int>()
-
-                                for (step in timeSteps) {
-                                    when (step) {
-                                        is FloatArray -> {
-                                            // Find index with maximum value
-                                            var maxIndex = 0
-                                            var maxValue = step[0]
-
-                                            for (i in 1 until step.size) {
-                                                if (step[i] > maxValue) {
-                                                    maxValue = step[i]
-                                                    maxIndex = i
-                                                }
-                                            }
-
-                                            predictions.add(maxIndex)
-                                        }
-                                        is DoubleArray -> {
-                                            // Find index with maximum value
-                                            var maxIndex = 0
-                                            var maxValue = step[0]
-
-                                            for (i in 1 until step.size) {
-                                                if (step[i] > maxValue) {
-                                                    maxValue = step[i]
-                                                    maxIndex = i
-                                                }
-                                            }
-
-                                            predictions.add(maxIndex)
-                                        }
-                                        else -> {
-                                            logError("Unknown time step type: ${step?.javaClass}")
-                                        }
-                                    }
-                                }
-
-                                // Find the most common class
-                                val counts = predictions.groupingBy { it }.eachCount()
-                                counts.maxByOrNull { it.value }?.key ?: 2
-                            } else {
-                                logError("Tensor has unexpected structure: $value")
-                                2 // Default to silence
-                            }
-                        }
-                        else -> {
-                            logError("Unknown tensor format: ${value?.javaClass}")
-                            2 // Default to silence
-                        }
-                    }
-
-                    logInfo("Classification result: $result")
-                    result
-                }
-            }
+            return processModelOutput(sess, inputName, tensor)
         } catch (e: Exception) {
             logError("Error during classification", e)
             return 2  // Default to 'silence' class in case of error
         } finally {
             sessionLock.unlock()
         }
+    }
+
+    private fun processModelOutput(sess: OrtSession, inputName: String, tensor: OnnxTensor): Int {
+        return tensor.use { input ->
+            sess.run(mapOf(inputName to input)).use { output ->
+                val outputTensor = output.get(0) as OnnxTensor
+                val tensorInfo = outputTensor.info
+                logInfo("Output tensor dimensions: ${tensorInfo.shape.contentToString()}")
+
+                val result = processOutputTensor(outputTensor)
+                logInfo("Classification result: $result")
+                result
+            }
+        }
+    }
+
+    private fun processOutputTensor(outputTensor: OnnxTensor): Int {
+        val value = outputTensor.value
+
+        if (value !is Array<*>) {
+            logError("Unknown tensor format: ${value?.javaClass}")
+            return 2 // Default to silence
+        }
+
+        if (value.isEmpty() || value[0] !is Array<*>) {
+            logError("Tensor has unexpected structure: $value")
+            return 2 // Default to silence
+        }
+
+        // Process tensor with shape [1, time_steps, num_classes]
+        return processTimeSteps(value[0] as Array<*>)
+    }
+
+    private fun processTimeSteps(timeSteps: Array<*>): Int {
+        val predictions = mutableListOf<Int>()
+
+        for (step in timeSteps) {
+            when (step) {
+                is FloatArray -> predictions.add(findMaxIndex(step))
+                is DoubleArray -> predictions.add(findMaxIndex(step))
+                else -> logError("Unknown time step type: ${step?.javaClass}")
+            }
+        }
+
+        if (predictions.isEmpty()) return 2 // Default to silence
+
+        // Find the most common class
+        val counts = predictions.groupingBy { it }.eachCount()
+        return counts.maxByOrNull { it.value }?.key ?: 2
+    }
+
+    private fun findMaxIndex(array: FloatArray): Int {
+        var maxIndex = 0
+        var maxValue = array[0]
+
+        for (i in 1 until array.size) {
+            if (array[i] > maxValue) {
+                maxValue = array[i]
+                maxIndex = i
+            }
+        }
+
+        return maxIndex
+    }
+
+    private fun findMaxIndex(array: DoubleArray): Int {
+        var maxIndex = 0
+        var maxValue = array[0]
+
+        for (i in 1 until array.size) {
+            if (array[i] > maxValue) {
+                maxValue = array[i]
+                maxIndex = i
+            }
+        }
+
+        return maxIndex
     }
 
     fun isInitialized(): Boolean {
