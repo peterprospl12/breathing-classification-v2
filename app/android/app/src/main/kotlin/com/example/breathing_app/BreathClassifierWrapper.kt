@@ -238,6 +238,7 @@ class BreathClassifierWrapper(private val context: Context) {
 
             } catch (e: Exception) {
                 logError("Cannot copy model data from path: $assetPath - ${e.message}")
+            }
         }
 
         if (!copied) {
