@@ -102,7 +102,7 @@ class AudioService extends ChangeNotifier {
 
       notifyListeners();
 
-      _logger.fine('Breath classification: ${_classifier.getLabelForPhase(phase)}');
+      _logger.fine('Breath classification: ${BreathClassifier.getLabelForPhase(phase)}');
     } catch (e) {
       _classificationErrors++;
 

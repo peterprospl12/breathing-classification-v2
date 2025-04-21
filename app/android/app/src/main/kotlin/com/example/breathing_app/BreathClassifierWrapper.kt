@@ -34,17 +34,14 @@ class BreathClassifierWrapper(private val context: Context) {
     }
 
     private fun logInfo(message: String) {
-        Log.i(TAG, "BREATH_CLASSIFIER_INFO: $message")
-        println("BREATH_CLASSIFIER_INFO: $message")
+        Log.i(TAG, "🔍 [INFO] 🔍: $message")
     }
 
     private fun logError(message: String, e: Exception? = null) {
-        Log.e(TAG, "BREATH_CLASSIFIER_ERROR: $message")
-        println("BREATH_CLASSIFIER_ERROR: $message")
+        Log.e(TAG, "❌ [ERROR] ❌: $message")
         e?.let {
-            Log.e(TAG, "BREATH_CLASSIFIER_ERROR: ${e.message}")
-            println("BREATH_CLASSIFIER_ERROR: ${e.message}")
-            println("BREATH_CLASSIFIER_ERROR_STACK: ${e.stackTraceToString()}")
+            Log.e(TAG, "❌ [ERROR] ❌: ${e.message}")
+            Log.e(TAG, "❌ [ERROR_STACK] ❌: ${e.stackTraceToString()}")
         }
     }
 
@@ -106,12 +103,12 @@ class BreathClassifierWrapper(private val context: Context) {
             if (initialized) {
                 logInfo("✅ Session created successfully")
             } else {
-                logError("❌ Failed to create ONNX session")
+                logError("Failed to create ONNX session")
             }
 
             initialized
         } catch (e: Exception) {
-            logError("❌ Error initializing model", e)
+            logError("Error initializing model", e)
             false
         }
     }
@@ -156,12 +153,12 @@ class BreathClassifierWrapper(private val context: Context) {
                     logInfo("✅ Read model from $assetPath, size: ${modelBytes?.size ?: 0} bytes")
                     break
                 } catch (e: Exception) {
-                    logError("❌ Cannot read model from path: $assetPath - ${e.message}")
+                    logError("Cannot read model from path: $assetPath - ${e.message}")
                 }
             }
 
             if (modelBytes == null || modelBytes!!.isEmpty()) {
-                logError("❌ Failed to read model from any path")
+                logError("Failed to read model from any path")
                 return false
             }
 
@@ -184,7 +181,7 @@ class BreathClassifierWrapper(private val context: Context) {
                 sessionLock.unlock()
             }
         } catch (e: Exception) {
-            logError("❌ Failed to create session from model bytes", e)
+            logError("Failed to create session from model bytes", e)
             false
         }
     }
@@ -210,12 +207,12 @@ class BreathClassifierWrapper(private val context: Context) {
                 break
 
             } catch (e: Exception) {
-                logError("❌ Cannot copy model from path: $assetPath - ${e.message}")
+                logError("Cannot copy model from path: $assetPath - ${e.message}")
             }
         }
 
         if (!copied) {
-            logError("❌ Failed to copy model from any path.")
+            logError("Failed to copy model from any path.")
         }
     }
 
@@ -240,12 +237,12 @@ class BreathClassifierWrapper(private val context: Context) {
                 break
 
             } catch (e: Exception) {
-                logError("❌ Cannot copy model data from path: $assetPath - ${e.message}")
+                logError(" Cannot copy model data from path: $assetPath - ${e.message}")
             }
         }
 
         if (!copied) {
-            logError("❌ Failed to copy model data from any path. Continuing without it.")
+            logError("Failed to copy model data from any path. Continuing without it.")
         }
     }
 
@@ -267,7 +264,7 @@ class BreathClassifierWrapper(private val context: Context) {
                 logInfo("   📁 Files in '$path': ${files.joinToString(", ")}")
             }
         } catch (e: Exception) {
-            logError("❌ Cannot list files in '$path': ${e.message}")
+            logError("Cannot list files in '$path': ${e.message}")
         }
     }
 

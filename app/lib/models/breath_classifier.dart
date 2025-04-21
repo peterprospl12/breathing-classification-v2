@@ -31,7 +31,7 @@ class BreathClassifier {
           _initAttempts++;
           _logger.info('Attempting reinitialization $_initAttempts of $maxInitAttempts...');
 
-          await Future.delayed(Duration(seconds: 2));
+          await Future.delayed(const Duration(seconds: 2));
           await initialize();
         } else {
           _logger.severe('Maximum number of classifier initialization attempts exceeded.');
@@ -100,7 +100,7 @@ class BreathClassifier {
     }
   }
 
-  BreathPhase _indexToBreathPhase(int index) {
+  static BreathPhase _indexToBreathPhase(int index) {
     switch (index) {
       case 0: return BreathPhase.exhale;
       case 1: return BreathPhase.inhale;
@@ -108,7 +108,7 @@ class BreathClassifier {
     }
   }
 
-  Color getColorForPhase(BreathPhase phase) {
+  static Color getColorForPhase(BreathPhase phase) {
     switch (phase) {
       case BreathPhase.inhale: return Colors.red;
       case BreathPhase.exhale: return Colors.green;
@@ -116,7 +116,7 @@ class BreathClassifier {
     }
   }
 
-  String getLabelForPhase(BreathPhase phase) {
+  static String getLabelForPhase(BreathPhase phase) {
     switch (phase) {
       case BreathPhase.inhale: return 'Inhale';
       case BreathPhase.exhale: return 'Exhale';

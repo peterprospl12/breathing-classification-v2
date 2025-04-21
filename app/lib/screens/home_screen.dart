@@ -194,8 +194,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     BreathPhase phase,
     BreathClassifier classifier
   ) {
-    final color = classifier.getColorForPhase(phase);
-    final label = classifier.getLabelForPhase(phase);
+    final color = BreathClassifier.getColorForPhase(phase);
+    final label = BreathClassifier.getLabelForPhase(phase);
 
     return Card(
       margin: const EdgeInsets.all(16),
@@ -216,7 +216,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 Container(
                   height: 50,
                   width: 1,
-                  color: Colors.grey.withOpacity(0.3)
+                  color: Colors.grey.withValues(alpha: 0.3)
                 ),
                 _buildCounterItem(
                   context,
@@ -251,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       width: 32,
                       height: 32,
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.2 + 0.6 * _animationController.value),
+                        color: color..withValues(alpha: 0.2 + 0.6 * _animationController.value),
                         shape: BoxShape.circle,
                       ),
                       child: Center(
@@ -491,12 +491,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             color: color,
             shape: BoxShape.circle,
             border: Border.all(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white..withValues(alpha: 0.3),
               width: 2,
             ),
             boxShadow: [
               BoxShadow(
-                color: color.withOpacity(0.5),
+                color: color..withValues(alpha: 0.5),
                 blurRadius: 8,
                 spreadRadius: 1,
               ),

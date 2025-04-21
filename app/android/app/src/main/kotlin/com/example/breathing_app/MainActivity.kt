@@ -14,24 +14,20 @@ class MainActivity: FlutterActivity() {
     private var isClassifierInitialized = false
 
     private fun logInfo(message: String) {
-        Log.i(TAG, "BREATHING_APP_INFO: $message")
-        println("BREATHING_APP_INFO: $message")
+        Log.i(TAG, "🔍 [INFO] 🔍: $message")
     }
 
     private fun logError(message: String, e: Exception? = null) {
-        Log.e(TAG, "BREATHING_APP_ERROR: $message")
-        println("BREATHING_APP_ERROR: $message")
+        Log.e(TAG, "❌ [ERROR] ❌: $message")
         e?.let {
-            Log.e(TAG, "BREATHING_APP_ERROR: ${e.message}")
-            println("BREATHING_APP_ERROR: ${e.message}")
-            println("BREATHING_APP_ERROR_STACK: ${e.stackTraceToString()}")
+            Log.e(TAG, "❌ [ERROR] ❌: ${e.message}")
         }
     }
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        logInfo("🚀 Starting breath classifier configuration")
+        logInfo("Starting breath classifier configuration")
 
         try {
             val assetManager = context.assets
@@ -39,14 +35,14 @@ class MainActivity: FlutterActivity() {
             val files = assetManager.list(flutterAssetsPath)
             logInfo("📂 Files in $flutterAssetsPath: ${files?.joinToString(", ") ?: "no files"}")
         } catch (e: Exception) {
-            logError("❌ Error listing assets", e)
+            logError("Error listing assets", e)
         }
 
         breathClassifierWrapper = BreathClassifierWrapper(applicationContext)
         isClassifierInitialized = breathClassifierWrapper.initialize()
 
         if (!isClassifierInitialized) {
-            logError("❌ Classifier initialization failed!")
+            logError("Classifier initialization failed!")
         } else {
             logInfo("✅ Classifier initialized successfully")
         }
@@ -60,7 +56,7 @@ class MainActivity: FlutterActivity() {
                     logInfo("🔍 Classifier initialization status: $initialized")
 
                     if (!initialized) {
-                        logError("❌ Attempt to classify with uninitialized classifier")
+                        logError("Attempt to classify with uninitialized classifier")
                         result.error("INIT_FAILED", "Classifier not initialized", null)
                         return@setMethodCallHandler
                     }
@@ -68,7 +64,7 @@ class MainActivity: FlutterActivity() {
                     try {
                         val audioData = call.argument<ByteArray>("audioData")
                         if (audioData == null) {
-                            logError("❌ No audio data for classification")
+                            logError("No audio data for classification")
                             result.error("INVALID_ARG", "audioData argument is missing or null", null)
                             return@setMethodCallHandler
                         }
@@ -79,7 +75,7 @@ class MainActivity: FlutterActivity() {
                         logInfo("🏷️ Classification result: $classificationResult")
                         result.success(classificationResult)
                     } catch (e: Exception) {
-                        logError("❌ Error during classification", e)
+                        logError("Error during classification", e)
                         result.error("CLASSIFICATION_ERROR", e.message, e.stackTraceToString())
                     }
                 }
