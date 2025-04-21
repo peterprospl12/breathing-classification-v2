@@ -1,6 +1,7 @@
 name: breathing_app
 description: Real-time breath phase classification application.
 version: 1.0.0+1
+publish_to: none
 
 environment:
   sdk: '>=3.7.0 <4.0.0'
@@ -13,9 +14,11 @@ dependencies:
   provider: ^6.1.1
   flutter_sound: ^9.2.13
   path_provider: ^2.1.2
-  mic_stream: ^0.7.2
   flutter_animate: ^4.5.0
   record: ^5.2.1
+  onnxruntime: ^1.4.1
+  audio_device_info_windows:
+    path: ./plugins/audio_device_info_windows
 
 dev_dependencies:
   flutter_test:
@@ -28,6 +31,8 @@ flutter:
     - assets/models/
     - assets/images/
     - assets/fonts/
+    - assets/models/breath_classifier_model_audio_input.onnx
+    - assets/models/breath_classifier_model_audio_input.onnx.data
   fonts:
     - family: Poppins
       fonts:

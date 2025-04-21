@@ -10,9 +10,9 @@ import librosa
 
 INSTRUCTION
 
-Firstly start the program. In console it will write all possible input devices. Change 
+Firstly start the program. In console it will write all possible input devices. Change
 DEVICE_INDEX constant to the microphone's index that you want to use. You can also change sample rate constant,
-but it is advisable to leave it as it is (44100 Hz). Then close program (press space bar) and run it again 
+but it is advisable to leave it as it is (44100 Hz). Then close program (press space bar) and run it again
 with changed constants.
 
 If you don't want to calibrate microphone, you want to do this manually or you are
@@ -57,6 +57,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Audio resource class
 
+
 class SharedAudioResource:
 
     def __init__(self):
@@ -69,7 +70,8 @@ class SharedAudioResource:
                                   frames_per_buffer=self.buffer_size, input_device_index=DEVICE_INDEX)
 
     def read(self):
-        self.buffer = self.stream.read(self.buffer_size, exception_on_overflow=False)
+        self.buffer = self.stream.read(
+            self.buffer_size, exception_on_overflow=False)
         audio_data = np.frombuffer(self.buffer, dtype=np.int16)
         if CHANNELS == 2:
             audio_data = audio_data.reshape(-1, 2)
@@ -86,7 +88,8 @@ class SharedAudioResource:
 class RealTimeAudioClassifier:
     def __init__(self, model_path):
         self.model = AudioClassifier()
-        self.model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+        self.model.load_state_dict(torch.load(
+            model_path, map_location=torch.device('cpu')))
         self.model = self.model.to(device)
         self.model.eval()
         self.hidden = None
@@ -117,7 +120,8 @@ class RealTimeAudioClassifier:
         # Because function will return x times 20 MFCCs, we will calculate mean of them (size of mfcc above is [20, x])
         features = mfcc.mean(axis=1)
 
-        single_data = torch.tensor(features, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+        single_data = torch.tensor(features, dtype=torch.float32).unsqueeze(
+            0).unsqueeze(0).to(device)
 
         with torch.no_grad():
             outputs, self.hidden = self.model(single_data, self.hidden)
@@ -155,8 +159,12 @@ def on_key(event):
 
 # Configuration of plot properties and other elements
 
-fig.canvas.manager.set_window_title('Realtime Breath Detector ( Press [SPACE] to stop, [R] to reset counter )')  # Title
-fig.suptitle(f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER}        Colours meaning: Red - Inhale, Green - Exhale, Blue - Silence')  # Instruction
+fig.canvas.manager.set_window_title(
+    # Title
+    'Realtime Breath Detector ( Press [SPACE] to stop, [R] to reset counter )')
+# Instruction
+fig.suptitle(
+    f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER}        Colours meaning: Red - Inhale, Green - Exhale, Blue - Silence')
 fig.canvas.mpl_connect('key_press_event', on_key)  # Key handler
 
 y_lim = (-500, 500)
@@ -191,14 +199,16 @@ def update_plot(frames, current_prediction):
         else:  # Silence
             color = 'blue'
         ax.plot(x_line_space[PLOT_CHUNK_SIZE * i:PLOT_CHUNK_SIZE * (i + 1)],
-                plot_data[PLOT_CHUNK_SIZE * i:PLOT_CHUNK_SIZE * (i + 1)]/ 4, color=color)
+                plot_data[PLOT_CHUNK_SIZE * i:PLOT_CHUNK_SIZE * (i + 1)] / 4, color=color)
 
     # Set plot properties and show it
 
     ax.set_facecolor(face_color)
     ax.set_ylim(y_lim)
 
-    fig.suptitle(f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER}        Colours meaning: Red - Inhale, Green - Exhale, Blue - Silence')  # Instruction
+    # Instruction
+    fig.suptitle(
+        f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER}        Colours meaning: Red - Inhale, Green - Exhale, Blue - Silence')
 
     plt.draw()
     plt.pause(0.01)

@@ -1,8 +1,7 @@
-# socket_server.py
 import socket
-import torch
 import pickle
-import numpy as np
+
+import torch
 from server_dependencies.server_dependecies import RealTimeAudioClassifier, device
 
 MODEL_PATH = 'server_dependencies/best_breath_seq_transformer_model_CURR_BEST.pth'
@@ -17,7 +16,7 @@ def start_socket_server():
     print("Socket server running on port 8000")
     try:
         while True:
-            conn, addr = sock.accept()
+            conn, _ = sock.accept()
             try:
                 data_size = int.from_bytes(conn.recv(4), byteorder='big')
                 data = b''

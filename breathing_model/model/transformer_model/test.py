@@ -170,7 +170,8 @@ def evaluate_from_csv(model, audio_path, csv_path, device):
         for row in rows:
             if len(row) != 3:
                 continue
-            phase_code, start_sample, end_sample = int(row[0]), int(row[1]), int(row[2])
+            phase_code, start_sample, end_sample = int(
+                row[0]), int(row[1]), int(row[2])
 
             # Adjust start and end samples based on resampling
             if sr != SAMPLE_RATE:
@@ -207,7 +208,8 @@ def evaluate_from_csv(model, audio_path, csv_path, device):
             total_valid += 1
             if is_correct:
                 correct += 1
-        results.append((pred_code, gt_code, start_sample, end_sample, is_correct))
+        results.append(
+            (pred_code, gt_code, start_sample, end_sample, is_correct))
 
     accuracy = (correct / total_valid) * 100 if total_valid > 0 else 0.0
 
@@ -218,7 +220,8 @@ def evaluate_from_csv(model, audio_path, csv_path, device):
         print(f"{idx + 1}, {PHASE_LABELS[pred_code]} ({pred_code}), {PHASE_LABELS[gt_code]} ({gt_code}), "
               f"{start}, {end}, {is_corr}")
 
-    print(f"\nOverall accuracy (over snippets with valid ground truth): {accuracy:.2f}% ({correct}/{total_valid})")
+    print(
+        f"\nOverall accuracy (over snippets with valid ground truth): {accuracy:.2f}% ({correct}/{total_valid})")
     return accuracy
 
 
@@ -228,16 +231,20 @@ def evaluate_from_csv(model, audio_path, csv_path, device):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Evaluate fixed 0.5s breath phase predictions against ground truth CSV.")
-    parser.add_argument("--audio", type=str, required=True, help="Path to the audio file (.wav)")
-    parser.add_argument("--csv", type=str, required=True, help="Path to the CSV file with ground-truth labels")
-    parser.add_argument("--model", type=str, default="breath_classifier.pth", help="Path to the saved model file")
+    parser.add_argument("--audio", type=str, required=True,
+                        help="Path to the audio file (.wav)")
+    parser.add_argument("--csv", type=str, required=True,
+                        help="Path to the CSV file with ground-truth labels")
+    parser.add_argument("--model", type=str, default="breath_classifier.pth",
+                        help="Path to the saved model file")
     args = parser.parse_args()
 
     # Set device (GPU if available, else CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Initialize the model and load the saved weights
-    model = BreathClassifier(hidden_size=128, num_layers=2, num_classes=3).to(device)
+    model = BreathClassifier(
+        hidden_size=128, num_layers=2, num_classes=3).to(device)
     if not os.path.exists(args.model):
         raise FileNotFoundError(f"Model file '{args.model}' not found.")
     model.load_state_dict(torch.load(args.model, map_location=device))

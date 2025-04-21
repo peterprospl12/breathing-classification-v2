@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/breath_classifier.dart';
 import '../models/display_mode.dart';
-import 'audio_visualization.dart';
 import 'microphone_visualization.dart';
 
 class AudioDisplayToggle extends StatefulWidget {
@@ -91,13 +90,6 @@ class _AudioDisplayToggleState extends State<AudioDisplayToggle> {
 
   Widget _buildWidget(DisplayMode mode) {
     switch (mode) {
-      case DisplayMode.simulation:
-        return AudioVisualizationWidget(
-          audioData: widget.audioData,
-          breathPhases: widget.breathPhases,
-          sampleRate: widget.sampleRate,
-          refreshTime: widget.refreshTime,
-        );
       case DisplayMode.microphone:
         return const MicrophoneVisualizationWidget();
     }

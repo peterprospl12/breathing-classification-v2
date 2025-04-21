@@ -83,9 +83,10 @@ async def main():
                         channels=1,
                         rate=SAMPLE_RATE,
                         input=True,
-                        input_device_index=1,  # Możesz spróbować zmienić ten indeks, jeśli mikrofon nie jest domyślny
+                        # Możesz spróbować zmienić ten indeks, jeśli mikrofon nie jest domyślny
+                        input_device_index=1,
                         frames_per_buffer=1024)
-        
+
         recording_state.start()  # Rozpoczynamy nagrywanie
         try:
             print("Rozpoczynamy nagrywanie...")
@@ -98,7 +99,8 @@ async def main():
                     print("Nagrywanie zostało przerwane przez użytkownika.")
                     break
 
-                await asyncio.sleep(0)  # Umożliwiamy innym operacjom asynchronicznym wykonanie
+                # Umożliwiamy innym operacjom asynchronicznym wykonanie
+                await asyncio.sleep(0)
 
         except Exception as e:
             print(f"Wystąpił błąd: {e}")
@@ -117,7 +119,7 @@ async def main():
                 wf.setframerate(SAMPLE_RATE)
                 wf.writeframes(audio_array.tobytes())
             print(f"Plik audio zapisano jako: {sound_output_file}")
-            
+
             # Zatrzymujemy nagrywanie po zapisaniu pliku
             recording_state.stop()
 
@@ -139,7 +141,8 @@ async def main():
             print(f"Connected to {DEVICE_NAME}")
             await client.start_notify(TENS_CHARACTERISTIC_UUID, handle_data)
             print("Listening for data-raw...")
-            input("Naciśnij Enter, aby rozpocząć nagrywanie dźwięku i zbieranie danych...")
+            input(
+                "Naciśnij Enter, aby rozpocząć nagrywanie dźwięku i zbieranie danych...")
 
             # Uruchom jednocześnie nagrywanie audio i zbieranie danych
             try:
