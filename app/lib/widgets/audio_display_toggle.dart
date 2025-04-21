@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/breath_classifier.dart';
 import '../models/display_mode.dart';
 import 'microphone_visualization.dart';
+import 'circular_audio_visualization.dart';
 
 class AudioDisplayToggle extends StatefulWidget {
   final List<double> audioData;
@@ -37,35 +38,21 @@ class _AudioDisplayToggleState extends State<AudioDisplayToggle> {
         // Navigation bar with visualization options
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: DisplayMode.values.map((mode) {
-              final isSelected = mode == selectedMode;
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: ElevatedButton.icon(
-                  icon: Icon(
-                    mode.icon,
-                    color: Colors.white,
-                  ),
-                  label: Text(
-                    mode.label,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isSelected 
-                        ? Colors.blue.shade700 
-                        : Colors.blue.shade400,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  ),
-                  onPressed: () => _selectDisplayMode(mode),
-                ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Dostosuj układ przycisków w zależności od dostępnej szerokości
+              final bool isNarrow = constraints.maxWidth < 400;
+
+              return Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8.0, // przestrzeń pozioma między przyciskami
+                runSpacing: 8.0, // przestrzeń pionowa gdy przyciski przechodzą do nowej linii
+                children: DisplayMode.values.map((mode) {
+                  final isSelected = mode == selectedMode;
+                  return _buildModeButton(mode, isSelected, isNarrow);
+                }).toList(),
               );
-            }).toList(),
+            },
           ),
         ),
 
@@ -88,10 +75,55 @@ class _AudioDisplayToggleState extends State<AudioDisplayToggle> {
     );
   }
 
+  Widget _buildModeButton(DisplayMode mode, bool isSelected, bool isNarrow) {
+    return ElevatedButton.icon(
+      icon: Icon(
+        mode.icon,
+        color: Colors.white,
+        // Mniejsze ikony na wąskich ekranach
+        size: isNarrow ? 18 : 22,
+      ),
+      label: Text(
+        // Na wąskich ekranach używaj krótszych etykiet
+        isNarrow ? _getShortLabel(mode) : mode.label,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: isNarrow ? 14 : 16,
+        ),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isSelected
+            ? Colors.blue.shade700
+            : Colors.blue.shade400,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        // Mniejsze odstępy na wąskich ekranach
+        padding: isNarrow
+            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+            : const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      ),
+      onPressed: () => _selectDisplayMode(mode),
+    );
+  }
+
+  // Zwraca krótszą etykietę dla wąskich ekranów
+  String _getShortLabel(DisplayMode mode) {
+    switch (mode) {
+      case DisplayMode.microphone:
+        return 'Mic';
+      case DisplayMode.circular:
+        return 'Circle';
+    }
+  }
+
   Widget _buildWidget(DisplayMode mode) {
     switch (mode) {
       case DisplayMode.microphone:
         return const MicrophoneVisualizationWidget();
+      case DisplayMode.circular:
+        return const CircularVisualizationWidget();
     }
   }
 }
