@@ -48,7 +48,7 @@ class _AudioDisplayToggleState extends State<AudioDisplayToggle> {
                 end: Alignment.bottomRight,
                 colors: [
                   Theme.of(context).cardColor,
-                  Theme.of(context).cardColor.withOpacity(0.9),
+                  Theme.of(context).cardColor.withValues(alpha: 0.9),
                 ],
               ),
             ),
@@ -57,7 +57,7 @@ class _AudioDisplayToggleState extends State<AudioDisplayToggle> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final bool isNarrow = constraints.maxWidth < 400;
-                  
+
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: DisplayMode.values.map((mode) {
@@ -109,7 +109,7 @@ class _AudioDisplayToggleState extends State<AudioDisplayToggle> {
             color: Colors.white,
             size: isNarrow ? 18 : 20,
           ),
-          SizedBox(width: 5),
+          const SizedBox(width: 5),
           Text(
             isNarrow ? _getShortLabel(mode) : mode.label,
             style: TextStyle(

@@ -98,7 +98,7 @@ class _CircularVisualizationWidgetState extends State<CircularVisualizationWidge
                 end: Alignment.bottomRight,
                 colors: [
                   Theme.of(context).cardColor,
-                  Theme.of(context).cardColor.withOpacity(0.9),
+                  Theme.of(context).cardColor.withValues(alpha: 0.9),
                 ],
               ),
             ),
@@ -131,7 +131,7 @@ class _CircularVisualizationWidgetState extends State<CircularVisualizationWidge
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: (audioService.isRecording ? Colors.red : Colors.green).withOpacity(0.3),
+                color: (audioService.isRecording ? Colors.red : Colors.green).withValues(alpha: 0.3),
                 spreadRadius: 1,
                 blurRadius: 6,
                 offset: const Offset(0, 2),
@@ -242,7 +242,7 @@ class _CircularVisualizationWidgetState extends State<CircularVisualizationWidge
                           shape: BoxShape.circle,
                           color: layerColor,
                           border: Border.all(
-                            color: layerColor.withOpacity(0.9),
+                            color: layerColor.withValues(alpha: 0.9),
                             width: 3.0,
                           ),
                         ),
@@ -260,7 +260,7 @@ class _CircularVisualizationWidgetState extends State<CircularVisualizationWidge
                       padding: const EdgeInsets.only(top: 20),
                       child: Icon(
                         Icons.pause,
-                        color: phaseColor.withOpacity(0.8),
+                        color: phaseColor.withValues(alpha: 0.8),
                         size: 24,
                       ),
                     ),
@@ -277,7 +277,7 @@ class _CircularVisualizationWidgetState extends State<CircularVisualizationWidge
   // Outer layers (lower index) are darker, inner layers (higher index) are lighter
   Color _getLayerColor(Color baseColor, int layerIndex, int totalLayers) {
     // For single layer, use the base color with medium opacity
-    if (totalLayers == 1) return baseColor.withOpacity(0.6);
+    if (totalLayers == 1) return baseColor.withValues(alpha: 0.6);
 
     // Normalize layer index to 0.0-1.0 scale
     // 0.0 = darkest (outer layer), 1.0 = lightest (inner layer)
@@ -298,7 +298,7 @@ class _CircularVisualizationWidgetState extends State<CircularVisualizationWidge
         .withLightness(adjustedLightness)
         .withSaturation(adjustedSaturation)
         .toColor()
-        .withOpacity(0.7 + brightnessPercent * 0.2); // Outer circles slightly more transparent
+        .withValues(alpha: 0.7 + brightnessPercent * 0.2); // Outer circles slightly more transparent
   }
 
   Widget _buildPulsatingDot(Color baseColor) {
@@ -311,7 +311,7 @@ class _CircularVisualizationWidgetState extends State<CircularVisualizationWidge
           height: 12.0,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.white.withOpacity(value),
+            color: Colors.white.withValues(alpha: value),
           ),
         );
       },

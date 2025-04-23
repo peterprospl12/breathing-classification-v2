@@ -84,7 +84,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
                 end: Alignment.bottomRight,
                 colors: [
                   Theme.of(context).cardColor,
-                  Theme.of(context).cardColor.withOpacity(0.9),
+                  Theme.of(context).cardColor.withValues(alpha: 0.9),
                 ],
               ),
             ),
