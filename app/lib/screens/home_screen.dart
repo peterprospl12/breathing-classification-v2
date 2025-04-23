@@ -78,66 +78,82 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     
     return Scaffold(
       appBar: AppBar(
-        centerTitle: true,
-        title: const Text('Breathing Monitor'),
-        leadingWidth: 230, 
-        leading: Row(
+        title: const Column(
           children: [
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(24),
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  padding: const EdgeInsets.only(left: 16, right: 4),
-                  child: const Icon(
-                    Icons.mic,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
+            Text(
+              'Breathing Monitor',
+              style: TextStyle(fontSize: 18),
             ),
-            if (audioService.selectedDevice != null)
-              Expanded(
-                child: InkWell(
-                  onTap: _showDeviceSelectionDialog,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          audioService.selectedDevice!.label,
-                          style: const TextStyle(fontSize: 11),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                        const Text(
-                          'Tap to change',
-                          style: TextStyle(fontSize: 9, color: Colors.grey),
-                        ),
-                      ],
+          ],
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(40.0),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Row(
+              children: [
+                // Microphone icon
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      padding: const EdgeInsets.only(left: 16),
+                      child: const Icon(
+                        Icons.mic,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+                // Device selector
+                if (audioService.selectedDevice != null)
+                  Expanded(
+                    child: InkWell(
+                      onTap: _showDeviceSelectionDialog,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 4.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              audioService.selectedDevice!.label,
+                              style: const TextStyle(fontSize: 11),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                            const Text(
+                              'Tap to change',
+                              style: TextStyle(fontSize: 9, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                // Loading indicator
+                if (audioService.isLoadingDevices)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 16.0),
+                    child: SizedBox(
+                      width: 16, 
+                      height: 16, 
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
         actions: [
-          if (audioService.isLoadingDevices)
-            const Center(
-              child: SizedBox(
-                width: 20, 
-                height: 20, 
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-            ),
-          
           // Info button
           IconButton(
             icon: Icon(_showInfo ? Icons.info_outline : Icons.info),
@@ -407,24 +423,30 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               'visualizes them with different colors.',
             ),
             SizedBox(height: 12),
-            Row(
+            Wrap(
               children: [
                 Icon(Icons.mic, size: 18),
                 SizedBox(width: 8),
-                Text(
-                  'Tap the mic button to start/stop monitoring',
-                  style: TextStyle(fontSize: 14),
+                Flexible(
+                  child: Text(
+                    'Tap the mic button to toggle monitoring',
+                    style: TextStyle(fontSize: 14),
+                    softWrap: true,
+                  ),
                 ),
               ],
             ),
             SizedBox(height: 8),
-            Row(
+            Wrap(
               children: [
                 Icon(Icons.refresh, size: 18),
                 SizedBox(width: 8),
-                Text(
-                  'Reset counters with the refresh button',
-                  style: TextStyle(fontSize: 14),
+                Flexible(
+                  child: Text(
+                    'Reset counters with the refresh button',
+                    style: TextStyle(fontSize: 14),
+                    softWrap: true,
+                  ),
                 ),
               ],
             ),

@@ -2,6 +2,9 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Dodane repozytoria dla ONNX Runtime i innych zależności
+        maven { url = uri("https://jitpack.io") }
+        maven { url = uri("https://oss.sonatype.org/content/repositories/snapshots/") }
     }
 }
 

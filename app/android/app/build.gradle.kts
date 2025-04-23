@@ -37,8 +37,29 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    // Dodajemy opcje pakowania dla onnxruntime-android
+    packagingOptions {
+        pickFirst("META-INF/INDEX.LIST")
+        pickFirst("META-INF/io.netty.versions.properties")
+        exclude("META-INF/DEPENDENCIES")
+        exclude("META-INF/LICENSE")
+        exclude("META-INF/LICENSE.txt")
+        exclude("META-INF/license.txt")
+        exclude("META-INF/NOTICE")
+        exclude("META-INF/NOTICE.txt")
+        exclude("META-INF/notice.txt")
+        exclude("META-INF/*.kotlin_module")
+    }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Aktualizacja do najnowszej wersji ONNX Runtime
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.21.0")
+    // Inne zależności, które mogą być przydatne
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }

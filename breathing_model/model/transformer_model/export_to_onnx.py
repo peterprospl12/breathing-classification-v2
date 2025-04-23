@@ -82,7 +82,7 @@ def export_breath_classifier_to_onnx(model_path, onnx_path, audio_length=13230):
     # Dummy input as float32 and already normalized (range [-1, 1])
     dummy_input = torch.randn(1, audio_length, dtype=torch.float32)
 
-    input_names = ["audio_signal"]
+    input_names = ["input"]
     output_names = ["output"]
 
     torch.onnx.export(
