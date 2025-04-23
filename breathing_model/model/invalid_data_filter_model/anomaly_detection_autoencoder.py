@@ -81,7 +81,7 @@ class EnhancedReconstructionLoss(nn.Module):
     - Korelacja Pearsona dla zachowania wzorca spektrogramu
     """
 
-    def __init__(self, mse_weight=0.3, log_mse_weight=0.4, corr_weight=0.3):
+    def __init__(self, mse_weight=1, log_mse_weight=0, corr_weight=0):
         super(EnhancedReconstructionLoss, self).__init__()
         self.mse_weight = mse_weight
         self.log_mse_weight = log_mse_weight
@@ -99,7 +99,6 @@ class EnhancedReconstructionLoss(nn.Module):
         log_y = torch.log(torch.abs(y) + eps)
         log_mse_loss = self.mse(log_x, log_y)
 
-        # Korelacja Pearsona dla zachowania wzorca
         x_flat = x.reshape(x.size(0), -1)
         y_flat = y.reshape(y.size(0), -1)
 
@@ -124,15 +123,22 @@ class EnhancedReconstructionLoss(nn.Module):
 class AnomalyDetector:
     """
     Klasa do wykrywania anomalii na podstawie autoenkodera.
-    Uwzględnia kilka metryk rekonstrukcji dla lepszej detekcji.
+    Uwzględnia wykrywanie ciszy oraz anomalii w dźwiękach oddechowych.
     """
 
-    def __init__(self, autoencoder, device, contamination=0.05):
+    def __init__(self, autoencoder, device, contamination=0.05, silence_threshold=0.01):
         self.autoencoder = autoencoder
         self.device = device
         self.contamination = contamination
         self.threshold = None
+        self.silence_threshold = silence_threshold  # Próg ciszy bazujący na energii
         self.criterion = EnhancedReconstructionLoss()
+
+    def is_silence(self, mel_spec):
+        """Sprawdza czy próbka to cisza na podstawie energii spektrogramu"""
+        # Oblicz średnią energię spektrogramu
+        energy = torch.mean(torch.abs(mel_spec)).item()
+        return energy < self.silence_threshold
 
     def fit(self, dataloader):
         """Wyucz progi anomalii na podstawie danych treningowych"""
@@ -140,10 +146,18 @@ class AnomalyDetector:
         reconstruction_errors = []
         latent_features = []
 
+        # Oblicz średnią energię dla wyznaczenia progu ciszy
+        energy_values = []
+
         with torch.no_grad():
             for inputs, _ in dataloader:
                 inputs = inputs.to(self.device)
                 outputs, latent = self.autoencoder(inputs)
+
+                # Zbierz energie spektrogramów
+                for i in range(inputs.size(0)):
+                    energy = torch.mean(torch.abs(inputs[i])).item()
+                    energy_values.append(energy)
 
                 # Oblicz błąd rekonstrukcji dla każdej próbki
                 batch_errors = []
@@ -152,9 +166,11 @@ class AnomalyDetector:
                     batch_errors.append(error)
 
                 reconstruction_errors.extend(batch_errors)
-
-                # Zapisz cechy z warstwy ukrytej do dalszej analizy
                 latent_features.append(latent.cpu().numpy())
+
+        # Wyznacz próg ciszy jako dolny percentyl energii
+        self.silence_threshold = np.percentile(energy_values, 10)  # 10% najcichszych próbek
+        print(f"Calculated silence threshold: {self.silence_threshold:.6f}")
 
         # Oblicz próg anomalii na podstawie percentyla
         self.threshold = np.percentile(reconstruction_errors, 100 * (1 - self.contamination))
@@ -171,23 +187,40 @@ class AnomalyDetector:
         plt.savefig('anomaly_threshold.png')
         plt.close()
 
-        return self.threshold
+        # Wizualizacja rozkładu energii spektrogramów
+        plt.figure(figsize=(10, 5))
+        plt.hist(energy_values, bins=50)
+        plt.axvline(self.silence_threshold, color='g', linestyle='dashed',
+                    label=f'Silence Threshold: {self.silence_threshold:.4f}')
+        plt.title('Distribution of Spectrogram Energy')
+        plt.xlabel('Energy')
+        plt.ylabel('Count')
+        plt.legend()
+        plt.savefig('silence_threshold.png')
+        plt.close()
+
+        return self.threshold, self.silence_threshold
 
     def detect(self, mel_spec):
-        """Wykryj czy próbka jest anomalią"""
+        """Wykryj czy próbka jest ciszą lub anomalią"""
         self.autoencoder.eval()
 
         if mel_spec.dim() == 3:
             mel_spec = mel_spec.unsqueeze(0)  # Dodaj wymiar batcha
         mel_spec = mel_spec.to(self.device)
 
+        # Najpierw sprawdź czy to cisza
+        if self.is_silence(mel_spec):
+            return {"is_silence": True, "is_anomaly": False, "error": 0.0}
+
+        # Jeśli nie cisza, sprawdź czy anomalia
         with torch.no_grad():
             reconstruction, _ = self.autoencoder(mel_spec)
             error = self.criterion(reconstruction, mel_spec).item()
 
         is_anomaly = error > self.threshold
 
-        return is_anomaly, error
+        return {"is_silence": False, "is_anomaly": is_anomaly, "error": error}
 
 
 def train_autoencoder(autoencoder, train_loader, val_loader, device, num_epochs=30,
@@ -253,7 +286,7 @@ def train_autoencoder(autoencoder, train_loader, val_loader, device, num_epochs=
         # Zapisz najlepszy model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(autoencoder.state_dict(), 'best_breathing_anomaly_detector.pth')
+            torch.save(autoencoder.state_dict(), 'best_breathing_anomaly_detector_only_breath.pth')
             print(f"Epoch {epoch + 1}/{num_epochs} - Saved best model")
 
         print(f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
@@ -350,7 +383,7 @@ if __name__ == '__main__':
     from breathing_model.model.transformer_model.transformer_model import BreathSeqDataset
 
     # Ścieżka do folderu z danymi
-    data_dir = "../../data-sequences"
+    data_dir = "../../data-sequences-breath-only"
 
     # Utwórz dataset
     full_dataset = BreathSeqDataset(data_dir, sample_rate=44100, n_mels=40, n_fft=1024, hop_length=512)
@@ -390,12 +423,14 @@ if __name__ == '__main__':
 
     # Utwórz i dopasuj detektor anomalii
     anomaly_detector = AnomalyDetector(autoencoder, device, contamination=0.05)
-    threshold = anomaly_detector.fit(val_loader)
+    threshold, silence_threshold = anomaly_detector.fit(val_loader)
     print(f"Obliczony próg anomalii: {threshold:.6f}")
+    print(f"Obliczony próg ciszy: {silence_threshold:.6f}")
 
-    # Zapisz próg do pliku dla późniejszego użycia
-    with open('anomaly_threshold.json', 'w') as f:
-        json.dump({"threshold": float(threshold)}, f)
+    # Zapisz progi do pliku dla późniejszego użycia
+    with open('anomaly_thresholds.json', 'w') as f:
+        json.dump({"anomaly_threshold": float(threshold),
+                  "silence_threshold": float(silence_threshold)}, f)
 
     # Opcjonalnie: analiza cech latentnych
     features, labels = extract_latent_features(autoencoder, val_loader, device)

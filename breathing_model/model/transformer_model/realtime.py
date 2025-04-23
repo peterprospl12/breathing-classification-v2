@@ -80,7 +80,7 @@ class BreathPhaseTransformerSeq(torch.nn.Module):
 # Settings and constants
 #############################################
 MODEL_PATH = 'best_breath_seq_transformer_model_CURR_BEST.pth'  # Path to the trained model
-ANOMALY_MODEL_PATH = '../invalid_data_filter_model/best_breathing_anomaly_detector.pth'  # Path to the anomaly detector model
+ANOMALY_MODEL_PATH = '../invalid_data_filter_model/best_breathing_anomaly_detector_only_breath.pth'  # Path to the anomaly detector model
 ANOMALY_THRESHOLD_PATH = '../invalid_data_filter_model/anomaly_threshold.json'  # Path to the anomaly threshold
 
 REFRESH_TIME = 0.3  # time in seconds to read audio
@@ -118,52 +118,73 @@ class AudioAnomalyDetector:
             if isinstance(checkpoint, dict) and 'autoencoder_state_dict' in checkpoint:
                 self.model.load_state_dict(checkpoint['autoencoder_state_dict'])
                 self.threshold = checkpoint.get('anomaly_threshold', None)
+                self.silence_threshold = checkpoint.get('silence_threshold', 0.01)
             else:
                 self.model.load_state_dict(checkpoint)
                 self.threshold = None
+                self.silence_threshold = 0.01
         except Exception as e:
             print(f"Error loading anomaly model: {e}")
             self.threshold = None
+            self.silence_threshold = 0.01
 
         self.model.eval()
 
-        # Load threshold if not included in model checkpoint
-        if self.threshold is None:
+        # Load thresholds if not included in model checkpoint
+        if self.threshold is None or self.silence_threshold is None:
             try:
                 with open(threshold_path, 'r') as f:
                     threshold_data = json.load(f)
-                self.threshold = threshold_data["threshold"]
+                self.threshold = threshold_data.get("anomaly_threshold", 1.1)
+                self.silence_threshold = threshold_data.get("silence_threshold", 0.01)
             except (FileNotFoundError, json.JSONDecodeError) as e:
-                print(f"Anomaly threshold file error: {e}. Using default value.")
-                self.threshold = 1.1  # default value from anomaly_threshold.json
+                print(f"Anomaly threshold file error: {e}. Using default values.")
+                if self.threshold is None:
+                    self.threshold = 1.1  # default value
+                if self.silence_threshold is None:
+                    self.silence_threshold = 0.3  # default value
+        self.silence_threshold = 4.5
+        self.threshold = 1.8
+        print(f"Initialized with anomaly threshold: {self.threshold}, silence threshold: {self.silence_threshold}")
 
         # Initialize loss function
         self.criterion = EnhancedReconstructionLoss()
 
+    def is_silence(self, mel_spec):
+        """Checks if the spectrogram represents silence based on energy"""
+        energy = torch.mean(torch.abs(mel_spec)).item()
+        print(energy)
+        return energy > self.silence_threshold
+
     def detect_anomaly(self, mel_spec):
         """
-        Detect if the mel spectrogram contains an anomaly
+        Detect if the mel spectrogram is silence or contains an anomaly
 
         Args:
             mel_spec (torch.Tensor): Mel spectrogram with shape [1, 1, n_mels, time_steps]
 
         Returns:
-            (bool, float): Tuple with (is_anomaly, error_value)
+            tuple: (audio_state, error_value)
+                audio_state: AudioState (SILENCE, VALID, or ANOMALY)
+                error_value: reconstruction error value
         """
         with torch.no_grad():
             mel_spec = mel_spec.to(device)
 
-            # Get reconstruction from autoencoder
-            reconstruction, _ = self.model(mel_spec)
+            # First check if it's silence
+            if self.is_silence(mel_spec):
+                return AudioState.SILENCE, 0.0
 
-            # Calculate error using the enhanced loss
+            # If not silence, check for anomaly
+            reconstruction, _ = self.model(mel_spec)
             error = self.criterion(reconstruction, mel_spec)
             error_value = error.item()
 
             # Determine if it's an anomaly
-            is_anomalous = error_value > self.threshold
-
-            return is_anomalous, error_value
+            if error_value > self.threshold:
+                return AudioState.ANOMALY, error_value
+            else:
+                return AudioState.VALID, error_value
 
 
 #############################################
@@ -225,13 +246,13 @@ class PredictionModes(Enum):
 #############################################
 class RealTimeAudioClassifier:
     def __init__(self, model_path, anomaly_model_path, anomaly_threshold_path,
-                 mode: PredictionModes, http_url=None, socket_server_port=None):
+                 mode: PredictionModes ,use_anomaly_detection=True, http_url=None, socket_server_port=None):
         # Initialize breath phase model
         self.model = BreathPhaseTransformerSeq(n_mels=40, num_classes=3, d_model=128, nhead=4,
                                                num_transformer_layers=2).to(device)
         self.model.load_state_dict(torch.load(model_path, map_location=device))
         self.model.eval()
-
+        self.use_anomaly_detection = use_anomaly_detection
         # Initialize anomaly detector
         self.anomaly_detector = AudioAnomalyDetector(anomaly_model_path, anomaly_threshold_path)
 
@@ -252,15 +273,19 @@ class RealTimeAudioClassifier:
         with torch.no_grad():
             mel = self.mel_transformer.get_mel_transform(y)
 
-            # First check for anomalies
-            is_anomaly, error_value = self.anomaly_detector.detect_anomaly(mel)
+            error_value = 0
+            # First check for silence/anomalies
+            if self.use_anomaly_detection:
+                audio_state, error_value = self.anomaly_detector.detect_anomaly(mel)
 
-            if is_anomaly:
-                # Return a special value to indicate anomaly
-                # (using 3 to represent anomaly, beyond normal class range of 0-2)
-                return 3, np.array([0, 0, 0]), error_value
+                if audio_state == AudioState.SILENCE:
+                    # Return silence class (2)
+                    return 2, np.array([0, 0, 1]), error_value
+                elif audio_state == AudioState.ANOMALY:
+                    # Return a special value to indicate anomaly (3)
+                    return 3, np.array([0, 0, 0]), error_value
 
-            # If not an anomaly, proceed with normal classification
+            # If not silence or anomaly, proceed with normal classification
             mel = mel.to(device)
             logits = self.model(mel)  # shape: (1, time_steps, num_classes)
             probabilities = torch.softmax(logits, dim=2)
@@ -275,7 +300,6 @@ class RealTimeAudioClassifier:
 
             # Return class probs along with the predicted class and error value
             return predicted_class, class_probabilities, error_value
-
     def predict(self, y, sr=RATE):
         if self.mode is not PredictionModes.LOCAL:
             try:
@@ -392,7 +416,9 @@ if __name__ == '__main__':
         ANOMALY_MODEL_PATH,
         ANOMALY_THRESHOLD_PATH,
         PredictionModes.LOCAL,
-        socket_server_port=50000
+        socket_server_port=50000,
+        use_anomaly_detection=True
+
     )
 
     while running:
