@@ -35,39 +35,49 @@ class _AudioDisplayToggleState extends State<AudioDisplayToggle> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Navigation bar with visualization options
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              // Dostosuj układ przycisków w zależności od dostępnej szerokości
-              final bool isNarrow = constraints.maxWidth < 400;
-
-              return Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8.0, // przestrzeń pozioma między przyciskami
-                runSpacing: 8.0, // przestrzeń pionowa gdy przyciski przechodzą do nowej linii
-                children: DisplayMode.values.map((mode) {
-                  final isSelected = mode == selectedMode;
-                  return _buildModeButton(mode, isSelected, isNarrow);
-                }).toList(),
-              );
-            },
+        // Card dla przycisków wyboru trybu
+        Card(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          elevation: 3,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Theme.of(context).cardColor,
+                  Theme.of(context).cardColor.withOpacity(0.9),
+                ],
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 16.0),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final bool isNarrow = constraints.maxWidth < 400;
+                  
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: DisplayMode.values.map((mode) {
+                      final isSelected = mode == selectedMode;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: _buildModeButton(mode, isSelected, isNarrow),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            ),
           ),
         ),
 
-        // Display only the selected visualization
+        // Wizualizacja
         Padding(
-          padding: const EdgeInsets.all(8.0),
+          padding: const EdgeInsets.symmetric(vertical: 0),
           child: Container(
-            padding: const EdgeInsets.all(8.0),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: Colors.blue.shade700,
-                width: 2,
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
             child: _buildWidget(selectedMode),
           ),
         ),
@@ -76,21 +86,7 @@ class _AudioDisplayToggleState extends State<AudioDisplayToggle> {
   }
 
   Widget _buildModeButton(DisplayMode mode, bool isSelected, bool isNarrow) {
-    return ElevatedButton.icon(
-      icon: Icon(
-        mode.icon,
-        color: Colors.white,
-        // Mniejsze ikony na wąskich ekranach
-        size: isNarrow ? 18 : 22,
-      ),
-      label: Text(
-        // Na wąskich ekranach używaj krótszych etykiet
-        isNarrow ? _getShortLabel(mode) : mode.label,
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: isNarrow ? 14 : 16,
-        ),
-      ),
+    return ElevatedButton(
       style: ElevatedButton.styleFrom(
         backgroundColor: isSelected
             ? Colors.blue.shade700
@@ -99,20 +95,37 @@ class _AudioDisplayToggleState extends State<AudioDisplayToggle> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
-        // Mniejsze odstępy na wąskich ekranach
         padding: isNarrow
-            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
-            : const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ? const EdgeInsets.symmetric(horizontal: 20, vertical: 8)
+            : const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       ),
       onPressed: () => _selectDisplayMode(mode),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            mode.icon,
+            color: Colors.white,
+            size: isNarrow ? 18 : 20,
+          ),
+          SizedBox(width: 5),
+          Text(
+            isNarrow ? _getShortLabel(mode) : mode.label,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: isNarrow ? 14 : 16,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  // Zwraca krótszą etykietę dla wąskich ekranów
   String _getShortLabel(DisplayMode mode) {
     switch (mode) {
       case DisplayMode.microphone:
-        return 'Mic';
+        return 'Plot';
       case DisplayMode.circular:
         return 'Circle';
     }
