@@ -13,59 +13,50 @@ class MainActivity: FlutterActivity() {
     private lateinit var breathClassifierWrapper: BreathClassifierWrapper
     private var isClassifierInitialized = false
 
-    // Funkcje do logowania, które będą widoczne w terminalu Flutter
     private fun logInfo(message: String) {
-        Log.i(TAG, "BREATHING_APP_INFO: $message")
-        println("BREATHING_APP_INFO: $message")
+        Log.i(TAG, "🔍 [INFO] 🔍: $message")
     }
 
     private fun logError(message: String, e: Exception? = null) {
-        Log.e(TAG, "BREATHING_APP_ERROR: $message")
-        println("BREATHING_APP_ERROR: $message")
+        Log.e(TAG, "❌ [ERROR] ❌: $message")
         e?.let {
-            Log.e(TAG, "BREATHING_APP_ERROR: ${e.message}")
-            println("BREATHING_APP_ERROR: ${e.message}")
-            println("BREATHING_APP_ERROR_STACK: ${e.stackTraceToString()}")
+            Log.e(TAG, "❌ [ERROR] ❌: ${e.message}")
         }
     }
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // Inicjalizacja wrappera klasyfikatora
-        logInfo("🚀 Rozpoczęcie konfiguracji klasyfikatora oddechów")
+        logInfo("Starting breath classifier configuration")
 
-        // Sprawdzenie istnienia pliku modelu w assetach
         try {
             val assetManager = context.assets
             val flutterAssetsPath = "flutter_assets/assets/models"
             val files = assetManager.list(flutterAssetsPath)
-            logInfo("📂 Pliki w $flutterAssetsPath: ${files?.joinToString(", ") ?: "brak plików"}")
+            logInfo("📂 Files in $flutterAssetsPath: ${files?.joinToString(", ") ?: "no files"}")
         } catch (e: Exception) {
-            logError("❌ Błąd podczas listowania assetów", e)
+            logError("Error listing assets", e)
         }
 
         breathClassifierWrapper = BreathClassifierWrapper(applicationContext)
         isClassifierInitialized = breathClassifierWrapper.initialize()
 
         if (!isClassifierInitialized) {
-            logError("❌ Inicjalizacja klasyfikatora nie powiodła się!")
+            logError("Classifier initialization failed!")
         } else {
-            logInfo("✅ Klasyfikator zainicjalizowany pomyślnie")
+            logInfo("✅ Classifier initialized successfully")
         }
 
-        // Konfiguracja kanału metodowego dla komunikacji Flutter-Native
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
-            logInfo("📡 Otrzymano wywołanie metody: ${call.method}")
+            logInfo("📡 Received method call: ${call.method}")
 
             when (call.method) {
                 "classifyAudio" -> {
-                    // Sprawdź czy inicjalizacja się powiodła - używamy metody z wrappera
                     val initialized = breathClassifierWrapper.isInitialized()
-                    logInfo("🔍 Status inicjalizacji klasyfikatora: $initialized")
+                    logInfo("🔍 Classifier initialization status: $initialized")
 
                     if (!initialized) {
-                        logError("❌ Próba klasyfikacji z niezainicjalizowanym klasyfikatorem")
+                        logError("Attempt to classify with uninitialized classifier")
                         result.error("INIT_FAILED", "Classifier not initialized", null)
                         return@setMethodCallHandler
                     }
@@ -73,41 +64,36 @@ class MainActivity: FlutterActivity() {
                     try {
                         val audioData = call.argument<ByteArray>("audioData")
                         if (audioData == null) {
-                            logError("❌ Brak danych audio do klasyfikacji")
+                            logError("No audio data for classification")
                             result.error("INVALID_ARG", "audioData argument is missing or null", null)
                             return@setMethodCallHandler
                         }
 
                         val floatData = convertInt16ByteArrayToFloatArray(audioData)
-                        logInfo("🔊 Klasyfikacja danych audio o rozmiarze: ${floatData.size} floatów")
+                        logInfo("🔊 Classifying audio data of size: ${floatData.size} floats")
                         val classificationResult = breathClassifierWrapper.classifyAudio(floatData)
-                        logInfo("🏷️ Wynik klasyfikacji: $classificationResult")
+                        logInfo("🏷️ Classification result: $classificationResult")
                         result.success(classificationResult)
                     } catch (e: Exception) {
-                        logError("❌ Błąd podczas klasyfikacji", e)
+                        logError("Error during classification", e)
                         result.error("CLASSIFICATION_ERROR", e.message, e.stackTraceToString())
                     }
                 }
                 "isInitialized" -> {
                     val initialized = breathClassifierWrapper.isInitialized()
-                    logInfo("🔍 Zapytanie o status inicjalizacji: $initialized")
+                    logInfo("🔍 Initialization status query: $initialized")
                     result.success(initialized)
                 }
                 else -> {
-                    logError("❓ Nieznana metoda: ${call.method}")
+                    logError("❓ Unknown method: ${call.method}")
                     result.notImplemented()
                 }
             }
         }
 
-        logInfo("✨ Konfiguracja klasyfikatora oddechów zakończona")
+        logInfo("✨ Breath classifier configuration completed")
     }
 
-    /**
-     * Konwertuje tablicę bajtów reprezentującą dźwięk w formacie Int16 na znormalizowaną tablicę Float32
-     * @param byteArray dane wejściowe w formacie surowych bajtów Int16 (Little Endian)
-     * @return FloatArray znormalizowane dane w zakresie [-1.0, 1.0]
-     */
     private fun convertInt16ByteArrayToFloatArray(byteArray: ByteArray): FloatArray {
         if (byteArray.size % 2 != 0) {
             throw IllegalArgumentException("Byte array length must be even for Int16 conversion")
@@ -119,7 +105,7 @@ class MainActivity: FlutterActivity() {
             .asShortBuffer()
 
         for (i in 0 until floatArray.size) {
-            // Normalizacja Int16 do Float32 [-1.0, 1.0]
+            // Normalize Int16 to Float32 [-1.0, 1.0]
             floatArray[i] = buffer.get(i) / 32768.0f
         }
 
@@ -127,11 +113,10 @@ class MainActivity: FlutterActivity() {
     }
 
     override fun onDestroy() {
-        // Zwolnij zasoby klasyfikatora
-        logInfo("🧹 Zwalnianie zasobów klasyfikatora")
+        logInfo("🧹 Releasing classifier resources")
         if (::breathClassifierWrapper.isInitialized) {
             breathClassifierWrapper.close()
-            logInfo("✅ Zasoby klasyfikatora zwolnione")
+            logInfo("✅ Classifier resources released")
         }
         super.onDestroy()
     }

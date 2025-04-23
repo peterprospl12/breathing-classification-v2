@@ -10,7 +10,7 @@ The services in this directory follow specific design patterns to ensure maintai
 ## Facade Pattern
 The specialized services (`audio_file_service.dart`, `audio_recording_service.dart`, `breath_tracking_service.dart`, `socket_service.dart`) operate independently and don't reference each other directly. All cooperation between these services is orchestrated exclusively through `audio_service.dart`.
 
-## Architecture Diagram 
+## Architecture Diagram
  ```
                        +---------------------+
                        |                     |
@@ -26,15 +26,13 @@ The specialized services (`audio_file_service.dart`, `audio_recording_service.da
 |                 |    |                   |    |                   |
 +-----------------+    +--------+----------+    +-------------------+
                                 |
-                    +-----------+-----------+
-                    |                       |
-                    v                       v
-        +---------------------+    +-------------------+
-        |                     |    |                   |
-        | audio_recording     |    | socket_service    |
-        | _service            |    |                   |
-        |                     |    |                   |
-        +---------------------+    +-------------------+
+                                v
+                        +---------------------+
+                        |                     |
+                        |   audio_recording   |
+                        |      _service       |
+                        |                     |
+                        +---------------------+
 ```
 
 ## Benefits
