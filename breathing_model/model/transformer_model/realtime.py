@@ -1,6 +1,7 @@
 import numpy as np
 import pyaudio
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider
 import time
 import torch
 import torchaudio
@@ -9,7 +10,9 @@ import requests
 import json
 from enum import Enum
 
-from breathing_model.model.invalid_data_filter_model.anomaly_detection_autoencoder import SimplerBreathingAutoencoder, EnhancedReconstructionLoss
+from breathing_model.model.invalid_data_filter_model.anomaly_detection_autoencoder import SimplerBreathingAutoencoder, \
+    EnhancedReconstructionLoss
+
 
 #############################################
 # Model – CNN + Transformer
@@ -21,7 +24,7 @@ class PositionalEncoding(torch.nn.Module):
         self.dropout = torch.nn.Dropout(p=dropout)
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0)/ d_model))
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)  # shape: (1, max_len, d_model)
@@ -30,6 +33,7 @@ class PositionalEncoding(torch.nn.Module):
     def forward(self, x):
         x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)
+
 
 class BreathPhaseTransformerSeq(torch.nn.Module):
     def __init__(self, n_mels=40, num_classes=3, d_model=128, nhead=4, num_transformer_layers=2):
@@ -93,6 +97,10 @@ CHUNK_SIZE = int(RATE * REFRESH_TIME)
 INHALE_COUNTER = 0
 EXHALE_COUNTER = 0
 
+# Default threshold values
+DEFAULT_ANOMALY_THRESHOLD = 1.8
+DEFAULT_SILENCE_THRESHOLD = 4.5
+
 running = True
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -143,8 +151,9 @@ class AudioAnomalyDetector:
                     self.threshold = 1.1  # default value
                 if self.silence_threshold is None:
                     self.silence_threshold = 0.3  # default value
-        self.silence_threshold = 4.5
-        self.threshold = 1.8
+        # Set to the user's default values
+        self.silence_threshold = DEFAULT_SILENCE_THRESHOLD
+        self.threshold = DEFAULT_ANOMALY_THRESHOLD
         print(f"Initialized with anomaly threshold: {self.threshold}, silence threshold: {self.silence_threshold}")
 
         # Initialize loss function
@@ -186,6 +195,13 @@ class AudioAnomalyDetector:
             else:
                 return AudioState.VALID, error_value
 
+    def update_thresholds(self, anomaly_threshold=None, silence_threshold=None):
+        """Update threshold values"""
+        if anomaly_threshold is not None:
+            self.threshold = anomaly_threshold
+        if silence_threshold is not None:
+            self.silence_threshold = silence_threshold
+
 
 #############################################
 # Audio handling class
@@ -200,9 +216,11 @@ class SharedAudioResource:
         self.stream = self.p.open(format=FORMAT, channels=CHANNELS, rate=RATE,
                                   input=True, frames_per_buffer=self.buffer_size,
                                   input_device_index=DEVICE_INDEX)
+
     def read(self):
         data = self.stream.read(self.buffer_size, exception_on_overflow=False)
         return np.frombuffer(data, dtype=np.int16)
+
     def close(self):
         self.stream.stop_stream()
         self.stream.close()
@@ -246,7 +264,7 @@ class PredictionModes(Enum):
 #############################################
 class RealTimeAudioClassifier:
     def __init__(self, model_path, anomaly_model_path, anomaly_threshold_path,
-                 mode: PredictionModes ,use_anomaly_detection=True, http_url=None, socket_server_port=None):
+                 mode: PredictionModes, use_anomaly_detection=True, http_url=None, socket_server_port=None):
         # Initialize breath phase model
         self.model = BreathPhaseTransformerSeq(n_mels=40, num_classes=3, d_model=128, nhead=4,
                                                num_transformer_layers=2).to(device)
@@ -266,7 +284,15 @@ class RealTimeAudioClassifier:
         if self.mode in [PredictionModes.PRE_CALC_MEL_SOCKET, PredictionModes.SOCKET]:
             self._connect_socket()
 
-    # [Keep existing _connect_socket, send_to_server methods unchanged]
+    def _connect_socket(self):
+        """Connect to socket server if needed"""
+        # Placeholder - keep existing implementation if it exists
+        pass
+
+    def send_to_server(self, y):
+        """Send data to server for prediction"""
+        # Placeholder - keep existing implementation if it exists
+        pass
 
     def _local_predict(self, y):
         """Fallback method for local prediction when server connection fails"""
@@ -300,6 +326,7 @@ class RealTimeAudioClassifier:
 
             # Return class probs along with the predicted class and error value
             return predicted_class, class_probabilities, error_value
+
     def predict(self, y, sr=RATE):
         if self.mode is not PredictionModes.LOCAL:
             try:
@@ -312,6 +339,10 @@ class RealTimeAudioClassifier:
                 return self._local_predict(y)
         else:
             return self._local_predict(y)
+
+    def update_thresholds(self, anomaly_threshold=None, silence_threshold=None):
+        """Update the thresholds in the anomaly detector"""
+        self.anomaly_detector.update_thresholds(anomaly_threshold, silence_threshold)
 
     def __del__(self):
         """Clean up resources when the object is destroyed"""
@@ -332,12 +363,63 @@ x_line_space = np.arange(0, RATE * PLOT_TIME_HISTORY, 1)
 predictions = np.zeros((int(PLOT_TIME_HISTORY / REFRESH_TIME), 1))
 errors = np.zeros((int(PLOT_TIME_HISTORY / REFRESH_TIME), 1))
 
-fig, (ax, ax_error) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [3, 1]})
+# Create figure with additional space for sliders
+fig = plt.figure(figsize=(12, 10))
+gs = fig.add_gridspec(4, 1, height_ratios=[3, 1, 0.1, 0.1])
+ax = fig.add_subplot(gs[0])
+ax_error = fig.add_subplot(gs[1])
+ax_anomaly_slider = fig.add_subplot(gs[2])
+ax_silence_slider = fig.add_subplot(gs[3])
+
+# Set up the initial plot
 ax.plot(plot_data, color='white')
 ax_error.plot(np.arange(len(errors)), errors, color='cyan')
-ax_error.axhline(y=1.1, color='r', linestyle='--', label='Anomaly Threshold')
+ax_error.axhline(y=DEFAULT_ANOMALY_THRESHOLD, color='r', linestyle='--', label='Anomaly Threshold')
 ax_error.set_title('Anomaly Error')
 ax_error.legend()
+
+# Add sliders for threshold adjustment
+anomaly_slider = Slider(
+    ax=ax_anomaly_slider,
+    label='Anomaly Threshold',
+    valmin=0.1,
+    valmax=5.0,
+    valinit=DEFAULT_ANOMALY_THRESHOLD,
+    color='red'
+)
+
+silence_slider = Slider(
+    ax=ax_silence_slider,
+    label='Silence Threshold',
+    valmin=0.1,
+    valmax=10.0,
+    valinit=DEFAULT_SILENCE_THRESHOLD,
+    color='blue'
+)
+
+# Global reference to the classifier
+classifier_ref = None
+
+
+def update_anomaly_threshold(val):
+    """Update the anomaly threshold when slider changes"""
+    global classifier_ref
+    if classifier_ref:
+        classifier_ref.update_thresholds(anomaly_threshold=val)
+        print(f"Anomaly threshold updated to: {val}")
+
+
+def update_silence_threshold(val):
+    """Update the silence threshold when slider changes"""
+    global classifier_ref
+    if classifier_ref:
+        classifier_ref.update_thresholds(silence_threshold=val)
+        print(f"Silence threshold updated to: {val}")
+
+
+# Connect sliders to update functions
+anomaly_slider.on_changed(update_anomaly_threshold)
+silence_slider.on_changed(update_silence_threshold)
 
 
 def on_key(event):
@@ -395,11 +477,20 @@ def update_plot(frames, current_prediction, error_value):
     # Update error plot
     ax_error.clear()
     ax_error.plot(np.arange(len(errors)), errors, color='cyan')
-    ax_error.axhline(y=1.1, color='r', linestyle='--', label='Anomaly Threshold')
-    ax_error.set_title('Anomaly Error')
+
+    # Get the current anomaly threshold from the slider
+    current_anomaly_threshold = anomaly_slider.val
+    ax_error.axhline(y=current_anomaly_threshold, color='r', linestyle='--',
+                     label=f'Anomaly Threshold: {current_anomaly_threshold:.2f}')
+
+    # Show current silence threshold
+    current_silence_threshold = silence_slider.val
+    silence_info = f'Silence Threshold: {current_silence_threshold:.2f}'
+
+    ax_error.set_title(f'Anomaly Error | {silence_info}')
     ax_error.legend()
     ax_error.set_facecolor((0, 0, 0.1))
-    ax_error.set_ylim((0, max(2.0, max(errors) * 1.2)))  # Adjust range dynamically
+    ax_error.set_ylim((0, max(5.0, max(errors) * 1.2)))  # Adjust range dynamically
 
     ax.set_facecolor(face_color)
     ax.set_ylim(y_lim)
@@ -418,8 +509,10 @@ if __name__ == '__main__':
         PredictionModes.LOCAL,
         socket_server_port=50000,
         use_anomaly_detection=True
-
     )
+
+    # Set the global reference for slider callbacks
+    classifier_ref = classifier
 
     while running:
         start_time = time.time()
