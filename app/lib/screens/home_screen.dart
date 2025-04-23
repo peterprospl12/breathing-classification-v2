@@ -206,6 +206,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 classifier
               ),
 
+
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 0),
                 child: AudioDisplayToggle(
@@ -383,6 +384,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+
   Widget _buildCounterItem(
     BuildContext context,
     String label,
@@ -472,6 +474,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     itemBuilder: (context, index) {
                       final device = audioService.inputDevices[index];
                       final bool isSelected = audioService.selectedDevice?.id == device.id;
+
 
                       return ListTile(
                         title: Text(device.label),
