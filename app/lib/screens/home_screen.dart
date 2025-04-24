@@ -428,73 +428,74 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Select Audio Input Device',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 14),
-                ),
-              ),
-              if (audioService.isLoadingDevices)
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Refresh audio devices',
-                  onPressed: () {
-                    audioService.loadInputDevices();
-                    setState(() {});
-                  },
-                ),
-            ],
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: audioService.inputDevices.isEmpty
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Text(
-                        'No audio devices available.\nTry refreshing or check your microphone connections.',
-                        textAlign: TextAlign.center,
-                      ),
+      builder: (context) => ChangeNotifierProvider.value(
+        value: audioService,
+        child: Consumer<AudioService>(
+          builder: (context, audioService, _) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Select Audio Input Device',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 14),
                     ),
-                  )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: audioService.inputDevices.length,
-                    itemBuilder: (context, index) {
-                      final device = audioService.inputDevices[index];
-                      final bool isSelected = audioService.selectedDevice?.id == device.id;
-
-
-                      return ListTile(
-                        title: Text(device.label),
-                        leading: const Icon(Icons.mic),
-                        selected: isSelected,
-                        trailing: isSelected ? const Icon(Icons.check) : null,
-                        onTap: () {
-                          audioService.selectDevice(device);
-                          Navigator.pop(context);
-                        },
-                      );
-                    },
                   ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-          ],
+                  if (audioService.isLoadingDevices)
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      tooltip: 'Refresh audio devices',
+                      onPressed: () => audioService.loadInputDevices(),
+                    ),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: audioService.inputDevices.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text(
+                            'No audio devices available.\nTry refreshing or check your microphone connections.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: audioService.inputDevices.length,
+                        itemBuilder: (context, index) {
+                          final device = audioService.inputDevices[index];
+                          final bool isSelected = audioService.selectedDevice?.id == device.id;
+
+                          return ListTile(
+                            title: Text(device.label),
+                            leading: const Icon(Icons.mic),
+                            selected: isSelected,
+                            trailing: isSelected ? const Icon(Icons.check) : null,
+                            onTap: () {
+                              audioService.selectDevice(device);
+                              Navigator.pop(context);
+                            },
+                          );
+                        },
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
