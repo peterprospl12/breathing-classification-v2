@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 enum DisplayMode {
-  microphone
+  microphone,
+  circular
 }
 
 extension DisplayModeExtension on DisplayMode {
@@ -9,6 +10,8 @@ extension DisplayModeExtension on DisplayMode {
     switch (this) {
       case DisplayMode.microphone:
         return 'Microphone Data';
+      case DisplayMode.circular:
+        return 'Circular Data';
     }
   }
 
@@ -16,6 +19,8 @@ extension DisplayModeExtension on DisplayMode {
     switch (this) {
       case DisplayMode.microphone:
         return Icons.mic;
+      case DisplayMode.circular:
+        return Icons.circle;
     }
   }
 }

@@ -72,12 +72,33 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
   Widget build(BuildContext context) {
     return Consumer<AudioService>(
       builder: (context, audioService, child) {
-        return Column(
-          children: [
-            _buildControlPanel(audioService),
-            const SizedBox(height: 8),
-            _buildVisualization(audioService),
-          ],
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          elevation: 3,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Theme.of(context).cardColor,
+                  Theme.of(context).cardColor.withValues(alpha: 0.9),
+                ],
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  _buildControlPanel(audioService),
+                  const SizedBox(height: 8),
+                  _buildVisualization(audioService),
+                ],
+              ),
+            ),
+          ),
         );
       },
     );

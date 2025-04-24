@@ -16,7 +16,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   BreathPhase _currentPhase = BreathPhase.silence;
-  bool _showInfo = false;
   StreamSubscription<BreathPhase>? _breathPhaseSubscription;
   final List<BreathPhase> _breathPhases = [];
   StreamSubscription<List<int>>? _audioSubscription;
@@ -73,14 +72,52 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     return Scaffold(
       appBar: AppBar(
-        title: const Column(
+        elevation: 4,
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Theme.of(context).primaryColor.withAlpha(90), Theme.of(context).primaryColor.withBlue(150)],
+            ),
+          ),
+        ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'Breathing Monitor',
-              style: TextStyle(fontSize: 18),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(20),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.air, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Breathing Monitor',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                Text(
+                  'Real-time analysis',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w300,
+                    color: Colors.white.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
+        centerTitle: false,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(40.0),
           child: Padding(
@@ -104,34 +141,34 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                   ),
                 ),
-                // Device selector
-                if (audioService.selectedDevice != null)
-                  Expanded(
-                    child: InkWell(
-                      onTap: _showDeviceSelectionDialog,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 4.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              audioService.selectedDevice!.label,
-                              style: const TextStyle(fontSize: 11),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
+                // Device selector - always wrap in Expanded
+                Expanded(
+                  child: audioService.selectedDevice != null
+                      ? InkWell(
+                          onTap: _showDeviceSelectionDialog,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 4.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  audioService.selectedDevice!.label,
+                                  style: const TextStyle(fontSize: 11),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                                const Text(
+                                  'Tap to change',
+                                  style: TextStyle(fontSize: 9, color: Colors.grey),
+                                ),
+                              ],
                             ),
-                            const Text(
-                              'Tap to change',
-                              style: TextStyle(fontSize: 9, color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                const SizedBox(width: 8),
-                // Loading indicator
+                          ),
+                        )
+                      : const SizedBox(), // Empty SizedBox when no device selected
+                ),
+                // Loading indicator - fixed size
                 if (audioService.isLoadingDevices)
                   const Padding(
                     padding: EdgeInsets.only(right: 16.0),
@@ -151,8 +188,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         actions: [
           // Info button
           IconButton(
-            icon: Icon(_showInfo ? Icons.info_outline : Icons.info),
-            onPressed: () => setState(() => _showInfo = !_showInfo),
+            icon: const Icon(Icons.info),
+            tooltip: 'Show information',
+            onPressed: () => _showInfoDialog(),
           ),
         ],
       ),
@@ -168,19 +206,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 classifier
               ),
 
+
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                padding: const EdgeInsets.symmetric(horizontal: 0),
                 child: AudioDisplayToggle(
                   audioData: _audioData.map((e) => e.toDouble()).toList(),
                   breathPhases: _breathPhases,
                   refreshTime: 0.3,
                 ),
               ),
-
-              if (_showInfo)
-                _buildInfoPanel(),
-
-              _buildLegend(),
             ],
           ),
         ),
@@ -198,102 +232,158 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final label = BreathClassifier.getLabelForPhase(phase);
 
     return Card(
-      margin: const EdgeInsets.all(16),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            // Top section: Breath Counter
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildCounterItem(
-                  context,
-                  'INHALE',
-                  audioService.inhaleCount,
-                  AppTheme.inhaleColor
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Theme.of(context).cardColor,
+              Theme.of(context).cardColor.withValues(alpha: 0.9),
+            ],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              // Top section: Breath Counter with improved styling
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  color: Theme.of(context).cardColor.withValues(alpha: 0.5),
                 ),
-                Container(
-                  height: 50,
-                  width: 1,
-                  color: Colors.grey.withValues(alpha: 0.3)
-                ),
-                _buildCounterItem(
-                  context,
-                  'EXHALE',
-                  audioService.exhaleCount,
-                  AppTheme.exhaleColor
-                ),
-              ],
-            ),
-
-            // Reset button
-            TextButton.icon(
-              onPressed: audioService.resetCounters,
-              icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('RESET'),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.grey,
-                padding: EdgeInsets.zero,
-              ),
-            ),
-
-            const Divider(height: 24),
-
-            // Bottom section: Current Status
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                AnimatedBuilder(
-                  animation: _animationController,
-                  builder: (context, child) {
-                    return Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: color..withValues(alpha: 0.2 + 0.6 * _animationController.value),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Container(
-                          width: 16,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            color: color,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    Text(
-                      'Current Status',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey,
-                      ),
+                    _buildCounterItem(
+                      context,
+                      'INHALE',
+                      audioService.inhaleCount,
+                      AppTheme.inhaleColor
                     ),
-                    Text(
-                      label,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: color,
-                      ),
+                    Container(
+                      height: 50,
+                      width: 1,
+                      color: Colors.grey.withAlpha(50)
+                    ),
+                    _buildCounterItem(
+                      context,
+                      'EXHALE',
+                      audioService.exhaleCount,
+                      AppTheme.exhaleColor
                     ),
                   ],
                 ),
-              ],
-            ),
-          ],
+              ),
+
+              // Reset button with improved styling
+              Container(
+                alignment: Alignment.center,
+                margin: const EdgeInsets.only(top: 8),
+                child: TextButton.icon(
+                  onPressed: audioService.resetCounters,
+                  icon: const Icon(Icons.refresh, size: 12),
+                  label: const Text(
+                    'RESET COUNTERS',
+                    style: TextStyle(fontWeight: FontWeight.w500, fontSize: 10)
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    backgroundColor: Colors.grey.withValues(alpha: 0.1),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+
+              const Divider(height: 24, thickness: 1),
+
+              // Bottom section: Current Status with improved styling
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  color: color.withValues(alpha: 0.05),
+                  border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Enhanced pulsing indicator
+                    AnimatedBuilder(
+                      animation: _animationController,
+                      builder: (context, child) {
+                        return Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: color.withAlpha((0.1 + 0.3 * _animationController.value).toInt()),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: color.withValues(alpha: 0.3 * _animationController.value),
+                                blurRadius: 6,
+                                spreadRadius: 1.5 * _animationController.value,
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 16),
+                    // Status text with improved styling
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'CURRENT STATUS',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.5,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          label,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: color,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+
 
   Widget _buildCounterItem(
     BuildContext context,
@@ -307,17 +397,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           Text(
             label,
             style: TextStyle(
-              color: Colors.grey[400],
-              fontSize: 12,
+              color: Colors.grey[500],
+              fontSize: 10,
               fontWeight: FontWeight.bold,
+              letterSpacing: 0.8,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            count.toString(),
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: color,
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              count.toString(),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
             ),
           ),
         ],
@@ -334,8 +432,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         builder: (context, setState) => AlertDialog(
           title: Row(
             children: [
-              const Text('Select Audio Input Device'),
-              const Spacer(),
+              const Expanded(
+                child: Text(
+                  'Select Audio Input Device',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 14),
+                ),
+              ),
               if (audioService.isLoadingDevices)
                 const SizedBox(
                   width: 20,
@@ -372,6 +475,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       final device = audioService.inputDevices[index];
                       final bool isSelected = audioService.selectedDevice?.id == device.id;
 
+
                       return ListTile(
                         title: Text(device.label),
                         leading: const Icon(Icons.mic),
@@ -396,86 +500,146 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildInfoPanel() {
-    return const Card(
-      margin: EdgeInsets.all(16),
-      child: Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'About Breathing Monitor',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+  void _showInfoDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'App Information',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'This app monitors your breathing patterns in real-time. '
-              'It detects inhales, exhales, and silence periods and '
-              'visualizes them with different colors.',
-            ),
-            SizedBox(height: 12),
-            Wrap(
-              children: [
-                Icon(Icons.mic, size: 18),
-                SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    'Tap the mic button to toggle monitoring',
-                    style: TextStyle(fontSize: 14),
-                    softWrap: true,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 8),
-            Wrap(
-              children: [
-                Icon(Icons.refresh, size: 18),
-                SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    'Reset counters with the refresh button',
-                    style: TextStyle(fontSize: 14),
-                    softWrap: true,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _buildLegend() {
-    return Card(
-      margin: const EdgeInsets.all(16),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Legend',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
+              // About section
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'About Breathing Monitor',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'This app monitors your breathing patterns in real-time. '
+                      'It detects inhales, exhales, and silence periods and '
+                      'visualizes them with different colors.',
+                    ),
+                    SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.mic, size: 18),
+                        SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Tap the mic button to toggle monitoring',
+                            style: TextStyle(fontSize: 14),
+                            softWrap: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.refresh, size: 18),
+                        SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Reset counters with the refresh button',
+                            style: TextStyle(fontSize: 14),
+                            softWrap: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildLegendItem(AppTheme.inhaleColor, 'Inhale'),
-                _buildLegendItem(AppTheme.exhaleColor, 'Exhale'),
-                _buildLegendItem(AppTheme.silenceColor, 'Silence'),
-              ],
-            ),
-          ],
+
+              const Divider(height: 1),
+
+              // Legend section
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Legend',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildLegendItem(AppTheme.inhaleColor, 'Inhale'),
+                        _buildLegendItem(AppTheme.exhaleColor, 'Exhale'),
+                        _buildLegendItem(AppTheme.silenceColor, 'Silence'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Theme.of(context).primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text('CLOSE'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -491,12 +655,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             color: color,
             shape: BoxShape.circle,
             border: Border.all(
-              color: Colors.white..withValues(alpha: 0.3),
+              color: Colors.white.withAlpha(30),
               width: 2,
             ),
             boxShadow: [
               BoxShadow(
-                color: color..withValues(alpha: 0.5),
+                color: color.withAlpha(128),
                 blurRadius: 8,
                 spreadRadius: 1,
               ),
