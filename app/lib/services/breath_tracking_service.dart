@@ -28,7 +28,14 @@ class BreathTrackingService {
       _logger.fine('BreathTrackingService initialized with maxHistorySeconds=$maxHistorySeconds, refreshTime=$refreshTime');
     }
 
+  BreathPhase _previousPhase = BreathPhase.silence;
+
   void addBreathPhase(BreathPhase phase) {
+    BreathPhase tmp = phase;
+    if (phase != _previousPhase) {
+      phase = _previousPhase;
+    }
+    
     BreathPhase lastPhase = _breathPhases.isNotEmpty ? _breathPhases.last : BreathPhase.silence;
     _breathPhases.add(phase);
     if (_breathPhases.length > maxPhaseHistory) {
@@ -44,6 +51,8 @@ class BreathTrackingService {
     }
 
     _breathPhasesController.add(phase);
+
+    _previousPhase = tmp;
   }
 
   void resetCounters() {
