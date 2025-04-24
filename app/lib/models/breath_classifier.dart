@@ -111,8 +111,8 @@ class BreathClassifier {
   static Color getColorForPhase(BreathPhase phase) {
     switch (phase) {
       case BreathPhase.inhale: return Colors.red;
-      case BreathPhase.exhale: return Colors.lime;
-      case BreathPhase.silence: return Colors.blueAccent;
+      case BreathPhase.exhale: return Colors.green;
+      case BreathPhase.silence: return Colors.blue;
     }
   }
 
