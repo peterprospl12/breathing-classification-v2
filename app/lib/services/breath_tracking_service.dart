@@ -6,7 +6,7 @@ import 'package:breathing_app/utils/logger.dart';
 class BreathTrackingService {
   final Logger _logger = LoggerService.getLogger('BreathTrackingService');
 
-  final List<BreathPhase> _breathPhases = [];
+  final List<BreathPhase> _breathPhases = [BreathPhase.inhale, BreathPhase.silence];
   final _breathPhasesController = StreamController<BreathPhase>.broadcast();
   Stream<BreathPhase> get breathPhasesStream => _breathPhasesController.stream;
 
@@ -17,7 +17,8 @@ class BreathTrackingService {
 
   final int _maxHistorySeconds;
   final double _refreshTime;
-  int get maxPhaseHistory => (_maxHistorySeconds / _refreshTime).round();
+  int maxPhaseHistory = 3;
+
 
   BreathTrackingService({
     int maxHistorySeconds = 5,
@@ -28,19 +29,50 @@ class BreathTrackingService {
       _logger.fine('BreathTrackingService initialized with maxHistorySeconds=$maxHistorySeconds, refreshTime=$refreshTime');
     }
 
-  BreathPhase _previousPhase = BreathPhase.silence;
-
   void addBreathPhase(BreathPhase phase) {
-    BreathPhase tmp = phase;
-    if (phase != _previousPhase) {
-      phase = _previousPhase;
-    }
-    
     BreathPhase lastPhase = _breathPhases.isNotEmpty ? _breathPhases.last : BreathPhase.silence;
+
     _breathPhases.add(phase);
     if (_breathPhases.length > maxPhaseHistory) {
       _breathPhases.removeAt(0);
     }
+
+    // Determine most frequent phase in history
+    Map<BreathPhase, int> phaseCounts = {};
+    for (var p in _breathPhases) {
+      phaseCounts[p] = (phaseCounts[p] ?? 0) + 1;
+    }
+
+    int maxCount = 0;
+    BreathPhase mostFrequentPhase = phase;
+
+    phaseCounts.forEach((p, count) {
+      if (count > maxCount) {
+        maxCount = count;
+        mostFrequentPhase = p;
+      }
+    });
+
+    // Check if there's a tie
+    bool equalDistribution = true;
+    int firstCount = phaseCounts.values.first;
+    for (int count in phaseCounts.values) {
+      if (count != firstCount) {
+        equalDistribution = false;
+        break;
+      }
+    }
+
+    // If equal distribution (33% chance for each), use the last phase
+    if (equalDistribution && phaseCounts.length > 1) {
+      mostFrequentPhase = _breathPhases.last;
+      _logger.fine('Equal distribution detected, using last phase: $mostFrequentPhase');
+    } else {
+      _logger.fine('Most frequent phase detected: $mostFrequentPhase');
+    }
+
+    // Assign the determined phase
+    phase = mostFrequentPhase;
 
     if (phase == BreathPhase.inhale && lastPhase != BreathPhase.inhale) {
       _inhaleCount++;
@@ -51,8 +83,6 @@ class BreathTrackingService {
     }
 
     _breathPhasesController.add(phase);
-
-    _previousPhase = tmp;
   }
 
   void resetCounters() {
