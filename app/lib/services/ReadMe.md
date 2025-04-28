@@ -21,18 +21,18 @@ The specialized services (`audio_file_service.dart`, `audio_recording_service.da
                                  v
 +-----------------+    +-------------------+    +-------------------+
 |                 |    |                   |    |                   |
-| audio_file      |<---+   audio_service   +--->| breath_tracking   |
-| _service        |    |    (Mediator)     |    | _service          |
+|  audio_file     |<---+   audio_service   +--->| breath_tracking   |
+|    service      |    |    (Mediator)     |    |     service       |
 |                 |    |                   |    |                   |
 +-----------------+    +--------+----------+    +-------------------+
-                                |
-                                v
-                        +---------------------+
-                        |                     |
-                        |   audio_recording   |
-                        |      _service       |
-                        |                     |
-                        +---------------------+
+                                 |
+                                 v
+                       +---------------------+
+                       |                     |
+                       |   audio_recording   |
+                       |       service       |
+                       |                     |
+                       +---------------------+
 ```
 
 ## Benefits
