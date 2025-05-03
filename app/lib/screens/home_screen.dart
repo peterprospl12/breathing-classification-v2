@@ -21,7 +21,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   StreamSubscription<BreathPhase>? _breathPhaseSubscription;
   final List<BreathPhase> _breathPhases = [];
   StreamSubscription<List<int>>? _audioSubscription;
-  List<int> _audioData = [];
   DisplayMode _selectedMode = DisplayMode.circular;
 
   static const int _maxBreathPhasesToStore = 20;
@@ -55,7 +54,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     _audioSubscription = audioService.subscribeToAudioStream((audioData) {
       setState(() {
-        _audioData = audioData;
       });
     });
   }
@@ -378,7 +376,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: (audioService.isRecording ? Colors.red : Colors.green).withOpacity(0.3),
+            color: (audioService.isRecording ? Colors.red : Colors.green).withValues(alpha: 0.3),
             spreadRadius: 1,
             blurRadius: 6,
             offset: const Offset(0, 2),
@@ -798,8 +796,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       case DisplayMode.microphone:
         return const MicrophoneVisualizationWidget();
       case DisplayMode.circular:
-      default:
-        return const CircularVisualizationWidget();
+      return const CircularVisualizationWidget();
     }
   }
 }

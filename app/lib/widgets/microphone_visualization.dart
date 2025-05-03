@@ -32,7 +32,6 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
     );
     _animationController.repeat();
 
-    // Subscribe to audio and breath phase streams after the first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _subscribeToStreams();
     });
@@ -51,7 +50,6 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
     // Subscribe to breath phases stream
     _breathPhaseSubscription = audioService.breathPhasesStream.listen((phase) {
       setState(() {
-        // Add the new phase and maintain fixed size
         _breathPhases.add(phase);
         if (_breathPhases.length > _maxBreathPhasesToStore) {
           _breathPhases.removeAt(0);
@@ -100,7 +98,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
 
   Widget _buildVisualization(AudioService audioService) {
     return Container(
-      height: 250, // Zmieniono z 150 na 250 pikesli
+      height: 250,
       width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.black,
@@ -142,15 +140,12 @@ class MicrophoneWaveformPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Draw background
     final backgroundPaint = Paint()
       ..color = Colors.black;
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), backgroundPaint);
 
-    // Draw breath phase sections
     _drawBreathPhases(canvas, size);
 
-    // Draw grid lines
     _drawGridLines(canvas, size);
 
     if (audioBuffer.isEmpty) {
@@ -168,12 +163,11 @@ class MicrophoneWaveformPainter extends CustomPainter {
     final displayPoints = size.width.toInt();
     final step = math.max(1, audioBuffer.length ~/ displayPoints);
 
-    const maxAmplitude = 1024; // Reduced from 16384 to increase visibility
-    final heightScale = size.height / 1 / maxAmplitude; // Increased from /6 to /3 for better visibility
+    const maxAmplitude = 1024;
+    final heightScale = size.height / 1 / maxAmplitude;
 
     final yCenter = size.height / 2;
 
-    // Initialize smoothed values if needed
     if (_smoothedValues.length != displayPoints) {
       _smoothedValues = List<double>.filled(displayPoints, yCenter);
     }
@@ -201,7 +195,6 @@ class MicrophoneWaveformPainter extends CustomPainter {
                                               targetY * _smoothingFactor;
         }
       } else {
-        // When not recording, just draw the current buffer without shifting
         for (int i = 0; i < displayPoints - 1; i++) {
           path.lineTo(i.toDouble(), _smoothedValues[i]);
         }
@@ -285,7 +278,7 @@ class MicrophoneWaveformPainter extends CustomPainter {
     // Draw a flat line with small sine waves to indicate idle state
     path.moveTo(0, centerY);
     for (double x = 0; x < size.width; x += 1) {
-      final y = centerY + math.sin(x / 8) * 3; // More gentle waves
+      final y = centerY + math.sin(x / 8) * 3;
       path.lineTo(x, y);
     }
 
@@ -294,7 +287,6 @@ class MicrophoneWaveformPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(MicrophoneWaveformPainter oldDelegate) {
-    // Only repaint if recording state changed or buffer was updated
     return oldDelegate.isRecording != isRecording ||
            (audioBuffer.isNotEmpty && oldDelegate.audioBuffer != audioBuffer) ||
            oldDelegate.breathPhases != breathPhases;
