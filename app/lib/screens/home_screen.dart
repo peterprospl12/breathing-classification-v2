@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../models/breath_classifier.dart';
 import '../services/audio_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/audio_display_toggle.dart';
+import '../models/display_mode.dart';
+import '../widgets/microphone_visualization.dart';
+import '../widgets/circular_audio_visualization.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   final List<BreathPhase> _breathPhases = [];
   StreamSubscription<List<int>>? _audioSubscription;
   List<int> _audioData = [];
+  DisplayMode _selectedMode = DisplayMode.circular;
 
   static const int _maxBreathPhasesToStore = 20;
 
@@ -110,7 +113,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w300,
-                    color: Colors.white.withValues(alpha: 0.8),
+                    color: Colors.white.withAlpha(200),
                   ),
                 ),
               ],
@@ -124,7 +127,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             padding: const EdgeInsets.only(bottom: 8.0),
             child: Row(
               children: [
-                // Microphone icon
                 Material(
                   color: Colors.transparent,
                   child: InkWell(
@@ -141,7 +143,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                   ),
                 ),
-                // Device selector - always wrap in Expanded
                 Expanded(
                   child: audioService.selectedDevice != null
                       ? InkWell(
@@ -166,9 +167,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             ),
                           ),
                         )
-                      : const SizedBox(), // Empty SizedBox when no device selected
+                      : const SizedBox(),
                 ),
-                // Loading indicator - fixed size
                 if (audioService.isLoadingDevices)
                   const Padding(
                     padding: EdgeInsets.only(right: 16.0),
@@ -186,7 +186,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ),
         actions: [
-          // Info button
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Display Options',
+            onPressed: () => _showAdvancedOptionsDialog(context),
+          ),
           IconButton(
             icon: const Icon(Icons.info),
             tooltip: 'Show information',
@@ -203,17 +207,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 context,
                 audioService,
                 _currentPhase,
-                classifier
+                classifier,
+                _animationController,
+                _selectedMode
               ),
-
-
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 0),
-                child: AudioDisplayToggle(
-                  audioData: _audioData.map((e) => e.toDouble()).toList(),
-                  breathPhases: _breathPhases,
-                  refreshTime: 0.3,
+                padding: const EdgeInsets.symmetric(vertical: 0),
+                child: Container(
+                  child: _buildWidget(_selectedMode),
                 ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
+                child: _buildControlPanel(audioService),
               ),
             ],
           ),
@@ -226,7 +232,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     BuildContext context,
     AudioService audioService,
     BreathPhase phase,
-    BreathClassifier classifier
+    BreathClassifier classifier,
+    AnimationController animationController,
+    DisplayMode selectedMode
   ) {
     final color = BreathClassifier.getColorForPhase(phase);
     final label = BreathClassifier.getLabelForPhase(phase);
@@ -243,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             end: Alignment.bottomRight,
             colors: [
               Theme.of(context).cardColor,
-              Theme.of(context).cardColor.withValues(alpha: 0.9),
+              Theme.of(context).cardColor.withAlpha(230),
             ],
           ),
         ),
@@ -251,15 +259,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              // Top section: Breath Counter with improved styling
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
-                  color: Theme.of(context).cardColor.withValues(alpha: 0.5),
+                  color: Theme.of(context).cardColor.withAlpha(128),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     _buildCounterItem(
                       context,
@@ -267,11 +275,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       audioService.inhaleCount,
                       AppTheme.inhaleColor
                     ),
-                    Container(
-                      height: 50,
-                      width: 1,
-                      color: Colors.grey.withAlpha(50)
-                    ),
+                    _buildVerticalResetButton(audioService.resetCounters),
                     _buildCounterItem(
                       context,
                       'EXHALE',
@@ -281,102 +285,77 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ],
                 ),
               ),
-
-              // Reset button with improved styling
-              Container(
-                alignment: Alignment.center,
-                margin: const EdgeInsets.only(top: 8),
-                child: TextButton.icon(
-                  onPressed: audioService.resetCounters,
-                  icon: const Icon(Icons.refresh, size: 12),
-                  label: const Text(
-                    'RESET COUNTERS',
-                    style: TextStyle(fontWeight: FontWeight.w500, fontSize: 10)
+              if (selectedMode == DisplayMode.microphone) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: color.withAlpha(13),
+                    border: Border.all(color: color.withAlpha(51), width: 1),
                   ),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.grey,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    backgroundColor: Colors.grey.withValues(alpha: 0.1),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                ),
-              ),
-
-              const Divider(height: 24, thickness: 1),
-
-              // Bottom section: Current Status with improved styling
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  color: color.withValues(alpha: 0.05),
-                  border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Enhanced pulsing indicator
-                    AnimatedBuilder(
-                      animation: _animationController,
-                      builder: (context, child) {
-                        return Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: color.withAlpha((0.1 + 0.3 * _animationController.value).toInt()),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: color.withValues(alpha: 0.3 * _animationController.value),
-                                blurRadius: 6,
-                                spreadRadius: 1.5 * _animationController.value,
-                              ),
-                            ],
-                          ),
-                          child: Center(
-                            child: Container(
-                              width: 16,
-                              height: 16,
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      AnimatedBuilder(
+                        animation: animationController,
+                        builder: (context, child) {
+                          return Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: color.withAlpha((26 + 77 * animationController.value).toInt()),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: color.withAlpha((77 * animationController.value).toInt()),
+                                  blurRadius: 4,
+                                  spreadRadius: 1 * animationController.value,
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: Container(
+                                width: 12,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                ),
                               ),
                             ),
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'STATUS',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.5,
+                              color: Colors.grey[600],
+                            ),
                           ),
-                        );
-                      },
-                    ),
-                    const SizedBox(width: 16),
-                    // Status text with improved styling
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'CURRENT STATUS',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 0.5,
-                            color: Colors.grey[600],
+                          const SizedBox(height: 1),
+                          Text(
+                            label,
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: color,
+                              letterSpacing: 0.5,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          label,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: color,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -384,6 +363,90 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildControlPanel(AudioService audioService) {
+    const double buttonWidth = 120;
+    const double buttonHeight = 40;
+    const double iconSize = 22;
+    const double fontSize = 16;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: buttonWidth,
+      height: buttonHeight,
+      decoration: BoxDecoration(
+        color: audioService.isRecording ? Colors.red.shade600 : Colors.green.shade600,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: (audioService.isRecording ? Colors.red : Colors.green).withOpacity(0.3),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () {
+            if (audioService.isRecording) {
+              audioService.stopRecording();
+            } else {
+              audioService.startRecording();
+            }
+          },
+          child: Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  audioService.isRecording ? Icons.stop_rounded : Icons.mic,
+                  color: Colors.white,
+                  size: iconSize,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  audioService.isRecording ? 'Stop' : 'Start',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: fontSize,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVerticalResetButton(VoidCallback onPressed) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.refresh, size: 18, color: Colors.grey[600]),
+            const SizedBox(height: 4),
+            Text(
+              'RESET',
+              style: TextStyle(
+                fontSize: 8,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey[600],
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildCounterItem(
     BuildContext context,
@@ -407,7 +470,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           Container(
             padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
+              color: color.withAlpha(26),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
@@ -542,8 +605,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ],
                 ),
               ),
-
-              // About section
               const Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Column(
@@ -595,10 +656,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ],
                 ),
               ),
-
               const Divider(height: 1),
-
-              // Legend section
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -623,7 +681,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ],
                 ),
               ),
-
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: TextButton(
@@ -679,5 +736,70 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ),
       ],
     );
+  }
+
+  Future<void> _showAdvancedOptionsDialog(BuildContext context) async {
+    DisplayMode? tempSelectedMode = _selectedMode;
+    final result = await showDialog<DisplayMode>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Display Options'),
+          content: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setStateDialog) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: DisplayMode.values.map((mode) {
+                  return RadioListTile<DisplayMode>(
+                    title: Text(mode.label),
+                    value: mode,
+                    groupValue: tempSelectedMode,
+                    onChanged: (DisplayMode? value) {
+                      if (value != null) {
+                        setStateDialog(() {
+                          tempSelectedMode = value;
+                        });
+                      }
+                    },
+                    secondary: Icon(mode.icon),
+                    activeColor: Colors.blue.shade700,
+                  );
+                }).toList(),
+              );
+            },
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text('Apply'),
+              onPressed: () {
+                Navigator.of(context).pop(tempSelectedMode);
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null && result != _selectedMode) {
+      setState(() {
+        _selectedMode = result;
+      });
+    }
+  }
+
+  Widget _buildWidget(DisplayMode mode) {
+    switch (mode) {
+      case DisplayMode.microphone:
+        return const MicrophoneVisualizationWidget();
+      case DisplayMode.circular:
+      default:
+        return const CircularVisualizationWidget();
+    }
   }
 }

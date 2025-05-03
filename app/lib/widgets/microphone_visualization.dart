@@ -90,13 +90,7 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
             ),
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  _buildControlPanel(audioService),
-                  const SizedBox(height: 8),
-                  _buildVisualization(audioService),
-                ],
-              ),
+              child: _buildVisualization(audioService),
             ),
           ),
         );
@@ -104,68 +98,9 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
     );
   }
 
-  Widget _buildControlPanel(AudioService audioService) {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          width: 120,
-          height: 40,
-          decoration: BoxDecoration(
-            color: audioService.isRecording ? Colors.red.shade600 : Colors.green.shade600,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: (audioService.isRecording ? Colors.red : Colors.green).withValues(alpha:0.3),
-                spreadRadius: 1,
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: () {
-                if (audioService.isRecording) {
-                  audioService.stopRecording();
-                } else {
-                  audioService.startRecording();
-                }
-              },
-              child: Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      audioService.isRecording ? Icons.stop_rounded : Icons.mic,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      audioService.isRecording ? 'Stop' : 'Start',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildVisualization(AudioService audioService) {
     return Container(
-      height: 150, // Zmieniono z 200 na 150 pikesli
+      height: 250, // Zmieniono z 150 na 250 pikesli
       width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.black,

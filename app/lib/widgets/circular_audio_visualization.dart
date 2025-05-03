@@ -24,10 +24,10 @@ class _CircularVisualizationWidgetState extends State<CircularVisualizationWidge
   // Smoothing factor for animations
   static const double _smoothingFactor = 0.2;
 
-  // Constants for multi-layered circle
+  // Constants for multi-layered circle - ZWIĘKSZONO ROZMIARY
   static const int _maxLayers = 4;
-  static const double _minCircleSize = 40.0; // Increased from original size
-  static const double _maxCircleSize = 80.0;
+  static const double _minCircleSize = 60.0; // Zwiększono z 40.0
+  static const double _maxCircleSize = 150.0; // Zwiększono z 80.0
 
   @override
   void initState() {
@@ -104,76 +104,11 @@ class _CircularVisualizationWidgetState extends State<CircularVisualizationWidge
             ),
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  _buildControlPanel(audioService),
-                  const SizedBox(height: 16),
-                  _buildCircularVisualization(audioService),
-                ],
-              ),
+              child: _buildCircularVisualization(audioService),
             ),
           ),
         );
       },
-    );
-  }
-
-  Widget _buildControlPanel(AudioService audioService) {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          width: 120,
-          height: 40,
-          decoration: BoxDecoration(
-            color: audioService.isRecording ? Colors.red.shade600 : Colors.green.shade600,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: (audioService.isRecording ? Colors.red : Colors.green).withValues(alpha: 0.3),
-                spreadRadius: 1,
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: () {
-                if (audioService.isRecording) {
-                  audioService.stopRecording();
-                } else {
-                  audioService.startRecording();
-                }
-              },
-              child: Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      audioService.isRecording ? Icons.stop_rounded : Icons.mic,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      audioService.isRecording ? 'Stop' : 'Start',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -195,10 +130,11 @@ class _CircularVisualizationWidgetState extends State<CircularVisualizationWidge
     final double baseCircleSize = _minCircleSize + (_maxCircleSize - _minCircleSize) * amplitudePercent;
 
     return Container(
-      height: 150,
+      height: 250, // Changed from 150 to 250 pixels
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.black,
+        // ZMIENIONO TŁO NA PRZEZROCZYSTE
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(8),
       ),
       child: ClipRRect(
