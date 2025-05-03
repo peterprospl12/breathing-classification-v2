@@ -332,12 +332,13 @@ class BreathPhaseTransformerSeq(nn.Module):
 # 4. Training function
 #########################################
 
-# Zmodyfikowana funkcja train_model, aby akceptowała scheduler
+# Zmodyfikowana funkcja train_model, aby akceptowała scheduler i early stopping
 
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=25, scheduler=None):
+def train_model(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=25, scheduler=None, early_stopping_patience=10):
     model.to(device)
     best_val_loss = float('inf')
+    epochs_no_improve = 0  # Licznik epok bez poprawy
 
     for epoch in range(num_epochs):
         model.train()
@@ -396,11 +397,20 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device, n
             # current_lr = optimizer.param_groups[0]['lr']
             # print(f"Current learning rate: {current_lr:.6f}")
 
+        # Early Stopping Check
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(),
                        "best_breath_seq_transformer_model_CURR_BEST.pth")
             print("Saved the best model.")
+            epochs_no_improve = 0  # Reset licznika
+        else:
+            epochs_no_improve += 1  # Inkrementuj licznik
+            print(
+                f"Validation loss did not improve for {epochs_no_improve} epoch(s).")
+            if epochs_no_improve >= early_stopping_patience:
+                print(f"Early stopping triggered after {epoch + 1} epochs.")
+                break  # Przerwij pętlę treningową
 
     print("Training completed.")
 
@@ -445,6 +455,7 @@ if __name__ == '__main__':
     batch_size = 4   # Dostosuj w zależności od zasobów
     learning_rate = 1e-4  # Zmniejszony LR, często używany z AdamW i schedulerem
     weight_decay = 1e-4  # Regularyzacja dla AdamW
+    early_stopping_patience = 10  # Liczba epok bez poprawy do zatrzymania
 
     # Path to the folder with sequential data-raw
     data_dir = "../../data-sequences"
@@ -501,11 +512,12 @@ if __name__ == '__main__':
         model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     # Definicja schedulera
     scheduler = ReduceLROnPlateau(
+        # Patience schedulera może być inne niż early stopping
         optimizer, mode='min', factor=0.1, patience=5, verbose=True)
 
-    # Train the model - przekazanie schedulera
+    # Train the model - przekazanie schedulera i cierpliwości early stopping
     train_model(model, train_loader, val_loader, criterion, optimizer,
-                device, num_epochs=num_epochs, scheduler=scheduler)
+                device, num_epochs=num_epochs, scheduler=scheduler, early_stopping_patience=early_stopping_patience)
 
     # Załaduj najlepszy zapisany model do inferencji
     print("Loading best model for inference...")
