@@ -9,11 +9,11 @@ import torch.optim as optim
 import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset, DataLoader, Subset
-from torch.optim.lr_scheduler import ReduceLROnPlateau  # Import schedulera
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import soundfile as sf
 import librosa
 import warnings
-from scipy.signal import medfilt  # Import do filtru medianowego
+from scipy.signal import medfilt
 
 #########################################
 # 1. Dataset definition for sequential recordings
@@ -253,7 +253,7 @@ class PositionalEncoding(nn.Module):
 
 
 class BreathPhaseTransformerSeq(nn.Module):
-    def __init__(self, n_mels=40, num_classes=3, d_model=128, nhead=4, num_transformer_layers=2):
+    def __init__(self, n_mels=40, num_classes=3, d_model=192, nhead=8, num_transformer_layers=6):
         """
         Args:
             n_mels (int): Number of mel coefficients
@@ -288,7 +288,7 @@ class BreathPhaseTransformerSeq(nn.Module):
 
         # Transformer – using batch_first=True
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=nhead, dropout=0.1, batch_first=True)
+            d_model=d_model, nhead=nhead, dropout=0.1, batch_first=True, dim_feedforward=d_model*4)
         self.transformer = nn.TransformerEncoder(
             encoder_layer, num_layers=num_transformer_layers)
         self.pos_encoder = PositionalEncoding(d_model=d_model, dropout=0.1)
@@ -332,10 +332,12 @@ class BreathPhaseTransformerSeq(nn.Module):
 # 4. Training function
 #########################################
 
-# Zmodyfikowana funkcja train_model, aby akceptowała scheduler i early stopping
+# Define SpecAugment transforms
+freq_masking = torchaudio.transforms.FrequencyMasking(freq_mask_param=15)
+time_masking = torchaudio.transforms.TimeMasking(time_mask_param=35)
 
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=25, scheduler=None, early_stopping_patience=10):
+def train_model(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=25, scheduler=None, early_stopping_patience=15, apply_augmentation=True):
     model.to(device)
     best_val_loss = float('inf')
     epochs_no_improve = 0  # Licznik epok bez poprawy
@@ -349,6 +351,12 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device, n
         for inputs, labels in train_loader:
             inputs = inputs.to(device)   # shape: (B, 1, n_mels, time_steps)
             labels = labels.to(device)   # shape: (B, time_steps)
+
+            # Apply SpecAugment only during training
+            if apply_augmentation:
+                inputs = freq_masking(inputs)
+                inputs = time_masking(inputs)
+
             optimizer.zero_grad()
             outputs = model(inputs)      # shape: (B, time_steps, num_classes)
 
@@ -368,7 +376,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device, n
         epoch_loss = running_loss / len(train_loader.dataset)
         epoch_acc = correct_frames / total_frames
 
-        # Walidacja
+        # Walidacja (bez augmentacji)
         model.eval()
         val_loss = 0.0
         val_total = 0
@@ -393,9 +401,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device, n
         # Krok schedulera
         if scheduler:
             scheduler.step(val_loss)
-            # Opcjonalnie: wypisz aktualny learning rate
-            # current_lr = optimizer.param_groups[0]['lr']
-            # print(f"Current learning rate: {current_lr:.6f}")
 
         # Early Stopping Check
         if val_loss < best_val_loss:
@@ -453,9 +458,9 @@ if __name__ == '__main__':
 
     num_epochs = 100
     batch_size = 4   # Dostosuj w zależności od zasobów
-    learning_rate = 1e-4  # Zmniejszony LR, często używany z AdamW i schedulerem
-    weight_decay = 1e-4  # Regularyzacja dla AdamW
-    early_stopping_patience = 10  # Liczba epok bez poprawy do zatrzymania
+    learning_rate = 1e-4
+    weight_decay = 1e-4
+    early_stopping_patience = 15
 
     # Path to the folder with sequential data-raw
     data_dir = "../../data-sequences"
@@ -467,7 +472,6 @@ if __name__ == '__main__':
     num_samples = len(full_dataset)
     indices = list(range(num_samples))
     split = int(0.8 * num_samples)
-    # Upewnij się, że podział jest poprawny nawet dla małej liczby próbek
     if split == 0 and num_samples > 0:
         split = 1
     elif split == num_samples and num_samples > 0:
@@ -475,19 +479,16 @@ if __name__ == '__main__':
 
     train_indices, val_indices = indices[:split], indices[split:]
 
-    # Sprawdź, czy zbiory nie są puste
     if not train_indices:
         raise ValueError("Training set is empty after split.")
     if not val_indices:
-        # Jeśli zbiór walidacyjny jest pusty, można użyć części treningowego lub rzucić błąd
-        # Tutaj użyjemy ostatnich kilku próbek z treningowego jako walidacyjne
         print("Warning: Validation set is empty after split. Using last 2 samples from training set for validation.")
         if len(train_indices) > 2:
             val_indices = train_indices[-2:]
             train_indices = train_indices[:-2]
-        else:  # Jeśli danych jest bardzo mało
+        else:
             val_indices = train_indices
-        if not train_indices:  # Jeśli po tym nadal pusty
+        if not train_indices:
             raise ValueError(
                 "Training set became empty after creating validation set.")
 
@@ -499,25 +500,20 @@ if __name__ == '__main__':
 
     train_loader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-    # Dla walidacji zwykle nie używamy drop_last=True
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # Initialize the model, loss function, and optimizer
-    # Zwiększone parametry modelu
     model = BreathPhaseTransformerSeq(
-        n_mels=40, num_classes=3, d_model=128, nhead=8, num_transformer_layers=4)
+        n_mels=40, num_classes=3, d_model=192, nhead=8, num_transformer_layers=6)
     criterion = nn.CrossEntropyLoss()
-    # Użycie AdamW
     optimizer = optim.AdamW(
         model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    # Definicja schedulera
     scheduler = ReduceLROnPlateau(
-        # Patience schedulera może być inne niż early stopping
-        optimizer, mode='min', factor=0.1, patience=5, verbose=True)
+        optimizer, mode='min', factor=0.1, patience=7, verbose=True)
 
-    # Train the model - przekazanie schedulera i cierpliwości early stopping
+    # Train the model
     train_model(model, train_loader, val_loader, criterion, optimizer,
-                device, num_epochs=num_epochs, scheduler=scheduler, early_stopping_patience=early_stopping_patience)
+                device, num_epochs=num_epochs, scheduler=scheduler, early_stopping_patience=early_stopping_patience, apply_augmentation=True)
 
     # Załaduj najlepszy zapisany model do inferencji
     print("Loading best model for inference...")
@@ -525,24 +521,21 @@ if __name__ == '__main__':
         "best_breath_seq_transformer_model_CURR_BEST.pth", map_location=device))
 
     # Example inference: load one file and display predictions for each frame
-    if val_dataset:  # Użyj próbki z walidacji jeśli istnieje
+    if val_dataset:
         example_idx_in_full = val_indices[0]
-    else:  # W przeciwnym razie z treningu
+    else:
         example_idx_in_full = train_indices[0]
 
     example_audio_path = full_dataset.audio_files[example_idx_in_full]
     print(f"Running inference on example file: {example_audio_path}")
-    # Pobierz dane bezpośrednio z full_dataset używając oryginalnego indeksu
     mel_spec, true_labels = full_dataset[example_idx_in_full]
 
     predicted_seq = infer(model, mel_spec, device)
 
     # Zastosowanie filtru medianowego (post-processing)
-    # Rozmiar okna filtru (nieparzysty) - można dostosować
     median_filter_size = 5
     smoothed_predicted_seq = medfilt(
         predicted_seq, kernel_size=median_filter_size)
-    # Konwersja z powrotem na int, jeśli medfilt zwrócił float
     smoothed_predicted_seq = smoothed_predicted_seq.astype(np.int64)
 
     label_names = {0: "exhale", 1: "inhale", 2: "silence"}
@@ -551,19 +544,7 @@ if __name__ == '__main__':
     print(f"File: {os.path.basename(example_audio_path)}")
     print(f"Number of frames: {len(true_labels)}")
 
-    # Porównanie predykcji przed i po wygładzeniu (opcjonalnie, dla wglądu)
-    # print("Original Predictions (first 50 frames):", [label_names[label] for label in predicted_seq[:50]])
-    # print("Smoothed Predictions (first 50 frames):", [label_names[label] for label in smoothed_predicted_seq[:50]])
-    # print("True Labels        (first 50 frames):", [label_names[label] for label in true_labels.numpy()[:50]])
-
-    # Oblicz dokładność dla tego przykładu (przed i po wygładzeniu)
     accuracy_original = np.mean(predicted_seq == true_labels.numpy())
     accuracy_smoothed = np.mean(smoothed_predicted_seq == true_labels.numpy())
     print(f"\nFrame Accuracy (Original): {accuracy_original:.4f}")
     print(f"Frame Accuracy (Smoothed): {accuracy_smoothed:.4f}")
-
-    # Można też wyświetlić całe sekwencje, jeśli nie są zbyt długie
-    # print("\nPredicted Sequence (Smoothed):")
-    # print([label_names[label] for label in smoothed_predicted_seq])
-    # print("\nTrue Sequence:")
-    # print([label_names[label] for label in true_labels.numpy()])
