@@ -8,17 +8,13 @@ from sklearn.metrics import classification_report, confusion_matrix, accuracy_sc
 from sklearn.preprocessing import label_binarize
 from torch.utils.data import DataLoader, Subset
 from itertools import cycle
-from scipy.signal import medfilt  # Import median filter
+from scipy.signal import medfilt  
 
-
-# Add the model directory to the Python path to import necessary modules
-# Adjust the path based on the script's location relative to the model directory
 model_dir = os.path.abspath(os.path.join(
     os.path.dirname(__file__), '..', 'model', 'transformer_model'))
 if model_dir not in sys.path:
     sys.path.append(model_dir)
 
-# Import classes from transformer_model.py
 try:
     from transformer_model import BreathPhaseTransformerSeq, BreathSeqDataset
 except ImportError as e:
@@ -27,23 +23,20 @@ except ImportError as e:
         f"Ensure the path '{model_dir}' is correct and contains transformer_model.py")
     sys.exit(1)
 
-# --- Configuration ---
-DATA_DIR = "../data-sequences"  # Path relative to this script
+DATA_DIR = "../data-sequences" 
 MODEL_PATH = "../trained_models/1/transformer_model_88.pth"
-BATCH_SIZE = 4  # Should match training, but can be adjusted based on memory
-N_MELS = 128  # Updated n_mels
+BATCH_SIZE = 4  
+N_MELS = 128 
 NUM_CLASSES = 3
-D_MODEL = 192  # Updated d_model
-NHEAD = 8  # Updated nhead
-NUM_TRANSFORMER_LAYERS = 6  # Updated num_layers
-MEDIAN_FILTER_SIZE = 5  # Added: Size for median filter smoothing (must be odd)
+D_MODEL = 192 
+NHEAD = 8 
+NUM_TRANSFORMER_LAYERS = 6 
+MEDIAN_FILTER_SIZE = 5 
 SAMPLE_RATE = 44100
-N_FFT = 2048  # Updated n_fft
+N_FFT = 2048  
 HOP_LENGTH = 512
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-CLASS_NAMES = {0: "exhale", 1: "inhale", 2: "silence"}  # Map codes to names
-
-# --- Helper Functions ---
+CLASS_NAMES = {0: "exhale", 1: "inhale", 2: "silence"} 
 
 
 def get_test_loader(data_dir, batch_size, seed=42):
@@ -168,28 +161,24 @@ def plot_roc_curve(y_true, y_probs, n_classes, classes, filename="roc_curve.png"
     print(f"ROC curve saved to {filename}")
 
 
-# --- Main Execution ---
 if __name__ == "__main__":
     print(f"Using device: {DEVICE}")
 
-    # 1. Load Test Data
     print("Loading test data...")
     test_loader, test_indices = get_test_loader(DATA_DIR, BATCH_SIZE)
     if test_loader is None:
         print("Could not create test loader. Exiting.")
         sys.exit(1)
-    # Access the dataset through the loader to pass correct n_mels
     test_dataset = test_loader.dataset
     # Recreate loader if Subset was used, ensuring correct n_mels from the original dataset
     if isinstance(test_dataset, Subset):
         original_dataset = test_dataset.dataset
-        original_dataset.n_mels = N_MELS  # Ensure dataset uses correct n_mels
+        original_dataset.n_mels = N_MELS  
         test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
     else:
-        test_dataset.n_mels = N_MELS  # Ensure dataset uses correct n_mels
+        test_dataset.n_mels = N_MELS  
         test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    # 2. Load Model
     print(f"Loading model from {MODEL_PATH}...")
     if not os.path.exists(MODEL_PATH):
         print(f"Error: Model file not found at {MODEL_PATH}")
@@ -197,11 +186,11 @@ if __name__ == "__main__":
         sys.exit(1)
 
     model = BreathPhaseTransformerSeq(
-        n_mels=N_MELS,  # Use updated constant
+        n_mels=N_MELS, 
         num_classes=NUM_CLASSES,
-        d_model=D_MODEL,  # Use updated constant
-        nhead=NHEAD,  # Use updated constant
-        num_transformer_layers=NUM_TRANSFORMER_LAYERS  # Use updated constant
+        d_model=D_MODEL,  
+        nhead=NHEAD,  #
+        num_transformer_layers=NUM_TRANSFORMER_LAYERS  
     )
     try:
         model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
@@ -211,12 +200,10 @@ if __name__ == "__main__":
         print(f"Error loading model state_dict: {e}")
         sys.exit(1)
 
-    # 3. Define Loss Function (needed for evaluation loss calculation)
     criterion = torch.nn.CrossEntropyLoss()
 
-    # 4. Evaluate Model
     print("Evaluating model on the test set...")
-    # Pass median_filter_size to evaluate function
+
     true_labels, pred_labels, pred_probs, avg_loss = evaluate(
         model, test_loader, criterion, DEVICE, median_filter_size=MEDIAN_FILTER_SIZE)
 
@@ -225,14 +212,12 @@ if __name__ == "__main__":
             "Evaluation resulted in no labels or predictions. Check data loading and model.")
         sys.exit(1)
 
-    # 5. Calculate and Print Metrics
     print("\n--- Evaluation Results ---")
 
-    # --- Filter out padded values (-100) before calculating metrics ---
     valid_indices = true_labels != -100
     true_labels_filtered = true_labels[valid_indices]
     pred_labels_filtered = pred_labels[valid_indices]
-    pred_probs_filtered = pred_probs[valid_indices]  # Also filter probabilities if needed for ROC
+    pred_probs_filtered = pred_probs[valid_indices]  
 
     if len(true_labels_filtered) == 0:
         print(
@@ -248,28 +233,26 @@ if __name__ == "__main__":
 
     # Precision, Recall, F1-score (per class, macro, weighted)
     print("\nClassification Report (Frame Level):")
-    # Use target_names for readable labels in the report
-    # Debugging: Print unique values in filtered labels
+
     print("Unique true labels (filtered):", np.unique(true_labels_filtered))
     print("Unique predicted labels (filtered):", np.unique(pred_labels_filtered))
 
     # Calculate report using filtered labels
     report = classification_report(true_labels_filtered, pred_labels_filtered, target_names=[
-        CLASS_NAMES[i] for i in sorted(CLASS_NAMES.keys())], digits=4, zero_division=0)  # Added zero_division=0
+        CLASS_NAMES[i] for i in sorted(CLASS_NAMES.keys())], digits=4, zero_division=0)
     print(report)
 
-    # 6. Generate and Save Plots (using filtered labels/probs)
     print("\nGenerating plots...")
+
     # Confusion Matrix
     plot_confusion_matrix(true_labels_filtered, pred_labels_filtered,
-                          CLASS_NAMES, filename="../trained_models/1/confusion_matrix_test.png")
+                          CLASS_NAMES, filename="../trained_models/15/confusion_matrix_test.png")
 
     # ROC Curve and AUC
-    # Ensure CLASS_NAMES keys match the actual unique labels present after filtering
     unique_classes_present = np.unique(true_labels_filtered)
-    # Map numeric labels to names for plotting
+
     roc_class_names = {i: CLASS_NAMES[i] for i in unique_classes_present if i in CLASS_NAMES}
     plot_roc_curve(true_labels_filtered, pred_probs_filtered, len(roc_class_names),
-                   roc_class_names, filename="../trained_models/1/roc_curve_test.png")
+                   roc_class_names, filename="../trained_models/15/roc_curve_test.png")
 
     print("\nEvaluation complete.")

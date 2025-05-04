@@ -25,7 +25,7 @@ class AudioToBreathClassifier(torch.nn.Module):
         self.classifier = classifier_model
 
     def forward(self, audio_signal):
-        # Zakładamy, że audio_signal jest już znormalizowany (float32 w zakresie [-1, 1])
+        # Assuming that audio_signal is already normalized (float32 in the range [-1, 1])
         mel_spec = self.mel_transform(audio_signal)
         mel_spec = torch.log(mel_spec + 1e-9)
         mel_spec = mel_spec.unsqueeze(1)

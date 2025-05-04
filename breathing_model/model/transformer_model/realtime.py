@@ -10,7 +10,7 @@ from breathing_model.model.transformer_model.transformer_model import BreathPhas
 #############################################
 # Settings and constants
 #############################################
-MODEL_PATH = '../../trained_models/1/transformer_model_88.pth'  # Path to the trained model
+MODEL_PATH = '../../trained_models/1/transformer_model_88.pth'
 
 REFRESH_TIME = 0.3  # time in seconds to read audio
 FORMAT = pyaudio.paInt16
@@ -24,7 +24,7 @@ EXHALE_COUNTER = 0
 
 running = True
 
-device = 'cpu' #torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 #############################################
 # Audio handling class
@@ -45,7 +45,7 @@ class SharedAudioResource:
             return np.frombuffer(data, dtype=np.int16)
         except IOError as e:
             print(f"Błąd odczytu audio: {e}")
-            return None # Zwróć None w przypadku błędu
+            return None 
 
     def close(self):
         self.stream.stop_stream()
@@ -57,7 +57,7 @@ class MelTransformer:
     def __init__(self):
         self.mel_transform = torchaudio.transforms.MelSpectrogram(
             sample_rate=RATE,
-            n_fft=2048, # Updated n_fft
+            n_fft=2048,
             hop_length=512,
             n_mels=128
         )
@@ -82,40 +82,38 @@ class MelTransformer:
 #############################################
 class RealTimeAudioClassifier:
     def __init__(self, model_path):
-        # Initialize breath phase model
         self.model = BreathPhaseTransformerSeq(
-            n_mels=128, # Updated n_mels
+            n_mels=128,
             num_classes=3,
-            d_model=192, # Updated d_model
-            nhead=8, # Updated nhead
-            num_transformer_layers=6 # Updated num_layers
+            d_model=192,
+            nhead=8,
+            num_transformer_layers=6 
         ).to(device)
         self.model.load_state_dict(torch.load(model_path, map_location=device))
         self.model.eval()
 
-        self.mel_transformer = MelTransformer() # Uses updated n_mels internally
+        self.mel_transformer = MelTransformer() 
 
     def predict(self, y):
         """Wykonuje lokalną predykcję."""
         with torch.no_grad():
             mel = self.mel_transformer.get_mel_transform(y)
             mel = mel.to(device)
-            logits = self.model(mel)  # kształt: (1, time_steps, num_classes)
+            logits = self.model(mel)  # shape: (1, time_steps, num_classes)
             probabilities = torch.softmax(logits, dim=2)
             probs_np = probabilities.squeeze(0).cpu().numpy()  # (time_steps, num_classes)
 
-            # Agreguj predykcje po klatkach – wybierz najczęstszą klasę
+
             preds = np.argmax(probs_np, axis=1)
-            # Obsługa przypadku, gdy preds jest pusty (bardzo krótki dźwięk)
+
             if len(preds) == 0:
-                predicted_class = 2 # Domyślnie cisza
-                class_probabilities = np.array([0.0, 0.0, 1.0]) # Domyślne prawdopodobieństwa
+                predicted_class = 2 
+                class_probabilities = np.array([0.0, 0.0, 1.0])
             else:
                 predicted_class = int(np.bincount(preds).argmax())
-                # Oblicz średnie prawdopodobieństwo dla każdej klasy
-                class_probabilities = np.mean(probs_np, axis=0)  # Średnia po krokach czasowych
+                class_probabilities = np.mean(probs_np, axis=0) 
 
-            # Zwróć prawdopodobieństwa klas wraz z przewidzianą klasą
+
             return predicted_class, class_probabilities
 
 
@@ -194,25 +192,23 @@ if __name__ == '__main__':
         while running:
             start_time = time.time()
 
-            # Read CHUNK_SIZE samples from the microphone
             buffer = audio.read()
             if buffer is None:
-                print("Pominięto iterację z powodu błędu odczytu audio.")
-                time.sleep(REFRESH_TIME) # Poczekaj chwilę przed kolejną próbą
+                print("Iteration error: buffer is None")
+                time.sleep(REFRESH_TIME)
                 continue
 
-            # Get prediction and anomaly status
             prediction, probability = classifier.predict(buffer)
 
-            label_map = {0: "Wydech", 1: "Wdech", 2: "Cisza"}
-            print(f"Predykcja: {label_map.get(prediction, 'Nieznana')} ({prediction}), Prawdopodobieństwa: {probability}")
+            label_map = {0: "Exhale", 1: "Inhale", 2: "Silence"}
+            print(f"Prediction: {label_map.get(prediction, 'Unknown')} ({prediction}), Probability: {probability}")
 
             update_plot(buffer, prediction)
-            print("Czas iteracji:", time.time() - start_time)
+            print("Iteration time:", time.time() - start_time)
     except KeyboardInterrupt:
-        print("Zatrzymano przez użytkownika.")
+        print("Stopped by user.")
     finally:
         # Clean up
         audio.close()
         plt.close(fig)
-        print("Zasoby audio i wykresy zostały zamknięte.")
+        print("Audio stream closed.")
