@@ -8,12 +8,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 import pandas as pd
 import numpy as np
-from torch.utils.data import Dataset, DataLoader, Subset
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-import soundfile as sf
-import librosa
-import warnings
-from scipy.signal import medfilt
+from torch.utils.data import Dataset, DataLoader
+import torch.optim.lr_scheduler as lr_scheduler
 
 #########################################
 # 1. Dataset definition for sequential recordings
@@ -31,7 +27,7 @@ class BreathSeqDataset(Dataset):
       2: silence
     """
 
-    def __init__(self, data_dir, sample_rate=44100, n_mels=40, n_fft=1024, hop_length=512, transform=None):
+    def __init__(self, data_dir, sample_rate=44100, n_mels=128, n_fft=2048, hop_length=512, transform=None):
         """
         Args:
             data_dir (str): Path to the data-raw folder (e.g., "../../scripts/data-raw-seq")
@@ -41,14 +37,9 @@ class BreathSeqDataset(Dataset):
             hop_length (int): Hop length for spectrogram calculation
             transform (callable, optional): Additional transformation for the spectrogram
         """
-        self.data_dir = os.path.abspath(data_dir)  # Convert to absolute path
+        self.data_dir = data_dir
         # Search for all WAV files in the folder
-        self.audio_files = glob.glob(os.path.join(self.data_dir, "*.wav"))
-        if not self.audio_files:
-            raise ValueError(
-                f"No .wav files found in directory: {self.data_dir}")
-        print(f"Found {len(self.audio_files)} audio files in {self.data_dir}")
-
+        self.audio_files = glob.glob(os.path.join(data_dir, "*.wav"))
         self.sample_rate = sample_rate
         self.n_mels = n_mels
         self.n_fft = n_fft
@@ -61,64 +52,8 @@ class BreathSeqDataset(Dataset):
             n_mels=n_mels
         )
 
-        # Sprawdź czy zainstalowano wymagane biblioteki
-        try:
-            import soundfile as sf
-        except ImportError:
-            warnings.warn(
-                "Pakiet soundfile nie jest zainstalowany. Instalacja: pip install soundfile")
-
-        try:
-            import librosa
-        except ImportError:
-            warnings.warn(
-                "Pakiet librosa nie jest zainstalowany. Instalacja: pip install librosa")
-
     def __len__(self):
         return len(self.audio_files)
-
-    def load_audio_with_fallback(self, audio_path):
-        """
-        Try multiple methods to load an audio file, with fallbacks if one method fails.
-        """
-        # Method 1: Use torchaudio
-        try:
-            waveform, sr = torchaudio.load(audio_path, normalize=True)
-            return waveform, sr
-        except Exception as e:
-            print(f"torchaudio failed to load {audio_path}: {e}")
-
-        # Method 2: Use soundfile
-        try:
-            import soundfile as sf
-            audio_data, sr = sf.read(audio_path)
-            # Convert to torch tensor and reshape to [1, samples] for mono
-            waveform = torch.tensor(audio_data).float()
-            if len(waveform.shape) == 1:
-                waveform = waveform.unsqueeze(0)  # Add channel dimension
-            else:
-                # [samples, channels] -> [channels, samples]
-                waveform = waveform.transpose(0, 1)
-                if waveform.shape[0] > 1:
-                    waveform = waveform.mean(
-                        dim=0, keepdim=True)  # Convert to mono
-            return waveform, sr
-        except Exception as e:
-            print(f"soundfile failed to load {audio_path}: {e}")
-
-        # Method 3: Use librosa
-        try:
-            import librosa
-            audio_data, sr = librosa.load(audio_path, sr=None)
-            waveform = torch.tensor(audio_data).float(
-            ).unsqueeze(0)  # Add channel dimension
-            return waveform, sr
-        except Exception as e:
-            print(f"librosa failed to load {audio_path}: {e}")
-
-        # If all methods fail, raise error
-        raise RuntimeError(
-            f"All methods failed to load audio file: {audio_path}")
 
     def __getitem__(self, idx):
         # Get the path to the audio file
@@ -126,92 +61,55 @@ class BreathSeqDataset(Dataset):
         base_name = os.path.splitext(os.path.basename(audio_path))[0]
         csv_path = os.path.join(self.data_dir, base_name + ".csv")
 
-        # Check if files exist
-        if not os.path.exists(audio_path):
-            raise FileNotFoundError(f"Audio file not found: {audio_path}")
-        if not os.path.exists(csv_path):
-            raise FileNotFoundError(f"CSV file not found: {csv_path}")
+        # Load the audio (waveform has shape (channels, num_samples))
+        waveform, sr = torchaudio.load(audio_path)
 
-        try:
-            # Load the audio with fallback options
-            waveform, sr = self.load_audio_with_fallback(audio_path)
+        # Convert to mono if the recording has more than one channel
+        if waveform.shape[0] > 1:
+            print("Warning: stereo audio converted to mono.")
+            waveform = waveform.mean(dim=0, keepdim=True)
 
-            # Resample to the target sample_rate if needed
-            if sr != self.sample_rate:
-                resampler = torchaudio.transforms.Resample(
-                    orig_freq=sr, new_freq=self.sample_rate)
-                waveform = resampler(waveform)
+        # Resample to the target sample_rate (44100 Hz)
+        if sr != self.sample_rate:
+            resampler = torchaudio.transforms.Resample(
+                orig_freq=sr, new_freq=self.sample_rate)
+            waveform = resampler(waveform)
 
-            # Compute the mel spectrogram and apply log transformation
-            # shape: (channels, n_mels, time_steps)
-            mel_spec = self.mel_transform(waveform)
-            mel_spec = torch.log(mel_spec + 1e-9)
+        # Compute the mel spectrogram and apply log transformation (prevents numerical issues)
+        # kształt: (channels, n_mels, time_steps)
+        mel_spec = self.mel_transform(waveform)
+        mel_spec = torch.log(mel_spec + 1e-9)
 
-            # Load labels from the CSV file
-            df = pd.read_csv(csv_path)
-            time_steps = mel_spec.shape[-1]
-            # Initialize the label sequence
-            label_seq = np.zeros(time_steps, dtype=np.int64)
+        # Load labels from the CSV file
+        df = pd.read_csv(csv_path)
+        time_steps = mel_spec.shape[-1]
+        # Initialize the label sequence – for each spectrogram step (assuming labels cover the entire signal)
+        label_seq = np.zeros(time_steps, dtype=np.int64)
+        # For each row in the CSV, determine which spectrogram frames (based on hop_length) will receive the given label
+        for _, row in df.iterrows():
+            phase_code = str(row['class'])
+            if phase_code == 'exhale':
+                phase_code = 0
+            elif phase_code == 'inhale':
+                phase_code = 1
+            elif phase_code == 'silence':
+                phase_code = 2
+            start_sample = int(row['start_sample'])
+            end_sample = int(row['end_sample'])
+            # Calculate frame numbers – assuming a frame corresponds to a sample: i * hop_length
+            start_frame = int(np.floor(start_sample / self.hop_length))
+            end_frame = int(np.ceil(end_sample / self.hop_length))
+            # zabezpieczenie, gdyby wykraczało poza liczbę klatek
+            end_frame = min(end_frame, time_steps)
+            label_seq[start_frame:end_frame] = phase_code
 
-            # Map phases to codes
-            for _, row in df.iterrows():
-                # Check for different possible column names for class
-                phase_code = None
-                for col_name in ['class', 'phase_code', 'phase']:
-                    if col_name in df.columns:
-                        phase_code = str(row[col_name])
-                        break
+        # kształt: (time_steps,)
+        label_seq = torch.tensor(label_seq, dtype=torch.long)
 
-                if phase_code is None:
-                    print(
-                        f"Warning: No recognized class column in CSV: {csv_path}")
-                    continue
-
-                # Convert string phase name to code
-                if phase_code == 'exhale':
-                    phase_code = 0
-                elif phase_code == 'inhale':
-                    phase_code = 1
-                elif phase_code == 'silence':
-                    phase_code = 2
-                else:
-                    try:
-                        phase_code = int(phase_code)
-                    except ValueError:
-                        print(
-                            f"Warning: Unknown phase code '{phase_code}' in {csv_path}, using 'silence' (2)")
-                        phase_code = 2
-
-                # Get sample boundaries
-                start_sample = int(row['start_sample'])
-                end_sample = int(row['end_sample'])
-
-                # Calculate corresponding frames in the spectrogram
-                start_frame = int(np.floor(start_sample / self.hop_length))
-                end_frame = int(np.ceil(end_sample / self.hop_length))
-                # make sure it doesn't exceed the number of frames
-                end_frame = min(end_frame, time_steps)
-
-                # Assign the phase code to all frames in this segment
-                label_seq[start_frame:end_frame] = phase_code
-
-            # Convert to PyTorch tensor
-            # shape: (time_steps,)
-            label_seq = torch.tensor(label_seq, dtype=torch.long)
-
-            if self.transform:
-                mel_spec = self.transform(mel_spec)
-
-            return mel_spec, label_seq
-
-        except Exception as e:
-            print(f"Error processing {audio_path}: {str(e)}")
-            # Tutaj możemy utworzyć "dummy data" zamiast rzucać wyjątek
-            # Może to być użyteczne do debugowania, ale w produkcji lepiej rzucić wyjątek
-            dummy_spec = torch.zeros((1, self.n_mels, 100))
-            dummy_labels = torch.zeros(100, dtype=torch.long)
-            print(f"Returning dummy data for {audio_path}")
-            return dummy_spec, dummy_labels
+        if self.transform:
+            mel_spec = self.transform(mel_spec)
+        # Ensure mel_spec has shape (1, n_mels, time_steps)
+        return mel_spec, label_seq
 
 #########################################
 # 2. Positional encoding for Transformer
@@ -253,7 +151,7 @@ class PositionalEncoding(nn.Module):
 
 
 class BreathPhaseTransformerSeq(nn.Module):
-    def __init__(self, n_mels=40, num_classes=3, d_model=192, nhead=8, num_transformer_layers=6):
+    def __init__(self, n_mels=128, num_classes=3, d_model=192, nhead=8, num_transformer_layers=6):
         """
         Args:
             n_mels (int): Number of mel coefficients
@@ -288,7 +186,7 @@ class BreathPhaseTransformerSeq(nn.Module):
 
         # Transformer – using batch_first=True
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=nhead, dropout=0.1, batch_first=True, dim_feedforward=d_model*4)
+            d_model=d_model, nhead=nhead, dropout=0.1, batch_first=True)
         self.transformer = nn.TransformerEncoder(
             encoder_layer, num_layers=num_transformer_layers)
         self.pos_encoder = PositionalEncoding(d_model=d_model, dropout=0.1)
@@ -332,15 +230,11 @@ class BreathPhaseTransformerSeq(nn.Module):
 # 4. Training function
 #########################################
 
-# Define SpecAugment transforms
-freq_masking = torchaudio.transforms.FrequencyMasking(freq_mask_param=15)
-time_masking = torchaudio.transforms.TimeMasking(time_mask_param=35)
 
-
-def train_model(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=25, scheduler=None, early_stopping_patience=15, apply_augmentation=True):
+def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, device, num_epochs=25, patience=6):
     model.to(device)
     best_val_loss = float('inf')
-    epochs_no_improve = 0  # Licznik epok bez poprawy
+    epochs_no_improve = 0
 
     for epoch in range(num_epochs):
         model.train()
@@ -351,12 +245,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device, n
         for inputs, labels in train_loader:
             inputs = inputs.to(device)   # shape: (B, 1, n_mels, time_steps)
             labels = labels.to(device)   # shape: (B, time_steps)
-
-            # Apply SpecAugment only during training
-            if apply_augmentation:
-                inputs = freq_masking(inputs)
-                inputs = time_masking(inputs)
-
             optimizer.zero_grad()
             outputs = model(inputs)      # shape: (B, time_steps, num_classes)
 
@@ -375,8 +263,10 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device, n
 
         epoch_loss = running_loss / len(train_loader.dataset)
         epoch_acc = correct_frames / total_frames
+        print(
+            f"Epoch {epoch+1}/{num_epochs} | Training Loss: {epoch_loss:.4f} | Frame Acc: {epoch_acc:.4f}")
 
-        # Walidacja (bez augmentacji)
+        # Walidacja
         model.eval()
         val_loss = 0.0
         val_total = 0
@@ -392,30 +282,26 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device, n
                 _, predicted = torch.max(outputs, dim=-1)
                 val_total += labels.numel()
                 val_correct += (predicted == labels).sum().item()
-
-        val_loss = val_loss / len(val_loader.dataset)
+        avg_val_loss = val_loss / len(val_loader.dataset)
         val_acc = val_correct / val_total
+        print(
+            f"Epoch {epoch+1}/{num_epochs} | Validation Loss: {avg_val_loss:.4f} | Frame Acc: {val_acc:.4f}")
 
-        print(f"Epoch {epoch+1}/{num_epochs} | Training Loss: {epoch_loss:.4f} | Frame Acc: {epoch_acc:.4f} | Validation Loss: {val_loss:.4f} | Frame Acc: {val_acc:.4f}")
+        scheduler.step()
 
-        # Krok schedulera
-        if scheduler:
-            scheduler.step(val_loss)
-
-        # Early Stopping Check
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
             torch.save(model.state_dict(),
-                       "best_breath_seq_transformer_model_CURR_BEST.pth")
+                       f"best_breath_seq_transformer_model_epoch{epoch+1}_valloss{avg_val_loss:.4f}.pth")
             print("Saved the best model.")
-            epochs_no_improve = 0  # Reset licznika
+            epochs_no_improve = 0
         else:
-            epochs_no_improve += 1  # Inkrementuj licznik
-            print(
-                f"Validation loss did not improve for {epochs_no_improve} epoch(s).")
-            if epochs_no_improve >= early_stopping_patience:
-                print(f"Early stopping triggered after {epoch + 1} epochs.")
-                break  # Przerwij pętlę treningową
+            epochs_no_improve += 1
+            print(f"Validation loss did not improve for {epochs_no_improve} epoch(s).")
+
+        if epochs_no_improve >= patience:
+            print(f"Early stopping triggered after {epoch+1} epochs.")
+            break
 
     print("Training completed.")
 
@@ -429,18 +315,14 @@ def infer(model, input_tensor, device):
     Args:
         model (nn.Module): Trained model.
         input_tensor (torch.Tensor): Single spectrogram with dimensions (1, n_mels, time_steps)
-                                     or (n_mels, time_steps)
         device: Device ("cuda" or "cpu")
     Returns:
         predicted_seq (numpy.ndarray): Predicted labels for each frame (shape: (time_steps,))
     """
     model.eval()
-    # Add batch and channel dimension if needed
-    if input_tensor.dim() == 2:  # (n_mels, time_steps) -> (1, 1, n_mels, time_steps)
-        input_tensor = input_tensor.unsqueeze(0).unsqueeze(0)
-    elif input_tensor.dim() == 3:  # (1, n_mels, time_steps) -> (1, 1, n_mels, time_steps)
-        input_tensor = input_tensor.unsqueeze(1)
-
+    # Add batch dimension if needed
+    if input_tensor.dim() == 3:
+        input_tensor = input_tensor.unsqueeze(0)  # (1, 1, n_mels, time_steps)
     input_tensor = input_tensor.to(device)
     with torch.no_grad():
         outputs = model(input_tensor)  # (1, time_steps, num_classes)
@@ -454,97 +336,53 @@ def infer(model, input_tensor, device):
 
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-
     num_epochs = 100
-    batch_size = 4   # Dostosuj w zależności od zasobów
+    batch_size = 4
     learning_rate = 1e-4
-    weight_decay = 1e-4
-    early_stopping_patience = 15
+    n_mels_param = 128
+    n_fft_param = 2048
+    early_stopping_patience = 6
 
     # Path to the folder with sequential data-raw
     data_dir = "../../data-sequences"
 
     # Create dataset and DataLoader (example split into training and validation)
     full_dataset = BreathSeqDataset(
-        data_dir, sample_rate=44100, n_mels=40, n_fft=1024, hop_length=512)
+        data_dir, sample_rate=44100, n_mels=n_mels_param, n_fft=n_fft_param, hop_length=512)
 
     num_samples = len(full_dataset)
     indices = list(range(num_samples))
     split = int(0.8 * num_samples)
-    if split == 0 and num_samples > 0:
-        split = 1
-    elif split == num_samples and num_samples > 0:
-        split = num_samples - 1
-
     train_indices, val_indices = indices[:split], indices[split:]
 
-    if not train_indices:
-        raise ValueError("Training set is empty after split.")
-    if not val_indices:
-        print("Warning: Validation set is empty after split. Using last 2 samples from training set for validation.")
-        if len(train_indices) > 2:
-            val_indices = train_indices[-2:]
-            train_indices = train_indices[:-2]
-        else:
-            val_indices = train_indices
-        if not train_indices:
-            raise ValueError(
-                "Training set became empty after creating validation set.")
-
+    from torch.utils.data import Subset
     train_dataset = Subset(full_dataset, train_indices)
     val_dataset = Subset(full_dataset, val_indices)
 
-    print(
-        f"Training samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}")
-
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+        train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
     # Initialize the model, loss function, and optimizer
     model = BreathPhaseTransformerSeq(
-        n_mels=40, num_classes=3, d_model=192, nhead=8, num_transformer_layers=6)
+        n_mels=n_mels_param, num_classes=3, d_model=192, nhead=8, num_transformer_layers=6)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(
-        model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    scheduler = ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.1, patience=7, verbose=True)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
+
+    scheduler = lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
 
     # Train the model
-    train_model(model, train_loader, val_loader, criterion, optimizer,
-                device, num_epochs=num_epochs, scheduler=scheduler, early_stopping_patience=early_stopping_patience, apply_augmentation=True)
-
-    # Załaduj najlepszy zapisany model do inferencji
-    print("Loading best model for inference...")
-    model.load_state_dict(torch.load(
-        "best_breath_seq_transformer_model_CURR_BEST.pth", map_location=device))
+    train_model(model, train_loader, val_loader, criterion,
+                optimizer, scheduler, device, num_epochs=num_epochs, patience=early_stopping_patience)
 
     # Example inference: load one file and display predictions for each frame
-    if val_dataset:
-        example_idx_in_full = val_indices[0]
-    else:
-        example_idx_in_full = train_indices[0]
-
-    example_audio_path = full_dataset.audio_files[example_idx_in_full]
-    print(f"Running inference on example file: {example_audio_path}")
-    mel_spec, true_labels = full_dataset[example_idx_in_full]
-
+    example_audio = full_dataset.audio_files[0]
+    mel_spec, true_labels = full_dataset[0]
     predicted_seq = infer(model, mel_spec, device)
 
-    # Zastosowanie filtru medianowego (post-processing)
-    median_filter_size = 5
-    smoothed_predicted_seq = medfilt(
-        predicted_seq, kernel_size=median_filter_size)
-    smoothed_predicted_seq = smoothed_predicted_seq.astype(np.int64)
-
+    # Updated label dictionary according to the new map
     label_names = {0: "exhale", 1: "inhale", 2: "silence"}
-
-    print("\n--- Inference Example ---")
-    print(f"File: {os.path.basename(example_audio_path)}")
-    print(f"Number of frames: {len(true_labels)}")
-
-    accuracy_original = np.mean(predicted_seq == true_labels.numpy())
-    accuracy_smoothed = np.mean(smoothed_predicted_seq == true_labels.numpy())
-    print(f"\nFrame Accuracy (Original): {accuracy_original:.4f}")
-    print(f"Frame Accuracy (Smoothed): {accuracy_smoothed:.4f}")
+    print("Predictions for each frame:")
+    print(predicted_seq)
+    print("Predictions (text):", [label_names[label]
+          for label in predicted_seq])

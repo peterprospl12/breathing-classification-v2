@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader, Subset
 from itertools import cycle
 from scipy.signal import medfilt  # Import median filter
 
+
 # Add the model directory to the Python path to import necessary modules
 # Adjust the path based on the script's location relative to the model directory
 model_dir = os.path.abspath(os.path.join(
@@ -28,16 +29,16 @@ except ImportError as e:
 
 # --- Configuration ---
 DATA_DIR = "../data-sequences"  # Path relative to this script
-MODEL_PATH = "../model/transformer_model/best_breath_seq_transformer_model_CURR_BEST.pth"
+MODEL_PATH = "../trained_models/1/transformer_model_88.pth"
 BATCH_SIZE = 4  # Should match training, but can be adjusted based on memory
-N_MELS = 40
+N_MELS = 128  # Updated n_mels
 NUM_CLASSES = 3
-D_MODEL = 192  # Updated to match new model
-NHEAD = 8  # Changed from 4 to 8 to match training script example
-NUM_TRANSFORMER_LAYERS = 6  # Updated to match new model
+D_MODEL = 192  # Updated d_model
+NHEAD = 8  # Updated nhead
+NUM_TRANSFORMER_LAYERS = 6  # Updated num_layers
 MEDIAN_FILTER_SIZE = 5  # Added: Size for median filter smoothing (must be odd)
 SAMPLE_RATE = 44100
-N_FFT = 1024
+N_FFT = 2048  # Updated n_fft
 HOP_LENGTH = 512
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 CLASS_NAMES = {0: "exhale", 1: "inhale", 2: "silence"}  # Map codes to names
@@ -47,29 +48,14 @@ CLASS_NAMES = {0: "exhale", 1: "inhale", 2: "silence"}  # Map codes to names
 
 def get_test_loader(data_dir, batch_size, seed=42):
     """Creates the test DataLoader using the same split logic as in training."""
-    full_dataset = BreathSeqDataset(
+    val_dataset = BreathSeqDataset(
         data_dir, sample_rate=SAMPLE_RATE, n_mels=N_MELS, n_fft=N_FFT, hop_length=HOP_LENGTH)
-    num_samples = len(full_dataset)
+    num_samples = len(val_dataset)
     indices = list(range(num_samples))
 
-    # Use a fixed seed for reproducibility of the split
-    np.random.seed(seed)
-    np.random.shuffle(indices)
-
-    # Same split percentages as in transformer_model.py
-    train_split = int(0.7 * num_samples)
-    val_split = int(0.85 * num_samples)
-    test_indices = indices[val_split:]
-
-    if not test_indices:
-        print("Warning: No samples allocated for the test set. Check dataset size and split percentages.")
-        return None, None
-
-    print(f"Using {len(test_indices)} samples for testing.")
-    test_dataset = Subset(full_dataset, test_indices)
     test_loader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False)
-    return test_loader, test_indices
+        val_dataset, batch_size=batch_size, shuffle=False)
+    return test_loader, indices
 
 
 def evaluate(model, test_loader, criterion, device, median_filter_size=None):
@@ -192,6 +178,16 @@ if __name__ == "__main__":
     if test_loader is None:
         print("Could not create test loader. Exiting.")
         sys.exit(1)
+    # Access the dataset through the loader to pass correct n_mels
+    test_dataset = test_loader.dataset
+    # Recreate loader if Subset was used, ensuring correct n_mels from the original dataset
+    if isinstance(test_dataset, Subset):
+        original_dataset = test_dataset.dataset
+        original_dataset.n_mels = N_MELS  # Ensure dataset uses correct n_mels
+        test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    else:
+        test_dataset.n_mels = N_MELS  # Ensure dataset uses correct n_mels
+        test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
     # 2. Load Model
     print(f"Loading model from {MODEL_PATH}...")
@@ -201,11 +197,11 @@ if __name__ == "__main__":
         sys.exit(1)
 
     model = BreathPhaseTransformerSeq(
-        n_mels=N_MELS,
+        n_mels=N_MELS,  # Use updated constant
         num_classes=NUM_CLASSES,
-        d_model=D_MODEL,  # Uses updated constant
-        nhead=NHEAD,
-        num_transformer_layers=NUM_TRANSFORMER_LAYERS  # Uses updated constant
+        d_model=D_MODEL,  # Use updated constant
+        nhead=NHEAD,  # Use updated constant
+        num_transformer_layers=NUM_TRANSFORMER_LAYERS  # Use updated constant
     )
     try:
         model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
@@ -232,28 +228,48 @@ if __name__ == "__main__":
     # 5. Calculate and Print Metrics
     print("\n--- Evaluation Results ---")
 
-    # Frame-level Accuracy
-    accuracy = accuracy_score(true_labels, pred_labels)
+    # --- Filter out padded values (-100) before calculating metrics ---
+    valid_indices = true_labels != -100
+    true_labels_filtered = true_labels[valid_indices]
+    pred_labels_filtered = pred_labels[valid_indices]
+    pred_probs_filtered = pred_probs[valid_indices]  # Also filter probabilities if needed for ROC
+
+    if len(true_labels_filtered) == 0:
+        print(
+            "Evaluation resulted in no valid (non-padded) labels or predictions. Check data and padding.")
+        sys.exit(1)
+
+    # Frame-level Accuracy (using filtered labels)
+    accuracy = accuracy_score(true_labels_filtered, pred_labels_filtered)
     print(f"Frame-Level Accuracy: {accuracy:.4f}")
 
-    # Loss
+    # Loss (calculated earlier, does not need filtering as CrossEntropyLoss handles -100)
     print(f"Average Test Loss: {avg_loss:.4f}")
 
     # Precision, Recall, F1-score (per class, macro, weighted)
     print("\nClassification Report (Frame Level):")
     # Use target_names for readable labels in the report
-    report = classification_report(true_labels, pred_labels, target_names=[
-                                   CLASS_NAMES[i] for i in range(NUM_CLASSES)], digits=4)
+    # Debugging: Print unique values in filtered labels
+    print("Unique true labels (filtered):", np.unique(true_labels_filtered))
+    print("Unique predicted labels (filtered):", np.unique(pred_labels_filtered))
+
+    # Calculate report using filtered labels
+    report = classification_report(true_labels_filtered, pred_labels_filtered, target_names=[
+        CLASS_NAMES[i] for i in sorted(CLASS_NAMES.keys())], digits=4, zero_division=0)  # Added zero_division=0
     print(report)
 
-    # 6. Generate and Save Plots
+    # 6. Generate and Save Plots (using filtered labels/probs)
     print("\nGenerating plots...")
     # Confusion Matrix
-    plot_confusion_matrix(true_labels, pred_labels,
-                          CLASS_NAMES, filename="confusion_matrix_test.png")
+    plot_confusion_matrix(true_labels_filtered, pred_labels_filtered,
+                          CLASS_NAMES, filename="../trained_models/1/confusion_matrix_test.png")
 
     # ROC Curve and AUC
-    plot_roc_curve(true_labels, pred_probs, NUM_CLASSES,
-                   CLASS_NAMES, filename="roc_curve_test.png")
+    # Ensure CLASS_NAMES keys match the actual unique labels present after filtering
+    unique_classes_present = np.unique(true_labels_filtered)
+    # Map numeric labels to names for plotting
+    roc_class_names = {i: CLASS_NAMES[i] for i in unique_classes_present if i in CLASS_NAMES}
+    plot_roc_curve(true_labels_filtered, pred_probs_filtered, len(roc_class_names),
+                   roc_class_names, filename="../trained_models/1/roc_curve_test.png")
 
     print("\nEvaluation complete.")

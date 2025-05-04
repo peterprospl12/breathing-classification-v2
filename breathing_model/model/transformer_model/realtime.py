@@ -4,84 +4,13 @@ import matplotlib.pyplot as plt
 import time
 import torch
 import torchaudio
-import math
-import requests
-import json
-from enum import Enum
 
-from breathing_model.model.invalid_data_filter_model.anomaly_detection_autoencoder import SimplerBreathingAutoencoder, EnhancedReconstructionLoss
-
-#############################################
-# Model – CNN + Transformer
-#############################################
-
-class PositionalEncoding(torch.nn.Module):
-    def __init__(self, d_model, dropout=0.1, max_len=5000):
-        super(PositionalEncoding, self).__init__()
-        self.dropout = torch.nn.Dropout(p=dropout)
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0)/ d_model))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)  # shape: (1, max_len, d_model)
-        self.register_buffer('pe', pe)
-
-    def forward(self, x):
-        x = x + self.pe[:, :x.size(1)]
-        return self.dropout(x)
-
-class BreathPhaseTransformerSeq(torch.nn.Module):
-    def __init__(self, n_mels=40, num_classes=3, d_model=128, nhead=4, num_transformer_layers=2):
-        super(BreathPhaseTransformerSeq, self).__init__()
-        self.conv1 = torch.nn.Conv2d(1, 32, kernel_size=(3, 3), stride=1, padding=1)
-        self.bn1 = torch.nn.BatchNorm2d(32)
-        self.pool1 = torch.nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1))
-
-        self.conv2 = torch.nn.Conv2d(32, 64, kernel_size=(3, 3), stride=1, padding=1)
-        self.bn2 = torch.nn.BatchNorm2d(64)
-        self.pool2 = torch.nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1))
-
-        self.conv3 = torch.nn.Conv2d(64, 128, kernel_size=(3, 3), stride=1, padding=1)
-        self.bn3 = torch.nn.BatchNorm2d(128)
-        self.pool3 = torch.nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1))
-
-        self.out_freq = n_mels // 8
-        cnn_feature_dim = 128 * self.out_freq
-
-        self.fc_proj = torch.nn.Linear(cnn_feature_dim, d_model)
-        encoder_layer = torch.nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dropout=0.1, batch_first=True)
-        self.transformer = torch.nn.TransformerEncoder(encoder_layer, num_layers=num_transformer_layers)
-        self.pos_encoder = PositionalEncoding(d_model=d_model, dropout=0.1)
-        self.dropout = torch.nn.Dropout(0.3)
-        self.fc_out = torch.nn.Linear(d_model, num_classes)
-
-    def forward(self, x):
-        # x: (batch, 1, n_mels, time_steps)
-        x = torch.relu(self.bn1(self.conv1(x)))
-        x = self.pool1(x)
-        x = torch.relu(self.bn2(self.conv2(x)))
-        x = self.pool2(x)
-        x = torch.relu(self.bn3(self.conv3(x)))
-        x = self.pool3(x)
-        # shape: (batch, 128, out_freq, time_steps)
-        x = x.permute(0, 3, 1, 2)  # (batch, time_steps, channels, out_freq)
-        batch_size, time_steps, channels, freq = x.size()
-        x = x.contiguous().view(batch_size, time_steps, channels * freq)  # (batch, time_steps, cnn_feature_dim)
-        x = self.fc_proj(x)  # (batch, time_steps, d_model)
-        x = self.pos_encoder(x)
-        x = self.transformer(x)  # (batch, time_steps, d_model)
-        x = self.dropout(x)
-        logits = self.fc_out(x)  # (batch, time_steps, num_classes)
-        return logits
-
+from breathing_model.model.transformer_model.transformer_model import BreathPhaseTransformerSeq
 
 #############################################
 # Settings and constants
 #############################################
-MODEL_PATH = 'best_breath_seq_transformer_model_CURR_BEST.pth'  # Path to the trained model
-ANOMALY_MODEL_PATH = '../invalid_data_filter_model/best_breathing_anomaly_detector.pth'  # Path to the anomaly detector model
-ANOMALY_THRESHOLD_PATH = '../invalid_data_filter_model/anomaly_threshold.json'  # Path to the anomaly threshold
+MODEL_PATH = '../../trained_models/1/transformer_model_88.pth'  # Path to the trained model
 
 REFRESH_TIME = 0.3  # time in seconds to read audio
 FORMAT = pyaudio.paInt16
@@ -95,76 +24,7 @@ EXHALE_COUNTER = 0
 
 running = True
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-
-# Audio state enum
-class AudioState(Enum):
-    SILENCE = 0
-    VALID = 1
-    ANOMALY = 2
-
-
-#############################################
-# Anomaly detector class
-#############################################
-class AudioAnomalyDetector:
-    def __init__(self, model_path, threshold_path):
-        # Load the autoencoder model
-        self.model = SimplerBreathingAutoencoder(n_mels=40, latent_dim=8).to(device)
-
-        try:
-            checkpoint = torch.load(model_path, map_location=device)
-            if isinstance(checkpoint, dict) and 'autoencoder_state_dict' in checkpoint:
-                self.model.load_state_dict(checkpoint['autoencoder_state_dict'])
-                self.threshold = checkpoint.get('anomaly_threshold', None)
-            else:
-                self.model.load_state_dict(checkpoint)
-                self.threshold = None
-        except Exception as e:
-            print(f"Error loading anomaly model: {e}")
-            self.threshold = None
-
-        self.model.eval()
-
-        # Load threshold if not included in model checkpoint
-        if self.threshold is None:
-            try:
-                with open(threshold_path, 'r') as f:
-                    threshold_data = json.load(f)
-                self.threshold = threshold_data["threshold"]
-            except (FileNotFoundError, json.JSONDecodeError) as e:
-                print(f"Anomaly threshold file error: {e}. Using default value.")
-                self.threshold = 1.1  # default value from anomaly_threshold.json
-
-        # Initialize loss function
-        self.criterion = EnhancedReconstructionLoss()
-
-    def detect_anomaly(self, mel_spec):
-        """
-        Detect if the mel spectrogram contains an anomaly
-
-        Args:
-            mel_spec (torch.Tensor): Mel spectrogram with shape [1, 1, n_mels, time_steps]
-
-        Returns:
-            (bool, float): Tuple with (is_anomaly, error_value)
-        """
-        with torch.no_grad():
-            mel_spec = mel_spec.to(device)
-
-            # Get reconstruction from autoencoder
-            reconstruction, _ = self.model(mel_spec)
-
-            # Calculate error using the enhanced loss
-            error = self.criterion(reconstruction, mel_spec)
-            error_value = error.item()
-
-            # Determine if it's an anomaly
-            is_anomalous = error_value > self.threshold
-
-            return is_anomalous, error_value
-
+device = 'cpu' #torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 #############################################
 # Audio handling class
@@ -180,8 +40,13 @@ class SharedAudioResource:
                                   input=True, frames_per_buffer=self.buffer_size,
                                   input_device_index=DEVICE_INDEX)
     def read(self):
-        data = self.stream.read(self.buffer_size, exception_on_overflow=False)
-        return np.frombuffer(data, dtype=np.int16)
+        try:
+            data = self.stream.read(self.buffer_size, exception_on_overflow=True)
+            return np.frombuffer(data, dtype=np.int16)
+        except IOError as e:
+            print(f"Błąd odczytu audio: {e}")
+            return None # Zwróć None w przypadku błędu
+
     def close(self):
         self.stream.stop_stream()
         self.stream.close()
@@ -192,9 +57,9 @@ class MelTransformer:
     def __init__(self):
         self.mel_transform = torchaudio.transforms.MelSpectrogram(
             sample_rate=RATE,
-            n_fft=1024,
+            n_fft=2048, # Updated n_fft
             hop_length=512,
-            n_mels=40
+            n_mels=128
         )
 
     def get_mel_transform(self, y, sr=RATE):
@@ -212,90 +77,46 @@ class MelTransformer:
         mel_spec = mel_spec.unsqueeze(0)
         return mel_spec
 
-
-class PredictionModes(Enum):
-    LOCAL = 1
-    HTTP_SERVER = 2
-    PRE_CALC_MEL_SOCKET = 3
-    SOCKET = 4
-
-
 #############################################
 # Prediction class
 #############################################
 class RealTimeAudioClassifier:
-    def __init__(self, model_path, anomaly_model_path, anomaly_threshold_path,
-                 mode: PredictionModes, http_url=None, socket_server_port=None):
+    def __init__(self, model_path):
         # Initialize breath phase model
-        self.model = BreathPhaseTransformerSeq(n_mels=40, num_classes=3, d_model=128, nhead=4,
-                                               num_transformer_layers=2).to(device)
+        self.model = BreathPhaseTransformerSeq(
+            n_mels=128, # Updated n_mels
+            num_classes=3,
+            d_model=192, # Updated d_model
+            nhead=8, # Updated nhead
+            num_transformer_layers=6 # Updated num_layers
+        ).to(device)
         self.model.load_state_dict(torch.load(model_path, map_location=device))
         self.model.eval()
 
-        # Initialize anomaly detector
-        self.anomaly_detector = AudioAnomalyDetector(anomaly_model_path, anomaly_threshold_path)
+        self.mel_transformer = MelTransformer() # Uses updated n_mels internally
 
-        self.mel_transformer = MelTransformer()
-        self.server_url = http_url
-        self.socket_port = socket_server_port
-        self.mode = mode
-        self.socket_connection = None
-
-        # Initialize socket connection if using socket mode
-        if self.mode in [PredictionModes.PRE_CALC_MEL_SOCKET, PredictionModes.SOCKET]:
-            self._connect_socket()
-
-    # [Keep existing _connect_socket, send_to_server methods unchanged]
-
-    def _local_predict(self, y):
-        """Fallback method for local prediction when server connection fails"""
+    def predict(self, y):
+        """Wykonuje lokalną predykcję."""
         with torch.no_grad():
             mel = self.mel_transformer.get_mel_transform(y)
-
-            # First check for anomalies
-            is_anomaly, error_value = self.anomaly_detector.detect_anomaly(mel)
-
-            if is_anomaly:
-                # Return a special value to indicate anomaly
-                # (using 3 to represent anomaly, beyond normal class range of 0-2)
-                return 3, np.array([0, 0, 0]), error_value
-
-            # If not an anomaly, proceed with normal classification
             mel = mel.to(device)
-            logits = self.model(mel)  # shape: (1, time_steps, num_classes)
+            logits = self.model(mel)  # kształt: (1, time_steps, num_classes)
             probabilities = torch.softmax(logits, dim=2)
             probs_np = probabilities.squeeze(0).cpu().numpy()  # (time_steps, num_classes)
 
-            # Aggregate predictions by frames – choose the most frequent class
+            # Agreguj predykcje po klatkach – wybierz najczęstszą klasę
             preds = np.argmax(probs_np, axis=1)
-            predicted_class = int(np.bincount(preds).argmax())
+            # Obsługa przypadku, gdy preds jest pusty (bardzo krótki dźwięk)
+            if len(preds) == 0:
+                predicted_class = 2 # Domyślnie cisza
+                class_probabilities = np.array([0.0, 0.0, 1.0]) # Domyślne prawdopodobieństwa
+            else:
+                predicted_class = int(np.bincount(preds).argmax())
+                # Oblicz średnie prawdopodobieństwo dla każdej klasy
+                class_probabilities = np.mean(probs_np, axis=0)  # Średnia po krokach czasowych
 
-            # Calculate the mean probability for each class
-            class_probabilities = np.mean(probs_np, axis=0)  # Average across time steps
-
-            # Return class probs along with the predicted class and error value
-            return predicted_class, class_probabilities, error_value
-
-    def predict(self, y, sr=RATE):
-        if self.mode is not PredictionModes.LOCAL:
-            try:
-                predicted_class = self.send_to_server(y)
-                if predicted_class is not None:
-                    return predicted_class
-            except Exception as e:
-                print(f"Server prediction failed: {e}, falling back to local")
-                # Fall back to local prediction in case of failure
-                return self._local_predict(y)
-        else:
-            return self._local_predict(y)
-
-    def __del__(self):
-        """Clean up resources when the object is destroyed"""
-        if self.socket_connection is not None:
-            try:
-                self.socket_connection.close()
-            except:
-                pass
+            # Zwróć prawdopodobieństwa klas wraz z przewidzianą klasą
+            return predicted_class, class_probabilities
 
 
 #############################################
@@ -306,14 +127,9 @@ PLOT_CHUNK_SIZE = CHUNK_SIZE
 plot_data = np.zeros((RATE * PLOT_TIME_HISTORY, 1))
 x_line_space = np.arange(0, RATE * PLOT_TIME_HISTORY, 1)
 predictions = np.zeros((int(PLOT_TIME_HISTORY / REFRESH_TIME), 1))
-errors = np.zeros((int(PLOT_TIME_HISTORY / REFRESH_TIME), 1))
 
-fig, (ax, ax_error) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [3, 1]})
+fig, ax = plt.subplots(1, 1, figsize=(10, 6))
 ax.plot(plot_data, color='white')
-ax_error.plot(np.arange(len(errors)), errors, color='cyan')
-ax_error.axhline(y=1.1, color='r', linestyle='--', label='Anomaly Threshold')
-ax_error.set_title('Anomaly Error')
-ax_error.legend()
 
 
 def on_key(event):
@@ -326,27 +142,23 @@ def on_key(event):
         EXHALE_COUNTER = 0
 
 
-fig.canvas.manager.set_window_title('Realtime Breath Detector (Press [SPACE] to stop, [R] to reset counter)')
+fig.canvas.manager.set_window_title('Realtime Breath Detector (Naciśnij [SPACJA] aby zatrzymać, [R] aby zresetować licznik)')
 fig.suptitle(
-    f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER}   (Red - Inhale, Green - Exhale, Blue - Silence, Yellow - Anomaly)')
+    f'Wdechy: {INHALE_COUNTER}  Wydechy: {EXHALE_COUNTER}   (Czerwony - Wdech, Zielony - Wydech, Niebieski - Cisza)')
 fig.canvas.mpl_connect('key_press_event', on_key)
 y_lim = (-500, 500)
 face_color = (0, 0, 0)
 ax.set_facecolor(face_color)
 ax.set_ylim(y_lim)
-ax_error.set_facecolor((0, 0, 0.1))
-ax_error.set_ylim((0, 2.0))  # Adjust this range as needed
 
 
-def update_plot(frames, current_prediction, error_value):
-    global plot_data, predictions, errors, ax, ax_error, INHALE_COUNTER, EXHALE_COUNTER
+def update_plot(frames, current_prediction):
+    global plot_data, predictions, ax, INHALE_COUNTER, EXHALE_COUNTER
     # Update plot buffer
     plot_data = np.roll(plot_data, -len(frames))
     plot_data[-len(frames):] = frames.reshape(-1, 1)
     predictions = np.roll(predictions, -1)
     predictions[-1] = current_prediction
-    errors = np.roll(errors, -1)
-    errors[-1] = error_value
 
     if current_prediction == 0:
         EXHALE_COUNTER += 1
@@ -356,9 +168,7 @@ def update_plot(frames, current_prediction, error_value):
     ax.clear()
     # For each segment (REFRESH_TIME window) plot the signal with color based on prediction
     for i in range(len(predictions)):
-        if predictions[i] == 3:  # Anomaly
-            color = 'yellow'
-        elif predictions[i] == 0:
+        if predictions[i] == 0:
             color = 'green'  # exhale
         elif predictions[i] == 1:
             color = 'red'  # inhale
@@ -368,50 +178,41 @@ def update_plot(frames, current_prediction, error_value):
         end = (i + 1) * PLOT_CHUNK_SIZE
         ax.plot(x_line_space[start:end], plot_data[start:end] / 4, color=color)
 
-    # Update error plot
-    ax_error.clear()
-    ax_error.plot(np.arange(len(errors)), errors, color='cyan')
-    ax_error.axhline(y=1.1, color='r', linestyle='--', label='Anomaly Threshold')
-    ax_error.set_title('Anomaly Error')
-    ax_error.legend()
-    ax_error.set_facecolor((0, 0, 0.1))
-    ax_error.set_ylim((0, max(2.0, max(errors) * 1.2)))  # Adjust range dynamically
-
     ax.set_facecolor(face_color)
     ax.set_ylim(y_lim)
     fig.suptitle(
-        f'Inhales: {INHALE_COUNTER}  Exhales: {EXHALE_COUNTER}   (Red - Inhale, Green - Exhale, Blue - Silence, Yellow - Anomaly)')
+        f'Wdechy: {INHALE_COUNTER}  Wydechy: {EXHALE_COUNTER}   (Czerwony - Wdech, Zielony - Wydech, Niebieski - Cisza)')
     plt.draw()
     plt.pause(0.01)
 
 
 if __name__ == '__main__':
     audio = SharedAudioResource()
-    classifier = RealTimeAudioClassifier(
-        MODEL_PATH,
-        ANOMALY_MODEL_PATH,
-        ANOMALY_THRESHOLD_PATH,
-        PredictionModes.LOCAL,
-        socket_server_port=50000
-    )
+    classifier = RealTimeAudioClassifier(MODEL_PATH)
 
-    while running:
-        start_time = time.time()
+    try:
+        while running:
+            start_time = time.time()
 
-        # Read CHUNK_SIZE samples from the microphone
-        buffer = audio.read()
-        if buffer is None:
-            continue
+            # Read CHUNK_SIZE samples from the microphone
+            buffer = audio.read()
+            if buffer is None:
+                print("Pominięto iterację z powodu błędu odczytu audio.")
+                time.sleep(REFRESH_TIME) # Poczekaj chwilę przed kolejną próbą
+                continue
 
-        # Get prediction and anomaly status
-        prediction, probability, error_value = classifier.predict(buffer)
+            # Get prediction and anomaly status
+            prediction, probability = classifier.predict(buffer)
 
-        # Print status based on prediction
-        if prediction == 3:
-            print("Anomaly detected! Error value:", error_value)
-        else:
-            print("Prediction:", prediction, probability, "Error:", error_value)
+            label_map = {0: "Wydech", 1: "Wdech", 2: "Cisza"}
+            print(f"Predykcja: {label_map.get(prediction, 'Nieznana')} ({prediction}), Prawdopodobieństwa: {probability}")
 
-        update_plot(buffer, prediction, error_value)
-        print("Iteration time:", time.time() - start_time)
-    audio.close()
+            update_plot(buffer, prediction)
+            print("Czas iteracji:", time.time() - start_time)
+    except KeyboardInterrupt:
+        print("Zatrzymano przez użytkownika.")
+    finally:
+        # Clean up
+        audio.close()
+        plt.close(fig)
+        print("Zasoby audio i wykresy zostały zamknięte.")
