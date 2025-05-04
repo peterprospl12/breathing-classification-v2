@@ -19,8 +19,8 @@ class BreathClassifierWrapper(private val context: Context) {
     private val sessionLock = ReentrantLock()
 
     companion object {
-        const val MODEL_NAME = "breath_classifier_model_audio_input.onnx"
-        const val MODEL_DATA_NAME = "breath_classifier_model_audio_input.onnx.data"
+        const val MODEL_NAME = "breath_classifier_model_nowy.onnx"
+        const val MODEL_DATA_NAME = "breath_classifier_model_nowy.onnx.data"
         private val POSSIBLE_ASSET_PATHS = arrayOf(
             "flutter_assets/assets/models/$MODEL_NAME",
             "assets/models/$MODEL_NAME",

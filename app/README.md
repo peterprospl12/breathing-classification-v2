@@ -37,6 +37,31 @@ After installing Flutter extension from the marketplace.
    - Example: `flutter run -d windows` for Windows
    - Example: `flutter run -d chrome` for Web
 
+### Android Logging
+
+1. View filtered logs using:
+   ```
+   adb logcat -s BreathClassifierWrapper:* MainActivity:* *:S
+   ```
+
+2. If ADB command is not found:
+
+   - Find the platform-tools folder:
+     - Typically located in your Android SDK installation directory
+     - Default location is often: `C:\Users\<YourUsername>\AppData\Local\Android\Sdk\platform-tools`
+     - If using Android Studio, you can check SDK location in File > Settings > Appearance & Behavior > System Settings > Android SDK > Android SDK Location
+
+   - Add the path to your PATH environment variable:
+     - In Windows search, type "environment variables" and select "Edit the system environment variables"
+     - Click "Environment Variables" button
+     - In "System variables" (or "User variables"), find the "Path" variable, select it and click "Edit"
+     - Click "New" and paste the full path to the platform-tools folder
+     - Click "OK" on all dialog windows to save changes
+
+   - Restart your terminal or VS Code for the PATH changes to take effect
+
+   - Verify by running `adb version` in a new terminal window
+
 ## Features
 
 - Real-time audio visualization
