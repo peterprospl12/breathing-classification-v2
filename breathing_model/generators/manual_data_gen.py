@@ -10,6 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import pyaudio
+from enum import Enum
 
 # ###########################################################################################
 # If there's an issue with the microphone, find the index of the microphone you want to use
@@ -31,6 +32,14 @@ DATA_DIR = "../data/"
 RAW_DIR = os.path.join(DATA_DIR, "raw")
 CSV_DIR = os.path.join(DATA_DIR, "label")
 
+class NoseMouth(Enum):
+    Nose = 0
+    Mouth = 1
+
+class MicrophoneQuality(Enum):
+    Good = 0
+    Medium = 1
+    Bad = 2
 
 def initialize_paths():
     """Creates necessary directories if they do not exist."""
@@ -76,7 +85,7 @@ class SharedAudioResource:
 class BreathingRecorder:
     """Records audio and tracks breathing classes with timestamps."""
 
-    def __init__(self, audio):
+    def __init__(self, audio, noseMouthMode, microphoneQuality, personName):
         self.audio = audio
         self.current_class = "silence"  # Default class
         self.frames = []
@@ -86,6 +95,9 @@ class BreathingRecorder:
         self.recording_start_time = None
         self.last_save_time = None
         self.filename_base = None
+        self.noseMouthMode = noseMouthMode
+        self.microphoneQuality = microphoneQuality
+        self.personName = personName
 
     def start_recording(self):
         """Starts a new recording session."""
@@ -127,9 +139,14 @@ class BreathingRecorder:
         if not self.recording or not self.frames:
             return
 
+        # Generate filename prefix with person name, breathing mode, and mic quality
+        nose_mouth_str = "nose" if self.noseMouthMode == NoseMouth.Nose else "mouth"
+        mic_quality_str = self.microphoneQuality.name.lower()
+        file_prefix = f"{self.personName}_{nose_mouth_str}_{mic_quality_str}"
+
         timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        wav_filename = os.path.join(RAW_DIR, f"{timestamp}.wav")
-        csv_filename = os.path.join(CSV_DIR, f"{timestamp}.csv")
+        wav_filename = os.path.join(RAW_DIR, f"{file_prefix}_{timestamp}.wav")
+        csv_filename = os.path.join(CSV_DIR, f"{file_prefix}_{timestamp}.csv")
 
         # Save WAV file
         wf = wave.open(wav_filename, 'wb')
@@ -155,7 +172,7 @@ class BreathingRecorder:
                 last_class, last_start = self.events[-1]
                 writer.writerow([last_class, last_start, self.current_sample])
 
-        print(f"Saved sequence: {timestamp}")
+        print(f"Saved sequence: {file_prefix}_{timestamp}")
         print(f"  - Audio file: {wav_filename}")
         print(f"  - CSV file: {csv_filename}")
 
@@ -327,7 +344,12 @@ def plot_audio(audio):
 if __name__ == "__main__":
     initialize_paths()
     audio = SharedAudioResource()
-    recorder = BreathingRecorder(audio)
+
+    MODE = NoseMouth.Nose
+    MICROPHONEQUALITY = MicrophoneQuality.Bad
+    PERSONNAME = "Iwo"
+
+    recorder = BreathingRecorder(audio, MODE, MICROPHONEQUALITY, PERSONNAME)
 
     # Start the pygame interface in a separate thread
     pygame_thread_instance = threading.Thread(target=pygame_thread, args=(recorder,))
