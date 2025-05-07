@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../models/breath_classifier.dart';
 import '../services/audio_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/audio_display_toggle.dart';
+import '../models/display_mode.dart';
+import '../widgets/microphone_visualization.dart';
+import '../widgets/circular_audio_visualization.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,7 +21,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   StreamSubscription<BreathPhase>? _breathPhaseSubscription;
   final List<BreathPhase> _breathPhases = [];
   StreamSubscription<List<int>>? _audioSubscription;
-  List<int> _audioData = [];
+  DisplayMode _selectedMode = DisplayMode.circular;
+  bool _showSeparateCounters = false;
 
   static const int _maxBreathPhasesToStore = 20;
 
@@ -51,9 +54,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     });
 
     _audioSubscription = audioService.subscribeToAudioStream((audioData) {
-      setState(() {
-        _audioData = audioData;
-      });
+      setState(() {});
     });
   }
 
@@ -69,133 +70,119 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final audioService = Provider.of<AudioService>(context);
     final classifier = Provider.of<BreathClassifier>(context, listen: false);
+    final theme = Theme.of(context);
+    const double appBarBottomRadius = 28.0;
 
     return Scaffold(
+      backgroundColor: theme.colorScheme.background,
       appBar: AppBar(
-        elevation: 4,
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Theme.of(context).primaryColor.withAlpha(90), Theme.of(context).primaryColor.withBlue(150)],
-            ),
+        elevation: 1,
+        backgroundColor: theme.colorScheme.surface,
+        foregroundColor: theme.colorScheme.onSurface,
+        shape: const ContinuousRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            bottom: Radius.circular(appBarBottomRadius * 1.5),
           ),
         ),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha(20),
-                shape: BoxShape.circle,
+            Icon(Icons.air_outlined, size: 24, color: theme.colorScheme.primary),
+            const SizedBox(width: 12),
+            Text(
+              'Breathing Monitor',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                color: theme.colorScheme.onSurface,
               ),
-              child: const Icon(Icons.air, size: 18),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Breathing Monitor',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                Text(
-                  'Real-time analysis',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w300,
-                    color: Colors.white.withValues(alpha: 0.8),
-                  ),
-                ),
-              ],
             ),
           ],
         ),
         centerTitle: false,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(40.0),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8.0),
-            child: Row(
-              children: [
-                // Microphone icon
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(24),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      padding: const EdgeInsets.only(left: 16),
-                      child: const Icon(
-                        Icons.mic,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: ElevationOverlay.applySurfaceTint(theme.colorScheme.surface, theme.colorScheme.surfaceTint, 0.5),
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(appBarBottomRadius * 1.5),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 8.0),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.mic_none_outlined,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    size: 20,
                   ),
-                ),
-                // Device selector - always wrap in Expanded
-                Expanded(
-                  child: audioService.selectedDevice != null
-                      ? InkWell(
-                          onTap: _showDeviceSelectionDialog,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 4.0),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  audioService.selectedDevice!.label,
-                                  style: const TextStyle(fontSize: 11),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: audioService.selectedDevice != null
+                        ? InkWell(
+                            onTap: _showDeviceSelectionDialog,
+                            borderRadius: BorderRadius.circular(4),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4.0),
+                              child: Text(
+                                audioService.selectedDevice!.label,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w400,
                                 ),
-                                const Text(
-                                  'Tap to change',
-                                  style: TextStyle(fontSize: 9, color: Colors.grey),
-                                ),
-                              ],
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                          )
+                        : Text(
+                            'No device selected',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
+                              fontStyle: FontStyle.italic,
                             ),
                           ),
-                        )
-                      : const SizedBox(), // Empty SizedBox when no device selected
-                ),
-                // Loading indicator - fixed size
-                if (audioService.isLoadingDevices)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 16.0),
-                    child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                  if (audioService.isLoadingDevices)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8.0),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
         actions: [
-          // Info button
           IconButton(
-            icon: const Icon(Icons.info),
+            icon: const Icon(Icons.tune_outlined),
+            tooltip: 'Display Options',
+            onPressed: () => _showAdvancedOptionsDialog(context),
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          IconButton(
+            icon: const Icon(Icons.info_outline),
             tooltip: 'Show information',
             onPressed: () => _showInfoDialog(),
+            color: theme.colorScheme.onSurfaceVariant,
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -203,16 +190,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 context,
                 audioService,
                 _currentPhase,
-                classifier
+                classifier,
+                _animationController,
+                _selectedMode,
+                _showSeparateCounters,
               ),
-
-
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 0),
-                child: AudioDisplayToggle(
-                  audioData: _audioData.map((e) => e.toDouble()).toList(),
-                  breathPhases: _breathPhases,
-                  refreshTime: 0.3,
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: _buildWidget(_selectedMode),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 16.0),
+                child: Center(
+                  child: _buildControlPanel(audioService),
                 ),
               ),
             ],
@@ -226,205 +216,178 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     BuildContext context,
     AudioService audioService,
     BreathPhase phase,
-    BreathClassifier classifier
+    BreathClassifier classifier,
+    AnimationController animationController,
+    DisplayMode selectedMode,
+    bool showSeparateCounters,
   ) {
     final color = BreathClassifier.getColorForPhase(phase);
     final label = BreathClassifier.getLabelForPhase(phase);
+    final theme = Theme.of(context);
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Theme.of(context).cardColor,
-              Theme.of(context).cardColor.withValues(alpha: 0.9),
-            ],
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              // Top section: Breath Counter with improved styling
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  color: Theme.of(context).cardColor.withValues(alpha: 0.5),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildCounterItem(
-                      context,
-                      'INHALE',
-                      audioService.inhaleCount,
-                      AppTheme.inhaleColor
-                    ),
-                    Container(
-                      height: 50,
-                      width: 1,
-                      color: Colors.grey.withAlpha(50)
-                    ),
-                    _buildCounterItem(
-                      context,
-                      'EXHALE',
-                      audioService.exhaleCount,
-                      AppTheme.exhaleColor
-                    ),
-                  ],
-                ),
-              ),
-
-              // Reset button with improved styling
-              Container(
-                alignment: Alignment.center,
-                margin: const EdgeInsets.only(top: 8),
-                child: TextButton.icon(
-                  onPressed: audioService.resetCounters,
-                  icon: const Icon(Icons.refresh, size: 12),
-                  label: const Text(
-                    'RESET COUNTERS',
-                    style: TextStyle(fontWeight: FontWeight.w500, fontSize: 10)
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: theme.dividerColor.withOpacity(0.5), width: 1),
+      ),
+      color: theme.colorScheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: showSeparateCounters ? MainAxisAlignment.spaceEvenly : MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (showSeparateCounters) ...[
+                  _buildCounterItem(
+                    context,
+                    'INHALE',
+                    audioService.inhaleCount,
+                    AppTheme.inhaleColor,
                   ),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.grey,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    backgroundColor: Colors.grey.withValues(alpha: 0.1),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                  _buildVerticalResetButton(audioService.resetCounters),
+                  _buildCounterItem(
+                    context,
+                    'EXHALE',
+                    audioService.exhaleCount,
+                    AppTheme.exhaleColor,
+                  ),
+                ] else ...[
+                  _buildCounterItem(
+                    context,
+                    'BREATHS',
+                    audioService.exhaleCount,
+                    theme.colorScheme.primary,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 16.0),
+                    child: _buildVerticalResetButton(audioService.resetCounters),
+                  ),
+                ],
+              ],
+            ),
+            if (selectedMode == DisplayMode.microphone) ...[
+              const SizedBox(height: 16),
+              Divider(height: 1, thickness: 1, color: theme.dividerColor.withOpacity(0.5)),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
                     ),
                   ),
-                ),
-              ),
-
-              const Divider(height: 24, thickness: 1),
-
-              // Bottom section: Current Status with improved styling
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  color: color.withValues(alpha: 0.05),
-                  border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Enhanced pulsing indicator
-                    AnimatedBuilder(
-                      animation: _animationController,
-                      builder: (context, child) {
-                        return Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: color.withAlpha((0.1 + 0.3 * _animationController.value).toInt()),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: color.withValues(alpha: 0.3 * _animationController.value),
-                                blurRadius: 6,
-                                spreadRadius: 1.5 * _animationController.value,
-                              ),
-                            ],
-                          ),
-                          child: Center(
-                            child: Container(
-                              width: 16,
-                              height: 16,
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
+                  const SizedBox(width: 12),
+                  Text(
+                    label.toUpperCase(),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: color,
+                      letterSpacing: 0.8,
                     ),
-                    const SizedBox(width: 16),
-                    // Status text with improved styling
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'CURRENT STATUS',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 0.5,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          label,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: color,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
-          ),
+          ],
         ),
       ),
     );
   }
 
+  Widget _buildControlPanel(AudioService audioService) {
+    final theme = Theme.of(context);
+    final isRecording = audioService.isRecording;
+    final bgColor = isRecording ? Colors.red.shade400 : theme.colorScheme.primary;
+    final fgColor = Colors.white;
+    final icon = isRecording ? Icons.stop_rounded : Icons.mic_rounded;
+    final text = isRecording ? 'Stop' : 'Start';
+
+    return SizedBox(
+      width: 140,
+      height: 48,
+      child: ElevatedButton.icon(
+        icon: Icon(icon, size: 22, color: fgColor),
+        label: Text(
+          text,
+          style: TextStyle(
+            color: fgColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        onPressed: () {
+          if (isRecording) {
+            audioService.stopRecording();
+          } else {
+            audioService.startRecording();
+          }
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: bgColor,
+          foregroundColor: fgColor,
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVerticalResetButton(VoidCallback onPressed) {
+    final theme = Theme.of(context);
+    return IconButton(
+      icon: Icon(Icons.refresh, size: 20, color: theme.colorScheme.onSurfaceVariant),
+      tooltip: 'Reset Counters',
+      onPressed: onPressed,
+      splashRadius: 20,
+      padding: const EdgeInsets.all(8),
+      constraints: const BoxConstraints(),
+    );
+  }
 
   Widget _buildCounterItem(
     BuildContext context,
     String label,
     int count,
-    Color color
+    Color color,
   ) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.grey[500],
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.8,
-            ),
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.8,
           ),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              count.toString(),
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          count.toString(),
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: color,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   void _showDeviceSelectionDialog() {
     final audioService = Provider.of<AudioService>(context, listen: false);
+    final theme = Theme.of(context);
 
     showDialog(
       context: context,
@@ -433,39 +396,53 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         child: Consumer<AudioService>(
           builder: (context, audioService, _) {
             return AlertDialog(
+              backgroundColor: theme.dialogBackgroundColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+              contentPadding: const EdgeInsets.fromLTRB(0, 0, 0, 10),
+              actionsPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
               title: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Select Audio Input Device',
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 14),
+                      'Select Input Device',
+                      style: theme.textTheme.titleMedium,
                     ),
                   ),
                   if (audioService.isLoadingDevices)
-                    const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8.0),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                        ),
+                      ),
                     )
                   else
                     IconButton(
                       icon: const Icon(Icons.refresh),
+                      iconSize: 20,
                       tooltip: 'Refresh audio devices',
                       onPressed: () => audioService.loadInputDevices(),
+                      color: theme.colorScheme.onSurfaceVariant,
+                      splashRadius: 20,
+                      constraints: const BoxConstraints(),
+                      padding: const EdgeInsets.all(4),
                     ),
                 ],
               ),
               content: SizedBox(
                 width: double.maxFinite,
                 child: audioService.inputDevices.isEmpty
-                    ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: Text(
-                            'No audio devices available.\nTry refreshing or check your microphone connections.',
-                            textAlign: TextAlign.center,
-                          ),
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+                        child: Text(
+                          'No audio devices found.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                         ),
                       )
                     : ListView.builder(
@@ -476,10 +453,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           final bool isSelected = audioService.selectedDevice?.id == device.id;
 
                           return ListTile(
-                            title: Text(device.label),
-                            leading: const Icon(Icons.mic),
+                            leading: Icon(Icons.mic_none_outlined, size: 20, color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+                            title: Text(
+                              device.label,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: isSelected ? Icon(Icons.check, size: 18, color: theme.colorScheme.primary) : null,
                             selected: isSelected,
-                            trailing: isSelected ? const Icon(Icons.check) : null,
+                            selectedTileColor: theme.colorScheme.primary.withOpacity(0.1),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+                            dense: true,
                             onTap: () {
                               audioService.selectDevice(device);
                               Navigator.pop(context);
@@ -491,7 +480,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: Text('Cancel', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
                 ),
               ],
             );
@@ -502,9 +491,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _showInfoDialog() {
+    final theme = Theme.of(context);
     showDialog(
       context: context,
       builder: (context) => Dialog(
+        backgroundColor: theme.colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: SingleChildScrollView(
           child: Column(
@@ -512,9 +503,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).primaryColor,
+                  color: theme.colorScheme.primary.withOpacity(0.1),
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(16),
                     topRight: Radius.circular(16),
@@ -522,118 +513,80 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.info_outline, color: Colors.white, size: 24),
+                    Icon(Icons.info_outline, color: theme.colorScheme.primary, size: 24),
                     const SizedBox(width: 12),
-                    const Text(
-                      'App Information',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                    Expanded(
+                      child: Text(
+                        'App Information',
+                        style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary),
                       ),
                     ),
-                    const Spacer(),
                     IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
+                      icon: Icon(Icons.close, color: theme.colorScheme.onSurfaceVariant),
+                      iconSize: 20,
                       onPressed: () => Navigator.pop(context),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
+                      splashRadius: 18,
                     ),
                   ],
                 ),
               ),
-
-              // About section
-              const Padding(
-                padding: EdgeInsets.all(16.0),
+              Padding(
+                padding: const EdgeInsets.all(20.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'About Breathing Monitor',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Text(
-                      'This app monitors your breathing patterns in real-time. '
-                      'It detects inhales, exhales, and silence periods and '
-                      'visualizes them with different colors.',
+                      'This app monitors your breathing patterns in real-time, detecting inhales, exhales, and silence periods.',
+                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
-                    SizedBox(height: 12),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.mic, size: 18),
-                        SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            'Tap the mic button to toggle monitoring',
-                            style: TextStyle(fontSize: 14),
-                            softWrap: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 8),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.refresh, size: 18),
-                        SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            'Reset counters with the refresh button',
-                            style: TextStyle(fontSize: 14),
-                            softWrap: true,
-                          ),
-                        ),
-                      ],
-                    ),
+                    const SizedBox(height: 16),
+                    _buildInfoRow(theme, Icons.mic_none_outlined, 'Tap the Start/Stop button to toggle monitoring.'),
+                    const SizedBox(height: 10),
+                    _buildInfoRow(theme, Icons.refresh_outlined, 'Tap the refresh icon to reset breath counts.'),
+                    const SizedBox(height: 10),
+                    _buildInfoRow(theme, Icons.tune_outlined, 'Use the options icon to change visualization style.'),
                   ],
                 ),
               ),
-
-              const Divider(height: 1),
-
-              // Legend section
+              Divider(height: 1, thickness: 1, color: theme.dividerColor.withOpacity(0.5)),
               Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(20.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Legend',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 16),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildLegendItem(AppTheme.inhaleColor, 'Inhale'),
-                        _buildLegendItem(AppTheme.exhaleColor, 'Exhale'),
-                        _buildLegendItem(AppTheme.silenceColor, 'Silence'),
+                        _buildLegendItem(theme, AppTheme.inhaleColor, 'Inhale'),
+                        _buildLegendItem(theme, AppTheme.exhaleColor, 'Exhale'),
+                        _buildLegendItem(theme, AppTheme.silenceColor, 'Silence'),
                       ],
                     ),
                   ],
                 ),
               ),
-
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                 child: TextButton(
                   onPressed: () => Navigator.pop(context),
                   style: TextButton.styleFrom(
-                    backgroundColor: Theme.of(context).primaryColor,
-                    foregroundColor: Colors.white,
+                    backgroundColor: theme.colorScheme.secondaryContainer,
+                    foregroundColor: theme.colorScheme.onSecondaryContainer,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                   child: const Text('CLOSE'),
@@ -646,38 +599,174 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildLegendItem(Color color, String label) {
+  Widget _buildInfoRow(ThemeData theme, IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(ThemeData theme, Color color, String label) {
     return Column(
       children: [
         Container(
-          width: 30,
-          height: 30,
+          width: 24,
+          height: 24,
           decoration: BoxDecoration(
-            color: color,
+            color: color.withOpacity(0.8),
             shape: BoxShape.circle,
             border: Border.all(
-              color: Colors.white.withAlpha(30),
-              width: 2,
+              color: color,
+              width: 1.5,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: color.withAlpha(128),
-                blurRadius: 8,
-                spreadRadius: 1,
-              ),
-            ],
           ),
         ),
         const SizedBox(height: 8),
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Colors.white,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _showAdvancedOptionsDialog(BuildContext context) async {
+    DisplayMode tempSelectedMode = _selectedMode;
+    bool tempShowSeparateCounters = _showSeparateCounters;
+    final theme = Theme.of(context);
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: theme.dialogBackgroundColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+          contentPadding: const EdgeInsets.fromLTRB(0, 10, 0, 10),
+          actionsPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          title: Text('Display Options', style: theme.textTheme.titleMedium),
+          content: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setStateDialog) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                    child: Text("Visualization Style", style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary)),
+                  ),
+                  ...DisplayMode.values.map((mode) {
+                    final bool isSelected = tempSelectedMode == mode;
+                    return RadioListTile<DisplayMode>(
+                      title: Text(
+                        mode.label,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      value: mode,
+                      groupValue: tempSelectedMode,
+                      onChanged: (DisplayMode? value) {
+                        if (value != null) {
+                          setStateDialog(() {
+                            tempSelectedMode = value;
+                          });
+                        }
+                      },
+                      secondary: Icon(
+                        mode.icon,
+                        color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                      ),
+                      activeColor: theme.colorScheme.primary,
+                      controlAffinity: ListTileControlAffinity.trailing,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                      dense: true,
+                    );
+                  }).toList(),
+                  const Divider(height: 20, thickness: 1),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                    child: Text("Counters", style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary)),
+                  ),
+                  SwitchListTile(
+                    title: Text(
+                      'Show Separate Inhale/Exhale Counters',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    value: tempShowSeparateCounters,
+                    onChanged: (bool value) {
+                      setStateDialog(() {
+                        tempShowSeparateCounters = value;
+                      });
+                    },
+                    secondary: Icon(
+                      Icons.compare_arrows_outlined,
+                      color: tempShowSeparateCounters ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                    ),
+                    activeColor: theme.colorScheme.primary,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                    dense: true,
+                  ),
+                ],
+              );
+            },
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancel', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('Apply', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
+              onPressed: () {
+                Navigator.of(context).pop({
+                  'mode': tempSelectedMode,
+                  'showSeparate': tempShowSeparateCounters,
+                });
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null) {
+      bool needsSetState = false;
+      if (result['mode'] != null && result['mode'] != _selectedMode) {
+        _selectedMode = result['mode'];
+        needsSetState = true;
+      }
+      if (result['showSeparate'] != null && result['showSeparate'] != _showSeparateCounters) {
+        _showSeparateCounters = result['showSeparate'];
+        needsSetState = true;
+      }
+      if (needsSetState) {
+        setState(() {});
+      }
+    }
+  }
+
+  Widget _buildWidget(DisplayMode mode) {
+    switch (mode) {
+      case DisplayMode.microphone:
+        return const MicrophoneVisualizationWidget();
+      case DisplayMode.circular:
+        return CircularVisualizationWidget(showSeparateCounters: _showSeparateCounters);
+    }
   }
 }
