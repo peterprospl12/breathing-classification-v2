@@ -25,12 +25,17 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1  # Changed to mono for simplicity
 RATE = 44100
 INPUT_DEVICE_INDEX = 0
-RECORDING_DURATION = 10  # Duration in seconds to save each recording
+TRAINING_RECORDING_DURATION = 10  # Duration in seconds to save each recording
+EVAL_RECORDING_DURATION = 60  # Duration in seconds to save each recording
 
 # Paths for saving files
 DATA_DIR = "../data/"
 RAW_DIR = os.path.join(DATA_DIR, "raw")
 CSV_DIR = os.path.join(DATA_DIR, "label")
+
+EVAL_DATA_DIR = "../eval_data/"
+EVAL_RAW_DIR = os.path.join(EVAL_DATA_DIR, "raw")
+EVAL_CSV_DIR = os.path.join(EVAL_DATA_DIR, "label")
 
 class NoseMouth(Enum):
     Nose = 0
@@ -41,10 +46,17 @@ class MicrophoneQuality(Enum):
     Medium = 1
     Bad = 2
 
+class DataMeansOfUsage(Enum):
+    Evaluation = 0
+    Training = 1
+
 def initialize_paths():
     """Creates necessary directories if they do not exist."""
     os.makedirs(RAW_DIR, exist_ok=True)
     os.makedirs(CSV_DIR, exist_ok=True)
+    os.makedirs(EVAL_RAW_DIR, exist_ok=True)
+    os.makedirs(EVAL_CSV_DIR, exist_ok=True)
+
 
 
 class SharedAudioResource:
@@ -85,7 +97,7 @@ class SharedAudioResource:
 class BreathingRecorder:
     """Records audio and tracks breathing classes with timestamps."""
 
-    def __init__(self, audio, noseMouthMode, microphoneQuality, personName):
+    def __init__(self, audio, noseMouthMode, microphoneQuality, personName, meansOfUsage):
         self.audio = audio
         self.current_class = "silence"  # Default class
         self.frames = []
@@ -98,6 +110,8 @@ class BreathingRecorder:
         self.noseMouthMode = noseMouthMode
         self.microphoneQuality = microphoneQuality
         self.personName = personName
+        self.meansOfUsage = meansOfUsage
+        self.record_duration = TRAINING_RECORDING_DURATION if self.meansOfUsage is DataMeansOfUsage.Training else EVAL_RECORDING_DURATION
 
     def start_recording(self):
         """Starts a new recording session."""
@@ -128,9 +142,9 @@ class BreathingRecorder:
             self.frames.append(chunk)
             self.current_sample += AUDIO_CHUNK
 
-            # Check if it's time to save (every RECORDING_DURATION seconds)
+            # Check if it's time to save (every self.record_duration seconds)
             current_time = time.time()
-            if current_time - self.last_save_time >= RECORDING_DURATION:
+            if current_time - self.last_save_time >= self.record_duration:
                 self.save_sequence()
                 self.last_save_time = current_time
 
@@ -145,9 +159,12 @@ class BreathingRecorder:
         file_prefix = f"{self.personName}_{nose_mouth_str}_{mic_quality_str}"
 
         timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        wav_filename = os.path.join(RAW_DIR, f"{file_prefix}_{timestamp}.wav")
-        csv_filename = os.path.join(CSV_DIR, f"{file_prefix}_{timestamp}.csv")
-
+        if self.meansOfUsage is DataMeansOfUsage.Training:
+            wav_filename = os.path.join(RAW_DIR, f"{file_prefix}_{timestamp}.wav")
+            csv_filename = os.path.join(CSV_DIR, f"{file_prefix}_{timestamp}.csv")
+        else:  # Evaluation mode
+            wav_filename = os.path.join(EVAL_RAW_DIR, f"{file_prefix}_{timestamp}.wav")
+            csv_filename = os.path.join(EVAL_CSV_DIR, f"{file_prefix}_{timestamp}.csv")
         # Save WAV file
         wf = wave.open(wav_filename, 'wb')
         wf.setnchannels(CHANNELS)
@@ -198,7 +215,7 @@ def draw_text(text, pos, font, screen):
                                pos[1] - text_surface.get_height() // 2))
 
 
-def pygame_thread(recorder):
+def pygame_thread(recorder, means_of_usage):
     """Handles the graphical interface and user input."""
     pygame.init()
 
@@ -229,11 +246,11 @@ def pygame_thread(recorder):
     # Class buttons
     class_buttons = [
         [WIDTH // 4 - button_width // 2, HEIGHT // 2, button_width, button_height,
-         "INHALE (w)", pygame.K_i, "inhale"],
-        [WIDTH // 2, HEIGHT // 2, button_width, button_height,
+         "INHALE (W)", pygame.K_w, "inhale"],
+        [WIDTH // 2 - button_width // 2, HEIGHT // 2, button_width, button_height,
          "EXHALE (E)", pygame.K_e, "exhale"],
-        [WIDTH * 3 // 4 + button_width // 2, HEIGHT // 2, button_width, button_height,
-         "SILENCE (R)", pygame.K_c, "silence"],
+        [WIDTH * 3 // 4 - button_width // 2, HEIGHT // 2, button_width, button_height,
+         "SILENCE (R)", pygame.K_r, "silence"],
     ]
 
     def draw_button(button):
@@ -276,11 +293,11 @@ def pygame_thread(recorder):
         # Draw status
         if recorder.recording:
             elapsed = time.time() - recorder.recording_start_time
-            next_save = RECORDING_DURATION - (time.time() - recorder.last_save_time)
+            next_save = recorder.record_duration - (time.time() - recorder.last_save_time)
             status_text = f"RECORDING | Class: {recorder.current_class} | Time: {elapsed:.1f}s | Next save: {next_save:.1f}s"
             status_color = (255, 50, 50)
         else:
-            status_text = "NOT RECORDING | Press SPACE to start"
+            status_text = f"NOT RECORDING | Mode: {means_of_usage.name} | Press SPACE to start"
             status_color = (200, 200, 200)
 
         # Draw status text
@@ -300,19 +317,6 @@ def pygame_thread(recorder):
         # Draw class buttons
         for button in class_buttons:
             draw_button(button)
-
-        # Draw instructions
-        instructions = [
-            "Press SPACE to start recording",
-            "Press S to stop recording",
-            "Press W/E/R to mark INHALE/EXHALE/SILENCE",
-            f"Files will be saved every {RECORDING_DURATION} seconds"
-        ]
-
-        for i, instruction in enumerate(instructions):
-            instr_surface, _ = font.render(instruction, (180, 180, 180))
-            screen.blit(instr_surface, (WIDTH // 2 - instr_surface.get_width() // 2,
-                                        HEIGHT - 200 + i * 30))
 
         pygame.display.flip()
         clock.tick(60)
@@ -348,11 +352,12 @@ if __name__ == "__main__":
     MODE = NoseMouth.Nose
     MICROPHONEQUALITY = MicrophoneQuality.Bad
     PERSONNAME = "Iwo"
+    MEANSOFUSAGE = DataMeansOfUsage.Evaluation
 
-    recorder = BreathingRecorder(audio, MODE, MICROPHONEQUALITY, PERSONNAME)
+    recorder = BreathingRecorder(audio, MODE, MICROPHONEQUALITY, PERSONNAME, MEANSOFUSAGE)
 
     # Start the pygame interface in a separate thread
-    pygame_thread_instance = threading.Thread(target=pygame_thread, args=(recorder,))
+    pygame_thread_instance = threading.Thread(target=pygame_thread, args=(recorder, MEANSOFUSAGE))
     pygame_thread_instance.daemon = True
     pygame_thread_instance.start()
 
