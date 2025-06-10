@@ -24,7 +24,7 @@ PLOT_CHUNK = 1024
 FORMAT = pyaudio.paInt16
 CHANNELS = 1  # Changed to mono for simplicity
 RATE = 44100
-INPUT_DEVICE_INDEX = 0
+INPUT_DEVICE_INDEX = 1
 TRAINING_RECORDING_DURATION = 10  # Duration in seconds to save each recording
 EVAL_RECORDING_DURATION = 60  # Duration in seconds to save each recording
 
@@ -351,7 +351,7 @@ if __name__ == "__main__":
 
     MODE = NoseMouth.Nose
     MICROPHONEQUALITY = MicrophoneQuality.Bad
-    PERSONNAME = "Iwo"
+    PERSONNAME = "Tomasz"
     MEANSOFUSAGE = DataMeansOfUsage.Evaluation
 
     recorder = BreathingRecorder(audio, MODE, MICROPHONEQUALITY, PERSONNAME, MEANSOFUSAGE)
