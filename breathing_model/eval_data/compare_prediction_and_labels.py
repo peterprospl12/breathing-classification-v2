@@ -4,6 +4,7 @@ import wave
 import csv
 import onnxruntime as ort
 from matplotlib.lines import Line2D
+import os
 
 
 def preprocess_audio(audio_data: np.ndarray, audio_length: int = 13230) -> np.ndarray:
@@ -145,11 +146,39 @@ def generate_comparison_plots(
 
 
 if __name__ == "__main__":
-    base_name = "Tomasz_nose_good_regular_2025-06-10_23-42-11"
-    wav_path = f"raw/{base_name}.wav"
-    csv_path = f"label/{base_name}.csv"
+    raw_folder = "raw"
+    label_folder = "label"
     model_path = "breath_classifier_model_audio_input.onnx"
-    output_path = f"{base_name}.png"
-    plot_name = "Test data vs model: Tomasz, good microphone."
+    output_folder = "plots"
 
-    generate_comparison_plots(wav_path, csv_path, model_path, output_path, plot_name)
+    os.makedirs(output_folder, exist_ok=True)
+
+    wav_files = [f for f in os.listdir(raw_folder) if f.endswith('.wav')]
+
+    print(f"Found {len(wav_files)} WAV files")
+
+    for wav_file in wav_files:
+        base_name = os.path.splitext(wav_file)[0]  # Name without extension
+        csv_file = f"{base_name}.csv"
+        csv_path = os.path.join(label_folder, csv_file)
+
+        # Check if the corresponding CSV file exists
+        if not os.path.exists(csv_path):
+            print(f"No labels for {wav_file}, skipping")
+            continue
+
+        wav_path = os.path.join(raw_folder, wav_file)
+        output_path = os.path.join(output_folder, f"{base_name}.png")
+
+        # Create plot title according to filename
+        # Example: "Piotr_nose_medium_2025-06-11_23-01-01" -> "Piotr, nos, medium"
+        parts = base_name.split('_')
+        if len(parts) >= 3:
+            plot_name = f"Test data vs model: {parts[0]}, {parts[1]}, {parts[2]}"
+        else:
+            plot_name = f"Test data vs model: {base_name}"
+
+        print(f"Process: {base_name}")
+        generate_comparison_plots(wav_path, csv_path, model_path, output_path, plot_name)
+
+    print(f"Ended plot generating. Plots in: {output_folder}")
