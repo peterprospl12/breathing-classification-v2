@@ -12,7 +12,9 @@ class AudioDisplayToggle extends StatelessWidget {
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           elevation: 3,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
@@ -26,7 +28,10 @@ class AudioDisplayToggle extends StatelessWidget {
               ),
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
+              padding: const EdgeInsets.symmetric(
+                vertical: 12.0,
+                horizontal: 16.0,
+              ),
               child: _buildControlPanel(audioService),
             ),
           ),
@@ -46,11 +51,15 @@ class AudioDisplayToggle extends StatelessWidget {
       width: buttonWidth,
       height: buttonHeight,
       decoration: BoxDecoration(
-        color: audioService.isRecording ? Colors.red.shade600 : Colors.green.shade600,
+        color:
+            audioService.isRecording
+                ? Colors.red.shade600
+                : Colors.green.shade600,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: (audioService.isRecording ? Colors.red : Colors.green).withValues(alpha: 0.3),
+            color: (audioService.isRecording ? Colors.red : Colors.green)
+                .withValues(alpha: 0.3),
             spreadRadius: 1,
             blurRadius: 6,
             offset: const Offset(0, 2),

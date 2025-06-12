@@ -20,22 +20,33 @@ class BreathClassifier {
     if (_isInitialized) return;
 
     try {
-      _isInitialized = await _channel.invokeMethod<bool>('isInitialized') ?? false;
+      _isInitialized =
+          await _channel.invokeMethod<bool>('isInitialized') ?? false;
 
       if (_isInitialized) {
-        _logger.info('Breath classifier successfully initialized (confirmed by native code)');
+        _logger.info(
+          'Breath classifier successfully initialized (confirmed by native code)',
+        );
       } else {
-        _logger.warning('Classifier was not properly initialized on the native side.');
+        _logger.warning(
+          'Classifier was not properly initialized on the native side.',
+        );
 
         if (_initAttempts < maxInitAttempts) {
           _initAttempts++;
-          _logger.info('Attempting reinitialization $_initAttempts of $maxInitAttempts...');
+          _logger.info(
+            'Attempting reinitialization $_initAttempts of $maxInitAttempts...',
+          );
 
           await Future.delayed(const Duration(seconds: 2));
           await initialize();
         } else {
-          _logger.severe('Maximum number of classifier initialization attempts exceeded.');
-          throw Exception('Failed to initialize breath classifier after $maxInitAttempts attempts');
+          _logger.severe(
+            'Maximum number of classifier initialization attempts exceeded.',
+          );
+          throw Exception(
+            'Failed to initialize breath classifier after $maxInitAttempts attempts',
+          );
         }
       }
     } catch (e) {
@@ -47,7 +58,8 @@ class BreathClassifier {
 
   Future<bool> checkInitialized() async {
     try {
-      _isInitialized = await _channel.invokeMethod<bool>('isInitialized') ?? false;
+      _isInitialized =
+          await _channel.invokeMethod<bool>('isInitialized') ?? false;
       return _isInitialized;
     } catch (e) {
       _logger.warning('Error while checking initialization status: $e');
@@ -61,7 +73,9 @@ class BreathClassifier {
       _isInitialized = await checkInitialized();
 
       if (!_isInitialized) {
-        _logger.warning('Classifier is not initialized. Attempting reinitialization...');
+        _logger.warning(
+          'Classifier is not initialized. Attempting reinitialization...',
+        );
         try {
           await initialize();
         } catch (e) {
@@ -82,12 +96,15 @@ class BreathClassifier {
       final ByteData byteData = audioInt16.buffer.asByteData();
       final Uint8List byteList = byteData.buffer.asUint8List();
 
-      final int classIndex = await _channel.invokeMethod<int>(
-        'classifyAudio',
-        {'audioData': byteList}
-      ) ?? 2;
+      final int classIndex =
+          await _channel.invokeMethod<int>('classifyAudio', {
+            'audioData': byteList,
+          }) ??
+          2;
 
-      _logger.fine('Native classification result: $classIndex (${_indexToBreathPhase(classIndex)})');
+      _logger.fine(
+        'Native classification result: $classIndex (${_indexToBreathPhase(classIndex)})',
+      );
       return _indexToBreathPhase(classIndex);
     } catch (e) {
       _logger.warning('Error during native classification: $e');
@@ -102,25 +119,35 @@ class BreathClassifier {
 
   static BreathPhase _indexToBreathPhase(int index) {
     switch (index) {
-      case 0: return BreathPhase.exhale;
-      case 1: return BreathPhase.inhale;
-      case 2: default: return BreathPhase.silence;
+      case 0:
+        return BreathPhase.exhale;
+      case 1:
+        return BreathPhase.inhale;
+      case 2:
+      default:
+        return BreathPhase.silence;
     }
   }
 
   static Color getColorForPhase(BreathPhase phase) {
     switch (phase) {
-      case BreathPhase.inhale: return Colors.red;
-      case BreathPhase.exhale: return Colors.green;
-      case BreathPhase.silence: return Colors.blue;
+      case BreathPhase.inhale:
+        return Colors.red;
+      case BreathPhase.exhale:
+        return Colors.green;
+      case BreathPhase.silence:
+        return Colors.blue;
     }
   }
 
   static String getLabelForPhase(BreathPhase phase) {
     switch (phase) {
-      case BreathPhase.inhale: return 'Inhale';
-      case BreathPhase.exhale: return 'Exhale';
-      case BreathPhase.silence: return 'Silence';
+      case BreathPhase.inhale:
+        return 'Inhale';
+      case BreathPhase.exhale:
+        return 'Exhale';
+      case BreathPhase.silence:
+        return 'Silence';
     }
   }
 

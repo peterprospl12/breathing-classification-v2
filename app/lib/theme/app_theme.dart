@@ -24,16 +24,28 @@ class AppTheme {
   static const Color _lightOutline = Color(0xFFDEE2E6); // Lighter grey border
 
   // Dark Theme Colors - Updated with blueish tones
-  static const Color _darkBackground = Color(0xFF1A1D24); // Very dark desaturated blue
-  static const Color _darkSurface = Color(0xFF232730); // Slightly lighter dark blue/grey
+  static const Color _darkBackground = Color(
+    0xFF1A1D24,
+  ); // Very dark desaturated blue
+  static const Color _darkSurface = Color(
+    0xFF232730,
+  ); // Slightly lighter dark blue/grey
   static const Color _darkOnPrimary = Colors.white;
   static const Color _darkOnSecondary = Colors.white;
-  static const Color _darkOnBackground = Color(0xFFE1E3E8); // Light grey/blue text
+  static const Color _darkOnBackground = Color(
+    0xFFE1E3E8,
+  ); // Light grey/blue text
   static const Color _darkOnSurface = Color(0xFFE1E3E8);
   static const Color _darkOnError = Colors.black;
-  static const Color _darkSurfaceVariant = Color(0xFF303540); // Medium dark blue/grey
-  static const Color _darkOnSurfaceVariant = Color(0xFFB0B3B8); // Lighter grey/blue text
-  static const Color _darkOutline = Color(0xFF404550); // Darker grey/blue border
+  static const Color _darkSurfaceVariant = Color(
+    0xFF303540,
+  ); // Medium dark blue/grey
+  static const Color _darkOnSurfaceVariant = Color(
+    0xFFB0B3B8,
+  ); // Lighter grey/blue text
+  static const Color _darkOutline = Color(
+    0xFF404550,
+  ); // Darker grey/blue border
 
   // Typography
   static const fontFamily = 'Poppins'; // Consider importing a modern font
@@ -78,7 +90,10 @@ class AppTheme {
         color: _lightSurface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: _lightOutline, width: 1), // Subtle border
+          side: const BorderSide(
+            color: _lightOutline,
+            width: 1,
+          ), // Subtle border
         ),
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       ),
@@ -93,7 +108,9 @@ class AppTheme {
             fontFamily: fontFamily, // Applied here
           ),
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)), // Pill shape
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ), // Pill shape
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -109,22 +126,31 @@ class AppTheme {
       dialogTheme: DialogTheme(
         backgroundColor: _lightSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        titleTextStyle: baseTheme.textTheme.titleLarge?.copyWith(color: _lightOnSurface, fontWeight: FontWeight.w600),
-        contentTextStyle: baseTheme.textTheme.bodyMedium?.copyWith(color: _lightOnSurfaceVariant),
+        titleTextStyle: baseTheme.textTheme.titleLarge?.copyWith(
+          color: _lightOnSurface,
+          fontWeight: FontWeight.w600,
+        ),
+        contentTextStyle: baseTheme.textTheme.bodyMedium?.copyWith(
+          color: _lightOnSurfaceVariant,
+        ),
       ),
       listTileTheme: ListTileThemeData(
         iconColor: _lightOnSurfaceVariant,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        selectedTileColor: _primaryBlue.withOpacity(0.1),
+        selectedTileColor: _primaryBlue.withValues(alpha: 0.1),
         dense: true,
       ),
-      dividerTheme: DividerThemeData(
+      dividerTheme: const DividerThemeData(
         color: _lightOutline,
         thickness: 1,
         space: 1,
       ),
       // Define TextTheme for consistency
-      textTheme: _buildTextTheme(baseTheme.textTheme, _lightOnBackground, _lightOnSurfaceVariant),
+      textTheme: _buildTextTheme(
+        baseTheme.textTheme,
+        _lightOnBackground,
+        _lightOnSurfaceVariant,
+      ),
     );
   }
 
@@ -140,24 +166,24 @@ class AppTheme {
         onSecondary: _darkOnSecondary,
         error: _errorRed,
         onError: _darkOnError,
-        background: _darkBackground, // Updated
-        onBackground: _darkOnBackground, // Updated
-        surface: _darkSurface, // Updated
-        onSurface: _darkOnSurface, // Updated
-        surfaceVariant: _darkSurfaceVariant, // Updated
-        onSurfaceVariant: _darkOnSurfaceVariant, // Updated
-        outline: _darkOutline, // Updated
+        background: _darkBackground,
+        onBackground: _darkOnBackground,
+        surface: _darkSurface,
+        onSurface: _darkOnSurface,
+        surfaceVariant: _darkSurfaceVariant,
+        onSurfaceVariant: _darkOnSurfaceVariant,
+        outline: _darkOutline,
         // Add other colors if needed
       ),
       primaryColor: _primaryBlue,
-      scaffoldBackgroundColor: _darkBackground, // Updated
+      scaffoldBackgroundColor: _darkBackground,
       appBarTheme: const AppBarTheme(
         elevation: 0,
-        backgroundColor: _darkSurface, // Use surface color - Updated
-        foregroundColor: _darkOnSurface, // Updated
-        iconTheme: IconThemeData(color: _darkOnSurfaceVariant), // Updated
+        backgroundColor: _darkSurface,
+        foregroundColor: _darkOnSurface,
+        iconTheme: IconThemeData(color: _darkOnSurfaceVariant),
         titleTextStyle: TextStyle(
-          color: _darkOnSurface, // Updated
+          color: _darkOnSurface,
           fontSize: 18,
           fontWeight: FontWeight.w500,
           fontFamily: fontFamily,
@@ -165,10 +191,10 @@ class AppTheme {
       ),
       cardTheme: CardTheme(
         elevation: 0,
-        color: _darkSurface, // Updated
+        color: _darkSurface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: _darkOutline, width: 1), // Updated
+          side: BorderSide(color: _darkOutline, width: 1),
         ),
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       ),
@@ -183,7 +209,9 @@ class AppTheme {
             fontFamily: fontFamily, // Applied here
           ),
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -197,47 +225,110 @@ class AppTheme {
         ),
       ),
       dialogTheme: DialogTheme(
-        backgroundColor: _darkSurface, // Updated
+        backgroundColor: _darkSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        titleTextStyle: baseTheme.textTheme.titleLarge?.copyWith(color: _darkOnSurface, fontWeight: FontWeight.w600), // Updated
-        contentTextStyle: baseTheme.textTheme.bodyMedium?.copyWith(color: _darkOnSurfaceVariant), // Updated
+        titleTextStyle: baseTheme.textTheme.titleLarge?.copyWith(
+          color: _darkOnSurface,
+          fontWeight: FontWeight.w600,
+        ),
+        contentTextStyle: baseTheme.textTheme.bodyMedium?.copyWith(
+          color: _darkOnSurfaceVariant,
+        ),
       ),
       listTileTheme: ListTileThemeData(
-        iconColor: _darkOnSurfaceVariant, // Updated
+        iconColor: _darkOnSurfaceVariant,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        selectedTileColor: _primaryBlue.withOpacity(0.2),
+        selectedTileColor: _primaryBlue.withValues(alpha: 0.2),
         dense: true,
       ),
       dividerTheme: DividerThemeData(
-        color: _darkOutline, // Updated
+        color: _darkOutline,
         thickness: 1,
         space: 1,
       ),
-      textTheme: _buildTextTheme(baseTheme.textTheme, _darkOnBackground, _darkOnSurfaceVariant), // Updated text colors passed
+      textTheme: _buildTextTheme(
+        baseTheme.textTheme,
+        _darkOnBackground,
+        _darkOnSurfaceVariant,
+      ),
     );
   }
 
   // Helper to build TextTheme with consistent font and colors
-  static TextTheme _buildTextTheme(TextTheme base, Color displayColor, Color bodyColor) {
-    return base.copyWith(
-      displayLarge: base.displayLarge?.copyWith(fontFamily: fontFamily, color: displayColor),
-      displayMedium: base.displayMedium?.copyWith(fontFamily: fontFamily, color: displayColor),
-      displaySmall: base.displaySmall?.copyWith(fontFamily: fontFamily, color: displayColor),
-      headlineLarge: base.headlineLarge?.copyWith(fontFamily: fontFamily, color: displayColor),
-      headlineMedium: base.headlineMedium?.copyWith(fontFamily: fontFamily, color: displayColor),
-      headlineSmall: base.headlineSmall?.copyWith(fontFamily: fontFamily, color: displayColor, fontWeight: FontWeight.w600),
-      titleLarge: base.titleLarge?.copyWith(fontFamily: fontFamily, color: displayColor, fontWeight: FontWeight.w600),
-      titleMedium: base.titleMedium?.copyWith(fontFamily: fontFamily, color: displayColor, fontWeight: FontWeight.w500),
-      titleSmall: base.titleSmall?.copyWith(fontFamily: fontFamily, color: displayColor, fontWeight: FontWeight.w500),
-      bodyLarge: base.bodyLarge?.copyWith(fontFamily: fontFamily, color: bodyColor),
-      bodyMedium: base.bodyMedium?.copyWith(fontFamily: fontFamily, color: bodyColor),
-      bodySmall: base.bodySmall?.copyWith(fontFamily: fontFamily, color: bodyColor.withOpacity(0.8)),
-      labelLarge: base.labelLarge?.copyWith(fontFamily: fontFamily, color: displayColor, fontWeight: FontWeight.w600),
-      labelMedium: base.labelMedium?.copyWith(fontFamily: fontFamily, color: bodyColor),
-      labelSmall: base.labelSmall?.copyWith(fontFamily: fontFamily, color: bodyColor, letterSpacing: 0.5),
-    ).apply(
-      bodyColor: bodyColor,
-      displayColor: displayColor,
-    );
+  static TextTheme _buildTextTheme(
+    TextTheme base,
+    Color displayColor,
+    Color bodyColor,
+  ) {
+    return base
+        .copyWith(
+          displayLarge: base.displayLarge?.copyWith(
+            fontFamily: fontFamily,
+            color: displayColor,
+          ),
+          displayMedium: base.displayMedium?.copyWith(
+            fontFamily: fontFamily,
+            color: displayColor,
+          ),
+          displaySmall: base.displaySmall?.copyWith(
+            fontFamily: fontFamily,
+            color: displayColor,
+          ),
+          headlineLarge: base.headlineLarge?.copyWith(
+            fontFamily: fontFamily,
+            color: displayColor,
+          ),
+          headlineMedium: base.headlineMedium?.copyWith(
+            fontFamily: fontFamily,
+            color: displayColor,
+          ),
+          headlineSmall: base.headlineSmall?.copyWith(
+            fontFamily: fontFamily,
+            color: displayColor,
+            fontWeight: FontWeight.w600,
+          ),
+          titleLarge: base.titleLarge?.copyWith(
+            fontFamily: fontFamily,
+            color: displayColor,
+            fontWeight: FontWeight.w600,
+          ),
+          titleMedium: base.titleMedium?.copyWith(
+            fontFamily: fontFamily,
+            color: displayColor,
+            fontWeight: FontWeight.w500,
+          ),
+          titleSmall: base.titleSmall?.copyWith(
+            fontFamily: fontFamily,
+            color: displayColor,
+            fontWeight: FontWeight.w500,
+          ),
+          bodyLarge: base.bodyLarge?.copyWith(
+            fontFamily: fontFamily,
+            color: bodyColor,
+          ),
+          bodyMedium: base.bodyMedium?.copyWith(
+            fontFamily: fontFamily,
+            color: bodyColor,
+          ),
+          bodySmall: base.bodySmall?.copyWith(
+            fontFamily: fontFamily,
+            color: bodyColor.withValues(alpha: 0.8),
+          ),
+          labelLarge: base.labelLarge?.copyWith(
+            fontFamily: fontFamily,
+            color: displayColor,
+            fontWeight: FontWeight.w600,
+          ),
+          labelMedium: base.labelMedium?.copyWith(
+            fontFamily: fontFamily,
+            color: bodyColor,
+          ),
+          labelSmall: base.labelSmall?.copyWith(
+            fontFamily: fontFamily,
+            color: bodyColor,
+            letterSpacing: 0.5,
+          ),
+        )
+        .apply(bodyColor: bodyColor, displayColor: displayColor);
   }
 }

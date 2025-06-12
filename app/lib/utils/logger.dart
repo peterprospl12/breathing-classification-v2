@@ -10,7 +10,9 @@ class LoggerService {
     Logger.root.level = Level.ALL;
     Logger.root.onRecord.listen((record) {
       if (kDebugMode) {
-        print('${record.time}: ${record.loggerName}: ${record.level.name}: ${record.message}');
+        print(
+          '${record.time}: ${record.loggerName}: ${record.level.name}: ${record.message}',
+        );
       }
     });
 
