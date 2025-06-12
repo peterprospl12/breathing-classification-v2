@@ -9,10 +9,12 @@ class MicrophoneVisualizationWidget extends StatefulWidget {
   const MicrophoneVisualizationWidget({super.key});
 
   @override
-  State<MicrophoneVisualizationWidget> createState() => _MicrophoneVisualizationWidgetState();
+  State<MicrophoneVisualizationWidget> createState() =>
+      _MicrophoneVisualizationWidgetState();
 }
 
-class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationWidget>
+class _MicrophoneVisualizationWidgetState
+    extends State<MicrophoneVisualizationWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   StreamSubscription<List<int>>? _audioSubscription;
@@ -20,7 +22,6 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
   List<int> _audioData = [];
   final List<BreathPhase> _breathPhases = [];
 
-  // Maximum number of breath phases to store
   static const int _maxBreathPhasesToStore = 20;
 
   @override
@@ -40,14 +41,12 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
   void _subscribeToStreams() {
     final audioService = Provider.of<AudioService>(context, listen: false);
 
-    // Subscribe to audio stream
     _audioSubscription = audioService.subscribeToAudioStream((audioData) {
       setState(() {
         _audioData = audioData;
       });
     });
 
-    // Subscribe to breath phases stream
     _breathPhaseSubscription = audioService.breathPhasesStream.listen((phase) {
       setState(() {
         _breathPhases.add(phase);
@@ -75,7 +74,9 @@ class _MicrophoneVisualizationWidgetState extends State<MicrophoneVisualizationW
           height: 200, // Adjusted height
           width: double.infinity,
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceVariant.withOpacity(0.5), // Use a subtle background from theme
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.5,
+            ), // Use a subtle background from theme
             borderRadius: BorderRadius.circular(12), // Consistent rounding
           ),
           child: ClipRRect(
@@ -105,7 +106,7 @@ class MicrophoneWaveformPainter extends CustomPainter {
   final List<int> audioBuffer;
   final List<BreathPhase> breathPhases;
   final bool isRecording;
-  final ThemeData theme; // Receive theme data
+  final ThemeData theme;
 
   static List<double> _smoothedValues = [];
   static const double _smoothingFactor = 0.2; // Lower means more smoothing
@@ -114,14 +115,20 @@ class MicrophoneWaveformPainter extends CustomPainter {
     required this.audioBuffer,
     required this.breathPhases,
     required this.isRecording,
-    required this.theme, // Add theme to constructor
+    required this.theme,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Use theme colors
-    final backgroundPaint = Paint()..color = theme.colorScheme.surfaceVariant.withOpacity(0.5);
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), backgroundPaint);
+    final backgroundPaint =
+        Paint()
+          ..color = theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.5,
+          );
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      backgroundPaint,
+    );
 
     _drawBreathPhases(canvas, size);
     _drawGridLines(canvas, size);
@@ -131,11 +138,12 @@ class MicrophoneWaveformPainter extends CustomPainter {
       return;
     }
 
-    // Use theme primary color for the waveform
-    final paint = Paint()
-      ..color = theme.colorScheme.primary
-      ..strokeWidth = 1.5 // Slightly thinner line
-      ..style = PaintingStyle.stroke;
+    final paint =
+        Paint()
+          ..color = theme.colorScheme.primary
+          ..strokeWidth =
+              1.5 // Slightly thinner line
+          ..style = PaintingStyle.stroke;
 
     final path = Path();
     final displayPoints = size.width.toInt();
@@ -148,7 +156,8 @@ class MicrophoneWaveformPainter extends CustomPainter {
       _smoothedValues = List<double>.filled(displayPoints, yCenter);
     }
 
-    if (audioBuffer.length >= step || isRecording) { // Ensure drawing continues even if buffer temporarily empties while recording
+    if (audioBuffer.length >= step || isRecording) {
+      // Ensure drawing continues even if buffer temporarily empties while recording
       path.moveTo(0, _smoothedValues[0]);
 
       if (isRecording) {
@@ -161,11 +170,13 @@ class MicrophoneWaveformPainter extends CustomPainter {
           final latestSampleIndex = audioBuffer.length - 1;
           final latestSample = audioBuffer[latestSampleIndex];
           final targetY = yCenter - latestSample * heightScale;
-          _smoothedValues[displayPoints - 1] = _smoothedValues[displayPoints - 2] * (1 - _smoothingFactor) +
-                                              targetY * _smoothingFactor;
+          _smoothedValues[displayPoints - 1] =
+              _smoothedValues[displayPoints - 2] * (1 - _smoothingFactor) +
+              targetY * _smoothingFactor;
         } else {
-           // If buffer is empty but still recording, keep the last value
-           _smoothedValues[displayPoints - 1] = _smoothedValues[displayPoints - 2];
+          // If buffer is empty but still recording, keep the last value
+          _smoothedValues[displayPoints - 1] =
+              _smoothedValues[displayPoints - 2];
         }
       } else {
         // Freeze waveform when not recording
@@ -174,17 +185,20 @@ class MicrophoneWaveformPainter extends CustomPainter {
         }
       }
 
-      path.lineTo((displayPoints - 1).toDouble(), _smoothedValues[displayPoints - 1]);
+      path.lineTo(
+        (displayPoints - 1).toDouble(),
+        _smoothedValues[displayPoints - 1],
+      );
       canvas.drawPath(path, paint);
-
     } else {
       _drawIdleWaveform(canvas, size);
     }
 
     // Draw center line using theme outline color
-    final centerPaint = Paint()
-      ..color = theme.colorScheme.outline.withOpacity(0.5)
-      ..strokeWidth = 1.0;
+    final centerPaint =
+        Paint()
+          ..color = theme.colorScheme.outline.withValues(alpha: 0.5)
+          ..strokeWidth = 1.0;
     canvas.drawLine(
       Offset(0, size.height / 2),
       Offset(size.width, size.height / 2),
@@ -193,9 +207,10 @@ class MicrophoneWaveformPainter extends CustomPainter {
 
     // Draw recording indicator using theme error color
     if (isRecording) {
-      final indicatorPaint = Paint()
-        ..color = theme.colorScheme.error
-        ..style = PaintingStyle.fill;
+      final indicatorPaint =
+          Paint()
+            ..color = theme.colorScheme.error
+            ..style = PaintingStyle.fill;
       canvas.drawCircle(
         Offset(size.width - 12, 12), // Adjusted position
         5, // Smaller indicator
@@ -213,10 +228,13 @@ class MicrophoneWaveformPainter extends CustomPainter {
     for (int i = 0; i < totalPhases; i++) {
       final BreathPhase phase = breathPhases[i];
       // Use AppTheme colors directly with lower opacity
-      final Color phaseColor = BreathClassifier.getColorForPhase(phase).withOpacity(0.15);
-      final Paint phasePaint = Paint()
-        ..color = phaseColor
-        ..style = PaintingStyle.fill;
+      final Color phaseColor = BreathClassifier.getColorForPhase(
+        phase,
+      ).withValues(alpha: 0.15);
+      final Paint phasePaint =
+          Paint()
+            ..color = phaseColor
+            ..style = PaintingStyle.fill;
 
       canvas.drawRect(
         Rect.fromLTWH(i * segmentWidth, 0, segmentWidth, size.height),
@@ -226,31 +244,32 @@ class MicrophoneWaveformPainter extends CustomPainter {
   }
 
   void _drawGridLines(Canvas canvas, Size size) {
-    // Use theme outline color for grid
-    final Paint gridPaint = Paint()
-      ..color = theme.colorScheme.outline.withOpacity(0.3)
-      ..strokeWidth = 0.5; // Thinner grid lines
+    final Paint gridPaint =
+        Paint()
+          ..color = theme.colorScheme.outline.withValues(alpha: 0.3)
+          ..strokeWidth = 0.5; // Thinner grid lines
 
     // Horizontal grid lines
     int numLines = 4;
     for (int i = 1; i < numLines; i++) {
-       double y = i * size.height / numLines;
-       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+      double y = i * size.height / numLines;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
   }
 
   void _drawIdleWaveform(Canvas canvas, Size size) {
-    // Use theme onSurfaceVariant color for idle wave
-    final paint = Paint()
-      ..color = theme.colorScheme.onSurfaceVariant.withOpacity(0.5)
-      ..strokeWidth = 1.0
-      ..style = PaintingStyle.stroke;
+    final paint =
+        Paint()
+          ..color = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
+          ..strokeWidth = 1.0
+          ..style = PaintingStyle.stroke;
 
     final centerY = size.height / 2;
     final path = Path();
 
     path.moveTo(0, centerY);
-    for (double x = 0; x < size.width; x += 2) { // Increase step for smoother idle wave
+    for (double x = 0; x < size.width; x += 2) {
+      // Increase step for smoother idle wave
       final y = centerY + math.sin(x / 10) * 1.5; // Smaller amplitude
       path.lineTo(x, y);
     }
@@ -260,10 +279,9 @@ class MicrophoneWaveformPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(MicrophoneWaveformPainter oldDelegate) {
-    // Need to check theme change as well
     return oldDelegate.isRecording != isRecording ||
-           (audioBuffer.isNotEmpty && oldDelegate.audioBuffer != audioBuffer) ||
-           oldDelegate.breathPhases != breathPhases ||
-           oldDelegate.theme != theme;
+        (audioBuffer.isNotEmpty && oldDelegate.audioBuffer != audioBuffer) ||
+        oldDelegate.breathPhases != breathPhases ||
+        oldDelegate.theme != theme;
   }
 }

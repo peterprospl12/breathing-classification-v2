@@ -17,7 +17,10 @@ class AudioFileService {
       final status = await Permission.storage.request();
       return status.isGranted;
     }
-    return Platform.isIOS || Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    return Platform.isIOS ||
+        Platform.isWindows ||
+        Platform.isLinux ||
+        Platform.isMacOS;
   }
 
   Future<String?> saveRecording(List<int> audioData, int sampleRate) async {
@@ -76,8 +79,8 @@ class AudioFileService {
     header.setUint32(4, dataLength + 36, Endian.little);
 
     // WAVE header
-    header.setUint8(8, 87);  // 'W'
-    header.setUint8(9, 65);  // 'A'
+    header.setUint8(8, 87); // 'W'
+    header.setUint8(9, 65); // 'A'
     header.setUint8(10, 86); // 'V'
     header.setUint8(11, 69); // 'E'
 
@@ -85,7 +88,7 @@ class AudioFileService {
     header.setUint8(12, 102); // 'f'
     header.setUint8(13, 109); // 'm'
     header.setUint8(14, 116); // 't'
-    header.setUint8(15, 32);  // ' '
+    header.setUint8(15, 32); // ' '
 
     // FMT chunk size (16 for PCM)
     header.setUint32(16, 16, Endian.little);
@@ -110,9 +113,9 @@ class AudioFileService {
 
     // data chunk
     header.setUint8(36, 100); // 'd'
-    header.setUint8(37, 97);  // 'a'
+    header.setUint8(37, 97); // 'a'
     header.setUint8(38, 116); // 't'
-    header.setUint8(39, 97);  // 'a'
+    header.setUint8(39, 97); // 'a'
 
     // Data chunk size
     header.setUint32(40, dataLength, Endian.little);

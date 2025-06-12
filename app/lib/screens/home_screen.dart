@@ -75,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen>
     const double appBarBottomRadius = 28.0;
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.background,
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
         elevation: 1,
         backgroundColor: theme.colorScheme.surface,
@@ -155,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen>
                               style: TextStyle(
                                 fontSize: 12,
                                 color: theme.colorScheme.onSurfaceVariant
-                                    .withOpacity(0.7),
+                                    .withValues(alpha: 0.7),
                                 fontStyle: FontStyle.italic,
                               ),
                             ),
@@ -249,7 +249,10 @@ class _HomeScreenState extends State<HomeScreen>
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.dividerColor.withOpacity(0.5), width: 1),
+        side: BorderSide(
+          color: theme.dividerColor.withValues(alpha: 0.5),
+          width: 1,
+        ),
       ),
       color: theme.colorScheme.surface,
       child: Padding(
@@ -298,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen>
             Divider(
               height: 1,
               thickness: 1,
-              color: theme.dividerColor.withOpacity(0.5),
+              color: theme.dividerColor.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 16),
             Row(
@@ -337,7 +340,7 @@ class _HomeScreenState extends State<HomeScreen>
               Divider(
                 height: 1,
                 thickness: 1,
-                color: theme.dividerColor.withOpacity(0.5),
+                color: theme.dividerColor.withValues(alpha: 0.5),
               ),
               const SizedBox(height: 16),
               Row(
@@ -374,7 +377,7 @@ class _HomeScreenState extends State<HomeScreen>
     final isRecording = audioService.isRecording;
     final bgColor =
         isRecording ? Colors.red.shade400 : theme.colorScheme.primary;
-    final fgColor = Colors.white;
+    const fgColor = Colors.white;
     final icon = isRecording ? Icons.stop_rounded : Icons.mic_rounded;
     final text = isRecording ? 'Stop' : 'Start';
 
@@ -385,7 +388,7 @@ class _HomeScreenState extends State<HomeScreen>
         icon: Icon(icon, size: 22, color: fgColor),
         label: Text(
           text,
-          style: TextStyle(
+          style: const TextStyle(
             color: fgColor,
             fontWeight: FontWeight.bold,
             fontSize: 16,
@@ -479,7 +482,6 @@ class _HomeScreenState extends State<HomeScreen>
         Text(
           value,
           style: theme.textTheme.headlineSmall?.copyWith(
-            // Consider using a slightly smaller style if needed e.g. titleLarge
             fontWeight: FontWeight.w600,
             color: color,
           ),
@@ -507,7 +509,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: Consumer<AudioService>(
               builder: (context, audioService, _) {
                 return AlertDialog(
-                  backgroundColor: theme.dialogBackgroundColor,
+                  backgroundColor: theme.dialogTheme.backgroundColor,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -611,7 +613,7 @@ class _HomeScreenState extends State<HomeScreen>
                                           : null,
                                   selected: isSelected,
                                   selectedTileColor: theme.colorScheme.primary
-                                      .withOpacity(0.1),
+                                      .withValues(alpha: 0.1),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -667,7 +669,7 @@ class _HomeScreenState extends State<HomeScreen>
                       vertical: 16,
                     ),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withOpacity(0.1),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
                       borderRadius: const BorderRadius.only(
                         topLeft: Radius.circular(16),
                         topRight: Radius.circular(16),
@@ -745,7 +747,7 @@ class _HomeScreenState extends State<HomeScreen>
                   Divider(
                     height: 1,
                     thickness: 1,
-                    color: theme.dividerColor.withOpacity(0.5),
+                    color: theme.dividerColor.withValues(alpha: 0.5),
                   ),
                   Padding(
                     padding: const EdgeInsets.all(20.0),
@@ -829,7 +831,7 @@ class _HomeScreenState extends State<HomeScreen>
           width: 24,
           height: 24,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.8),
+            color: color.withValues(alpha: 0.8),
             shape: BoxShape.circle,
             border: Border.all(color: color, width: 1.5),
           ),
@@ -854,7 +856,7 @@ class _HomeScreenState extends State<HomeScreen>
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          backgroundColor: theme.dialogBackgroundColor,
+          backgroundColor: theme.dialogTheme.backgroundColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -874,7 +876,7 @@ class _HomeScreenState extends State<HomeScreen>
                       vertical: 8.0,
                     ),
                     child: Text(
-                      "Visualization Style",
+                      'Visualization Style',
                       style: theme.textTheme.labelLarge?.copyWith(
                         color: theme.colorScheme.primary,
                       ),
@@ -915,7 +917,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                       dense: true,
                     );
-                  }).toList(),
+                  }),
                   const Divider(height: 20, thickness: 1),
                   Padding(
                     padding: const EdgeInsets.symmetric(
@@ -923,7 +925,7 @@ class _HomeScreenState extends State<HomeScreen>
                       vertical: 8.0,
                     ),
                     child: Text(
-                      "Counters",
+                      'Counters',
                       style: theme.textTheme.labelLarge?.copyWith(
                         color: theme.colorScheme.primary,
                       ),

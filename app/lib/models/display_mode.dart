@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum DisplayMode {
-  microphone,
-  circular
-}
+enum DisplayMode { microphone, circular }
 
 extension DisplayModeExtension on DisplayMode {
   String get label {

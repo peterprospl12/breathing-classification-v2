@@ -114,7 +114,10 @@ class AudioRecordingService {
     _audioBuffer.addAll(samples);
 
     if (_audioBuffer.length > maxMicrophoneBufferSize) {
-      _audioBuffer.removeRange(0, _audioBuffer.length - maxMicrophoneBufferSize);
+      _audioBuffer.removeRange(
+        0,
+        _audioBuffer.length - maxMicrophoneBufferSize,
+      );
     }
   }
 
