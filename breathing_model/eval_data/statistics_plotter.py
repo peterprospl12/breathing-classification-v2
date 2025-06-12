@@ -1,121 +1,155 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import confusion_matrix
 import os
 
-
-# Define output folder for all confusion matrices
 output_folder = "confusion_matrices"
 os.makedirs(output_folder, exist_ok=True)
 
-
-# Function to create and display confusion matrix
 def plot_confusion_matrix(cm, title, labels):
     plt.figure(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)
     plt.title(title)
-    plt.ylabel('True class')
-    plt.xlabel('Prediction')
+    plt.ylabel('Klasa rzeczywista')
+    plt.xlabel('Predykcja')
     plt.tight_layout()
 
-    # Save to PNG in the specified folder
     filename = f"{title.replace(' ', '_').replace(',', '').lower()}.png"
     plt_filename = os.path.join(output_folder, filename)
-    plt.savefig(plt_filename, dpi=300)  # Higher resolution for better quality
-    print(f"Confusion matrix visualization saved to: {plt_filename}")
+    plt.savefig(plt_filename, dpi=300)
+    print(f"Zapisano macierz pomyłek: {plt_filename}")
 
     plt.show()
 
+def calculate_accuracy(cm):
+    return np.diag(cm).sum() / cm.sum()
 
-# Confusion matrix data (individual tests)
-# 1. Tomasz - good microphone
-y_true_tomasz_good = ['inhale'] * 15 + ['exhale'] * 15 + ['silence'] * 10
-y_pred_tomasz_good = ['inhale'] * 13 + ['exhale'] * 2 + ['exhale'] * 15 + ['silence'] * 10
-cm_tomasz_good = confusion_matrix(y_true_tomasz_good, y_pred_tomasz_good, labels=['inhale', 'exhale', 'silence'])
+labels = ['Wdech', 'Wydech', 'Cisza']
 
-# 2. Piotr - good microphone
-y_true_piotr_good = ['inhale'] * 10 + ['exhale'] * 9 + ['silence'] * 10
-y_pred_piotr_good = ['inhale'] * 10 + ['exhale'] * 9 + ['exhale'] * 1 + ['silence'] * 9
-cm_piotr_good = confusion_matrix(y_true_piotr_good, y_pred_piotr_good, labels=['inhale', 'exhale', 'silence'])
+cm_tomasz = np.array([
+    [45, 2, 1],  # Wdech: prawidłowo jako wdech, błędnie jako wydech, błędnie jako cisza
+    [0, 47, 0],    # Wydech: błędnie jako wdech, prawidłowo jako wydech, błędnie jako cisza
+    [0, 1, 23]     # Cisza: błędnie jako wdech, błędnie jako wydech, prawidłowo jako cisza
+])
 
-# 3. Tomasz - medium microphone
-y_true_tomasz_medium = ['inhale'] * (13 + 36 + 8) + ['exhale'] * (9 + 36 + 8) + ['silence'] * 15
-y_pred_tomasz_medium = ['inhale'] * (2 + 28 + 7) + ['exhale'] * (11 + 3) + ['silence'] * (0 + 5 + 1) + ['exhale'] * (
-            9 + 36 + 8) + ['silence'] * 15
-cm_tomasz_medium = confusion_matrix(y_true_tomasz_medium, y_pred_tomasz_medium, labels=['inhale', 'exhale', 'silence'])
+cm_piotr = np.array([
+    [29, 23, 5],
+    [0, 63, 0],
+    [0, 0, 31]
+])
 
-# 4. Piotr - medium microphone
-y_true_piotr_medium = ['inhale'] * (10 + 15 + 10) + ['exhale'] * (9 + 15 + 9) + ['silence'] * 15
-y_pred_piotr_medium = ['inhale'] * (7 + 15 + 2) + ['exhale'] * (3 + 0 + 8) + ['exhale'] * (9 + 15 + 9) + [
-    'silence'] * 15
-cm_piotr_medium = confusion_matrix(y_true_piotr_medium, y_pred_piotr_medium, labels=['inhale', 'exhale', 'silence'])
+cm_iwo = np.array([
+    [42, 0, 1],
+    [0, 29, 3],
+    [0, 0, 25]
+])
 
-# 5. Tomasz - poor microphone
-y_true_tomasz_bad = ['inhale'] * 15 + ['exhale'] * 14 + ['silence'] * 10
-y_pred_tomasz_bad = ['inhale'] * 3 + ['silence'] * 12 + ['inhale'] * 5 + ['exhale'] * 9 + ['silence'] * 10
-cm_tomasz_bad = confusion_matrix(y_true_tomasz_bad, y_pred_tomasz_bad, labels=['inhale', 'exhale', 'silence'])
+cm_good = np.array([
+    [23, 2, 0],
+    [0, 24, 0],
+    [0, 1, 11]
+])
 
-# Create aggregated data sets
-# All Tomasz data
-y_true_tomasz_all = y_true_tomasz_good + y_true_tomasz_medium + y_true_tomasz_bad
-y_pred_tomasz_all = y_pred_tomasz_good + y_pred_tomasz_medium + y_pred_tomasz_bad
-cm_tomasz_all = confusion_matrix(y_true_tomasz_all, y_pred_tomasz_all, labels=['inhale', 'exhale', 'silence'])
+cm_medium = np.array([
+    [103, 25, 7],
+    [0, 121, 8],
+    [0, 0, 63]
+])
 
-# All Piotr data
-y_true_piotr_all = y_true_piotr_good + y_true_piotr_medium
-y_pred_piotr_all = y_pred_piotr_good + y_pred_piotr_medium
-cm_piotr_all = confusion_matrix(y_true_piotr_all, y_pred_piotr_all, labels=['inhale', 'exhale', 'silence'])
+cm_bad = np.array([
+    [3, 0, 12],
+    [5, 9, 0],
+    [0, 0, 4]
+])
 
-# All good microphone data
-y_true_good_all = y_true_tomasz_good + y_true_piotr_good
-y_pred_good_all = y_pred_tomasz_good + y_pred_piotr_good
-cm_good_all = confusion_matrix(y_true_good_all, y_pred_good_all, labels=['inhale', 'exhale', 'silence'])
+cm_all = cm_bad + cm_medium + cm_good
 
-# All medium microphone data
-y_true_medium_all = y_true_tomasz_medium + y_true_piotr_medium
-y_pred_medium_all = y_pred_tomasz_medium + y_pred_piotr_medium
-cm_medium_all = confusion_matrix(y_true_medium_all, y_pred_medium_all, labels=['inhale', 'exhale', 'silence'])
+matrices = [
+    (cm_tomasz, "Wszystkie dane Tomasz"),
+    (cm_piotr, "Wszystkie dane Piotr"),
+    (cm_iwo, "Wszystkie dane Iwo"),
+    (cm_good, "Wszystkie dobre mikrofony"),
+    (cm_medium, "Wszystkie średnie mikrofony"),
+    (cm_bad, "Wszystkie słabe mikrofony"),
+    (cm_all, "Wszystkie dane")
+]
+print(f"Zapisywanie macierzy konfuzji do folderu: {output_folder}")
 
-# All bad microphone data (only Tomasz data available)
-cm_bad_all = cm_tomasz_bad  # Since we only have Tomasz's bad microphone data
+for cm, title in matrices:
+    plot_confusion_matrix(cm, title, labels)
+    accuracy = calculate_accuracy(cm)
+    print(f"Dokładność ({title}): {accuracy:.2%}")
 
-# All data combined
-y_true_all = y_true_tomasz_all + y_true_piotr_all
-y_pred_all = y_pred_tomasz_all + y_pred_piotr_all
-cm_all = confusion_matrix(y_true_all, y_pred_all, labels=['inhale', 'exhale', 'silence'])
 
-# Generating and saving confusion matrices
-labels = ['Inhale', 'Exhale', 'Silence']
 
-print(f"Saving all confusion matrices to folder: {output_folder}")
+cykle_model_tomasz = 24 + 15 + 8
+cykle_tomasz = 24 + 15 + 8
+cykle_model_piotr = 27 + 35 + 13
+cykle_piotr = 17 + 36 + 9
+cykle_model_iwo = 6 + 11 + 6 + 5 + 9
+cykle_iwo = 6 + 12 + 7 + 8 + 9
+cykle_model_good = 24
+cykle_good = 24
+cykle_model_medium = 27 + 35 + 15 + 8 + 13 + 6 + 11 + 6 + 5 + 9
+cykle_medium = 17 + 36 + 15 + 8 + 9 + 6 + 12 + 7 + 8 + 9
+cykle_model_bad = 12
+cykle_bad = 14
+cykle_model_all = cykle_model_bad + cykle_model_medium + cykle_model_good
+cykle_all = cykle_bad + cykle_medium + cykle_good
 
-# Save individual matrices
-plot_confusion_matrix(cm_tomasz_good, "Tomasz dobry mikrofon", labels)
-plot_confusion_matrix(cm_piotr_good, "Piotr dobry mikrofon", labels)
-plot_confusion_matrix(cm_tomasz_medium, "Tomasz średni mikrofon", labels)
-plot_confusion_matrix(cm_piotr_medium, "Piotr średni mikrofon", labels)
-plot_confusion_matrix(cm_tomasz_bad, "Tomasz słaby mikrofon", labels)
+# Print breathing cycle statistics
+print("======= BREATHING CYCLE STATISTICS =======")
 
-# Save aggregated matrices
-plot_confusion_matrix(cm_tomasz_all, "Wszystkie dane Tomasza", labels)
-plot_confusion_matrix(cm_piotr_all, "Wszystkie dane Piotra", labels)
-plot_confusion_matrix(cm_good_all, "Wszystkie dobre mikrofony", labels)
-plot_confusion_matrix(cm_medium_all, "Wszystkie średnie mikrofony", labels)
-plot_confusion_matrix(cm_bad_all, "Wszystkie słabe mikrofony", labels)
-plot_confusion_matrix(cm_all, "Wszystkie dane", labels)
+def calculate_difference(model_cycles, actual_cycles):
+    if actual_cycles == 0:
+        return 0  # Avoid division by zero
+    return ((model_cycles - actual_cycles) / actual_cycles) * 100
 
-# Calculating accuracy for aggregated matrices
-accuracy_tomasz_all = np.diag(cm_tomasz_all).sum() / cm_tomasz_all.sum()
-accuracy_piotr_all = np.diag(cm_piotr_all).sum() / cm_piotr_all.sum()
-accuracy_good_all = np.diag(cm_good_all).sum() / cm_good_all.sum()
-accuracy_medium_all = np.diag(cm_medium_all).sum() / cm_medium_all.sum()
-accuracy_bad_all = np.diag(cm_bad_all).sum() / cm_bad_all.sum()
-accuracy_all = np.diag(cm_all).sum() / cm_all.sum()
+# Tomasz statistics
+print("\n=== TOMASZ ===")
+print(f"Actual breathing cycles: {cykle_tomasz}")
+print(f"Model breathing cycles: {cykle_model_tomasz}")
+diff_tomasz = calculate_difference(cykle_model_tomasz, cykle_tomasz)
+print(f"Percentage difference: {diff_tomasz:.2f}%")
 
-print(f"Accuracy (All Tomasz data): {accuracy_tomasz_all:.2%}")
-print(f"Accuracy (All Piotr data): {accuracy_piotr_all:.2%}")
-print(f"Accuracy (All good microphone data): {accuracy_good_all:.2%}")
-print(f"Accuracy (All medium microphone data): {accuracy_medium_all:.2%}")
-print(f"Accuracy (All bad microphone data): {accuracy_bad_all:.2%}")
-print(f"Accuracy (All data): {accuracy_all:.2%}")
+# Piotr statistics
+print("\n=== PIOTR ===")
+print(f"Actual breathing cycles: {cykle_piotr}")
+print(f"Model breathing cycles: {cykle_model_piotr}")
+diff_piotr = calculate_difference(cykle_model_piotr, cykle_piotr)
+print(f"Percentage difference: {diff_piotr:.2f}%")
+
+# Iwo statistics
+print("\n=== IWO ===")
+print(f"Actual breathing cycles: {cykle_iwo}")
+print(f"Model breathing cycles: {cykle_model_iwo}")
+diff_iwo = calculate_difference(cykle_model_iwo, cykle_iwo)
+print(f"Percentage difference: {diff_iwo:.2f}%")
+
+# Good microphones statistics
+print("\n=== GOOD MICROPHONES ===")
+print(f"Actual breathing cycles: {cykle_good}")
+print(f"Model breathing cycles: {cykle_model_good}")
+diff_good = calculate_difference(cykle_model_good, cykle_good)
+print(f"Percentage difference: {diff_good:.2f}%")
+
+# Medium microphones statistics
+print("\n=== MEDIUM MICROPHONES ===")
+print(f"Actual breathing cycles: {cykle_medium}")
+print(f"Model breathing cycles: {cykle_model_medium}")
+diff_medium = calculate_difference(cykle_model_medium, cykle_medium)
+print(f"Percentage difference: {diff_medium:.2f}%")
+
+# Bad microphones statistics
+print("\n=== POOR MICROPHONES ===")
+print(f"Actual breathing cycles: {cykle_bad}")
+print(f"Model breathing cycles: {cykle_model_bad}")
+diff_bad = calculate_difference(cykle_model_bad, cykle_bad)
+print(f"Percentage difference: {diff_bad:.2f}%")
+
+# All data statistics
+print("\n=== ALL DATA ===")
+print(f"Actual breathing cycles: {cykle_all}")
+print(f"Model breathing cycles: {cykle_model_all}")
+diff_all = calculate_difference(cykle_model_all, cykle_all)
+print(f"Percentage difference: {diff_all:.2f}%")
