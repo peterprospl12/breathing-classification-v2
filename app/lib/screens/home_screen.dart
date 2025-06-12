@@ -15,7 +15,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   BreathPhase _currentPhase = BreathPhase.silence;
   StreamSubscription<BreathPhase>? _breathPhaseSubscription;
@@ -87,7 +88,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.air_outlined, size: 24, color: theme.colorScheme.primary),
+            Icon(
+              Icons.air_outlined,
+              size: 24,
+              color: theme.colorScheme.primary,
+            ),
             const SizedBox(width: 12),
             Text(
               'Breathing Monitor',
@@ -104,7 +109,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           preferredSize: const Size.fromHeight(40.0),
           child: Container(
             decoration: BoxDecoration(
-              color: ElevationOverlay.applySurfaceTint(theme.colorScheme.surface, theme.colorScheme.surfaceTint, 0.5),
+              color: ElevationOverlay.applySurfaceTint(
+                theme.colorScheme.surface,
+                theme.colorScheme.surfaceTint,
+                0.5,
+              ),
               borderRadius: const BorderRadius.vertical(
                 bottom: Radius.circular(appBarBottomRadius * 1.5),
               ),
@@ -120,32 +129,36 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: audioService.selectedDevice != null
-                        ? InkWell(
-                            onTap: _showDeviceSelectionDialog,
-                            borderRadius: BorderRadius.circular(4),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4.0),
-                              child: Text(
-                                audioService.selectedDevice!.label,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w400,
+                    child:
+                        audioService.selectedDevice != null
+                            ? InkWell(
+                              onTap: _showDeviceSelectionDialog,
+                              borderRadius: BorderRadius.circular(4),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4.0,
                                 ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
+                                child: Text(
+                                  audioService.selectedDevice!.label,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                            )
+                            : Text(
+                              'No device selected',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurfaceVariant
+                                    .withOpacity(0.7),
+                                fontStyle: FontStyle.italic,
                               ),
                             ),
-                          )
-                        : Text(
-                            'No device selected',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
                   ),
                   if (audioService.isLoadingDevices)
                     Padding(
@@ -155,7 +168,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         height: 16,
                         child: CircularProgressIndicator(
                           strokeWidth: 1.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            theme.colorScheme.primary,
+                          ),
                         ),
                       ),
                     ),
@@ -196,14 +211,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 _showSeparateCounters,
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 8.0,
+                ),
                 child: _buildWidget(_selectedMode),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 16.0),
-                child: Center(
-                  child: _buildControlPanel(audioService),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16.0,
+                  horizontal: 16.0,
                 ),
+                child: Center(child: _buildControlPanel(audioService)),
               ),
             ],
           ),
@@ -238,7 +257,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         child: Column(
           children: [
             Row(
-              mainAxisAlignment: showSeparateCounters ? MainAxisAlignment.spaceEvenly : MainAxisAlignment.center,
+              mainAxisAlignment:
+                  showSeparateCounters
+                      ? MainAxisAlignment.spaceEvenly
+                      : MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 if (showSeparateCounters) ...[
@@ -264,14 +286,59 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ),
                   Padding(
                     padding: const EdgeInsets.only(left: 16.0),
-                    child: _buildVerticalResetButton(audioService.resetCounters),
+                    child: _buildVerticalResetButton(
+                      audioService.resetCounters,
+                    ),
                   ),
                 ],
               ],
             ),
+            // Timer and Tempo Section
+            const SizedBox(height: 16),
+            Divider(
+              height: 1,
+              thickness: 1,
+              color: theme.dividerColor.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                StreamBuilder<Duration>(
+                  stream: audioService.durationStream,
+                  initialData: Duration.zero,
+                  builder: (context, snapshot) {
+                    final duration = snapshot.data ?? Duration.zero;
+                    return _buildInfoItem(
+                      context,
+                      'TIMER',
+                      _formatDuration(duration),
+                      theme.colorScheme.secondary,
+                    );
+                  },
+                ),
+                StreamBuilder<double>(
+                  stream: audioService.tempoStream,
+                  initialData: 0.0,
+                  builder: (context, snapshot) {
+                    final tempo = snapshot.data ?? 0.0;
+                    return _buildInfoItem(
+                      context,
+                      'TEMPO',
+                      '${tempo.toStringAsFixed(1)} BPM',
+                      theme.colorScheme.secondary,
+                    );
+                  },
+                ),
+              ],
+            ),
             if (selectedMode == DisplayMode.microphone) ...[
               const SizedBox(height: 16),
-              Divider(height: 1, thickness: 1, color: theme.dividerColor.withOpacity(0.5)),
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: theme.dividerColor.withOpacity(0.5),
+              ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -305,7 +372,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget _buildControlPanel(AudioService audioService) {
     final theme = Theme.of(context);
     final isRecording = audioService.isRecording;
-    final bgColor = isRecording ? Colors.red.shade400 : theme.colorScheme.primary;
+    final bgColor =
+        isRecording ? Colors.red.shade400 : theme.colorScheme.primary;
     final fgColor = Colors.white;
     final icon = isRecording ? Icons.stop_rounded : Icons.mic_rounded;
     final text = isRecording ? 'Stop' : 'Start';
@@ -346,7 +414,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget _buildVerticalResetButton(VoidCallback onPressed) {
     final theme = Theme.of(context);
     return IconButton(
-      icon: Icon(Icons.refresh, size: 20, color: theme.colorScheme.onSurfaceVariant),
+      icon: Icon(
+        Icons.refresh,
+        size: 20,
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
       tooltip: 'Reset Counters',
       onPressed: onPressed,
       splashRadius: 20,
@@ -385,108 +457,192 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildInfoItem(
+    BuildContext context,
+    String label,
+    String value,
+    Color color,
+  ) {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: theme.textTheme.headlineSmall?.copyWith(
+            // Consider using a slightly smaller style if needed e.g. titleLarge
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
+  }
+
   void _showDeviceSelectionDialog() {
     final audioService = Provider.of<AudioService>(context, listen: false);
     final theme = Theme.of(context);
 
     showDialog(
       context: context,
-      builder: (context) => ChangeNotifierProvider.value(
-        value: audioService,
-        child: Consumer<AudioService>(
-          builder: (context, audioService, _) {
-            return AlertDialog(
-              backgroundColor: theme.dialogBackgroundColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-              contentPadding: const EdgeInsets.fromLTRB(0, 0, 0, 10),
-              actionsPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-              title: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Select Input Device',
-                      style: theme.textTheme.titleMedium,
-                    ),
+      builder:
+          (context) => ChangeNotifierProvider.value(
+            value: audioService,
+            child: Consumer<AudioService>(
+              builder: (context, audioService, _) {
+                return AlertDialog(
+                  backgroundColor: theme.dialogBackgroundColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  if (audioService.isLoadingDevices)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 1.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
-                        ),
-                      ),
-                    )
-                  else
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      iconSize: 20,
-                      tooltip: 'Refresh audio devices',
-                      onPressed: () => audioService.loadInputDevices(),
-                      color: theme.colorScheme.onSurfaceVariant,
-                      splashRadius: 20,
-                      constraints: const BoxConstraints(),
-                      padding: const EdgeInsets.all(4),
-                    ),
-                ],
-              ),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: audioService.inputDevices.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+                  titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                  contentPadding: const EdgeInsets.fromLTRB(0, 0, 0, 10),
+                  actionsPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                  title: Row(
+                    children: [
+                      Expanded(
                         child: Text(
-                          'No audio devices found.',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                          'Select Input Device',
+                          style: theme.textTheme.titleMedium,
                         ),
-                      )
-                    : ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: audioService.inputDevices.length,
-                        itemBuilder: (context, index) {
-                          final device = audioService.inputDevices[index];
-                          final bool isSelected = audioService.selectedDevice?.id == device.id;
-
-                          return ListTile(
-                            leading: Icon(Icons.mic_none_outlined, size: 20, color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
-                            title: Text(
-                              device.label,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
-                                fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: isSelected ? Icon(Icons.check, size: 18, color: theme.colorScheme.primary) : null,
-                            selected: isSelected,
-                            selectedTileColor: theme.colorScheme.primary.withOpacity(0.1),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
-                            dense: true,
-                            onTap: () {
-                              audioService.selectDevice(device);
-                              Navigator.pop(context);
-                            },
-                          );
-                        },
                       ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text('Cancel', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
+                      if (audioService.isLoadingDevices)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8.0),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                theme.colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        IconButton(
+                          icon: const Icon(Icons.refresh),
+                          iconSize: 20,
+                          tooltip: 'Refresh audio devices',
+                          onPressed: () => audioService.loadInputDevices(),
+                          color: theme.colorScheme.onSurfaceVariant,
+                          splashRadius: 20,
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(4),
+                        ),
+                    ],
+                  ),
+                  content: SizedBox(
+                    width: double.maxFinite,
+                    child:
+                        audioService.inputDevices.isEmpty
+                            ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 30,
+                              ),
+                              child: Text(
+                                'No audio devices found.',
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            )
+                            : ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: audioService.inputDevices.length,
+                              itemBuilder: (context, index) {
+                                final device = audioService.inputDevices[index];
+                                final bool isSelected =
+                                    audioService.selectedDevice?.id ==
+                                    device.id;
+
+                                return ListTile(
+                                  leading: Icon(
+                                    Icons.mic_none_outlined,
+                                    size: 20,
+                                    color:
+                                        isSelected
+                                            ? theme.colorScheme.primary
+                                            : theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                  ),
+                                  title: Text(
+                                    device.label,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color:
+                                          isSelected
+                                              ? theme.colorScheme.primary
+                                              : theme.colorScheme.onSurface,
+                                      fontWeight:
+                                          isSelected
+                                              ? FontWeight.w500
+                                              : FontWeight.normal,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  trailing:
+                                      isSelected
+                                          ? Icon(
+                                            Icons.check,
+                                            size: 18,
+                                            color: theme.colorScheme.primary,
+                                          )
+                                          : null,
+                                  selected: isSelected,
+                                  selectedTileColor: theme.colorScheme.primary
+                                      .withOpacity(0.1),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 0,
+                                  ),
+                                  dense: true,
+                                  onTap: () {
+                                    audioService.selectDevice(device);
+                                    Navigator.pop(context);
+                                  },
+                                );
+                              },
+                            ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
     );
   }
 
@@ -494,108 +650,157 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final theme = Theme.of(context);
     showDialog(
       context: context,
-      builder: (context) => Dialog(
-        backgroundColor: theme.colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.1),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    topRight: Radius.circular(16),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: theme.colorScheme.primary, size: 24),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'App Information',
-                        style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary),
+      builder:
+          (context) => Dialog(
+            backgroundColor: theme.colorScheme.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.1),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
                       ),
                     ),
-                    IconButton(
-                      icon: Icon(Icons.close, color: theme.colorScheme.onSurfaceVariant),
-                      iconSize: 20,
-                      onPressed: () => Navigator.pop(context),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      splashRadius: 18,
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'About Breathing Monitor',
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'This app monitors your breathing patterns in real-time, detecting inhales, exhales, and silence periods.',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildInfoRow(theme, Icons.mic_none_outlined, 'Tap the Start/Stop button to toggle monitoring.'),
-                    const SizedBox(height: 10),
-                    _buildInfoRow(theme, Icons.refresh_outlined, 'Tap the refresh icon to reset breath counts.'),
-                    const SizedBox(height: 10),
-                    _buildInfoRow(theme, Icons.tune_outlined, 'Use the options icon to change visualization style.'),
-                  ],
-                ),
-              ),
-              Divider(height: 1, thickness: 1, color: theme.dividerColor.withOpacity(0.5)),
-              Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Legend',
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    child: Row(
                       children: [
-                        _buildLegendItem(theme, AppTheme.inhaleColor, 'Inhale'),
-                        _buildLegendItem(theme, AppTheme.exhaleColor, 'Exhale'),
-                        _buildLegendItem(theme, AppTheme.silenceColor, 'Silence'),
+                        Icon(
+                          Icons.info_outline,
+                          color: theme.colorScheme.primary,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'App Information',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.close,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          iconSize: 20,
+                          onPressed: () => Navigator.pop(context),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          splashRadius: 18,
+                        ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: TextButton.styleFrom(
-                    backgroundColor: theme.colorScheme.secondaryContainer,
-                    foregroundColor: theme.colorScheme.onSecondaryContainer,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'About Breathing Monitor',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'This app monitors your breathing patterns in real-time, detecting inhales, exhales, and silence periods.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildInfoRow(
+                          theme,
+                          Icons.mic_none_outlined,
+                          'Tap the Start/Stop button to toggle monitoring.',
+                        ),
+                        const SizedBox(height: 10),
+                        _buildInfoRow(
+                          theme,
+                          Icons.refresh_outlined,
+                          'Tap the refresh icon to reset breath counts.',
+                        ),
+                        const SizedBox(height: 10),
+                        _buildInfoRow(
+                          theme,
+                          Icons.tune_outlined,
+                          'Use the options icon to change visualization style.',
+                        ),
+                      ],
                     ),
                   ),
-                  child: const Text('CLOSE'),
-                ),
+                  Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: theme.dividerColor.withOpacity(0.5),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Legend',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildLegendItem(
+                              theme,
+                              AppTheme.inhaleColor,
+                              'Inhale',
+                            ),
+                            _buildLegendItem(
+                              theme,
+                              AppTheme.exhaleColor,
+                              'Exhale',
+                            ),
+                            _buildLegendItem(
+                              theme,
+                              AppTheme.silenceColor,
+                              'Silence',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: TextButton.styleFrom(
+                        backgroundColor: theme.colorScheme.secondaryContainer,
+                        foregroundColor: theme.colorScheme.onSecondaryContainer,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('CLOSE'),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
     );
   }
 
@@ -608,7 +813,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         Expanded(
           child: Text(
             text,
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ],
@@ -624,10 +831,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           decoration: BoxDecoration(
             color: color.withOpacity(0.8),
             shape: BoxShape.circle,
-            border: Border.all(
-              color: color,
-              width: 1.5,
-            ),
+            border: Border.all(color: color, width: 1.5),
           ),
         ),
         const SizedBox(height: 8),
@@ -651,7 +855,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       builder: (BuildContext context) {
         return AlertDialog(
           backgroundColor: theme.dialogBackgroundColor,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
           contentPadding: const EdgeInsets.fromLTRB(0, 10, 0, 10),
           actionsPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
@@ -663,8 +869,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-                    child: Text("Visualization Style", style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20.0,
+                      vertical: 8.0,
+                    ),
+                    child: Text(
+                      "Visualization Style",
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
                   ),
                   ...DisplayMode.values.map((mode) {
                     final bool isSelected = tempSelectedMode == mode;
@@ -672,7 +886,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       title: Text(
                         mode.label,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                          color:
+                              isSelected
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurface,
                         ),
                       ),
                       value: mode,
@@ -686,18 +903,31 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       },
                       secondary: Icon(
                         mode.icon,
-                        color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                        color:
+                            isSelected
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.onSurfaceVariant,
                       ),
                       activeColor: theme.colorScheme.primary,
                       controlAffinity: ListTileControlAffinity.trailing,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                      ),
                       dense: true,
                     );
                   }).toList(),
                   const Divider(height: 20, thickness: 1),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-                    child: Text("Counters", style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20.0,
+                      vertical: 8.0,
+                    ),
+                    child: Text(
+                      "Counters",
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
                   ),
                   SwitchListTile(
                     title: Text(
@@ -714,7 +944,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     },
                     secondary: Icon(
                       Icons.compare_arrows_outlined,
-                      color: tempShowSeparateCounters ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                      color:
+                          tempShowSeparateCounters
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurfaceVariant,
                     ),
                     activeColor: theme.colorScheme.primary,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20),
@@ -726,13 +959,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           actions: <Widget>[
             TextButton(
-              child: Text('Cancel', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+              ),
               onPressed: () {
                 Navigator.of(context).pop();
               },
             ),
             TextButton(
-              child: Text('Apply', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
+              child: Text(
+                'Apply',
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               onPressed: () {
                 Navigator.of(context).pop({
                   'mode': tempSelectedMode,
@@ -751,7 +993,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         _selectedMode = result['mode'];
         needsSetState = true;
       }
-      if (result['showSeparate'] != null && result['showSeparate'] != _showSeparateCounters) {
+      if (result['showSeparate'] != null &&
+          result['showSeparate'] != _showSeparateCounters) {
         _showSeparateCounters = result['showSeparate'];
         needsSetState = true;
       }
@@ -766,7 +1009,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       case DisplayMode.microphone:
         return const MicrophoneVisualizationWidget();
       case DisplayMode.circular:
-        return CircularVisualizationWidget(showSeparateCounters: _showSeparateCounters);
+        return CircularVisualizationWidget(
+          showSeparateCounters: _showSeparateCounters,
+        );
     }
   }
 }

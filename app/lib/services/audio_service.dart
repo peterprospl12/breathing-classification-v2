@@ -20,9 +20,14 @@ class AudioService extends ChangeNotifier {
   BreathTrackingService get breathTrackingService => _breathTrackingService;
 
   bool get isRecording => _recordingService.isRecording;
-  Stream<BreathPhase> get breathPhasesStream => _breathTrackingService.breathPhasesStream;
+  Stream<BreathPhase> get breathPhasesStream =>
+      _breathTrackingService.breathPhasesStream;
   int get inhaleCount => _breathTrackingService.inhaleCount;
   int get exhaleCount => _breathTrackingService.exhaleCount;
+
+  Stream<Duration> get durationStream => _breathTrackingService.durationStream;
+  Stream<double> get tempoStream => _breathTrackingService.tempoStream;
+
   bool get isSaving => false;
   String? get lastSavedFilePath => null;
   List<InputDevice> get inputDevices => _recordingService.inputDevices;
@@ -43,10 +48,10 @@ class AudioService extends ChangeNotifier {
     AudioRecordingService? recordingService,
     BreathTrackingService? breathTrackingService,
     BreathClassifier? classifier,
-  }) :
-    _recordingService = recordingService ?? AudioRecordingService(),
-    _breathTrackingService = breathTrackingService ?? BreathTrackingService(),
-    _classifier = classifier ?? BreathClassifier() {
+  }) : _recordingService = recordingService ?? AudioRecordingService(),
+       _breathTrackingService =
+           breathTrackingService ?? BreathTrackingService(),
+       _classifier = classifier ?? BreathClassifier() {
     _initialize();
   }
 
@@ -70,11 +75,12 @@ class AudioService extends ChangeNotifier {
       if (isRecording) {
         _audioBufferForClassification.addAll(audioData);
 
-        if (_audioBufferForClassification.length >= bufferSize && !_isProcessing) {
+        if (_audioBufferForClassification.length >= bufferSize &&
+            !_isProcessing) {
           _isProcessing = true;
 
           final samplesToProcess = _audioBufferForClassification.sublist(
-            _audioBufferForClassification.length - bufferSize
+            _audioBufferForClassification.length - bufferSize,
           );
 
           _audioBufferForClassification.clear();
@@ -102,26 +108,36 @@ class AudioService extends ChangeNotifier {
 
       notifyListeners();
 
-      _logger.fine('Breath classification: ${BreathClassifier.getLabelForPhase(phase)}');
+      _logger.fine(
+        'Breath classification: ${BreathClassifier.getLabelForPhase(phase)}',
+      );
     } catch (e) {
       _classificationErrors++;
 
-      _logger.warning('Error during audio processing ($e). Error #$_classificationErrors');
+      _logger.warning(
+        'Error during audio processing ($e). Error #$_classificationErrors',
+      );
 
       if (_classificationErrors >= maxConsecutiveErrors) {
-        _logger.warning('Too many classification errors in a row. Attempting to reinitialize the classifier...');
+        _logger.warning(
+          'Too many classification errors in a row. Attempting to reinitialize the classifier...',
+        );
 
         try {
           await _classifier.initialize();
           _classificationErrors = 0;
         } catch (reinitError) {
-          _logger.severe('Reinitialization of the classifier failed: $reinitError');
+          _logger.severe(
+            'Reinitialization of the classifier failed: $reinitError',
+          );
         }
       }
     }
   }
 
-  StreamSubscription<List<int>> subscribeToAudioStream(void Function(List<int> audioData) onData) {
+  StreamSubscription<List<int>> subscribeToAudioStream(
+    void Function(List<int> audioData) onData,
+  ) {
     return _recordingService.audioStream.listen(onData);
   }
 
@@ -133,6 +149,7 @@ class AudioService extends ChangeNotifier {
     _classificationErrors = 0;
 
     await _recordingService.startRecording();
+    _breathTrackingService.startTimer();
     notifyListeners();
   }
 
@@ -140,11 +157,12 @@ class AudioService extends ChangeNotifier {
     if (!isRecording) return;
 
     await _recordingService.stopRecording();
+    _breathTrackingService.pauseTimer();
     notifyListeners();
   }
 
   void resetCounters() {
-    _breathTrackingService.resetCounters();
+    _breathTrackingService.resetTimer();
     notifyListeners();
   }
 
