@@ -33,9 +33,9 @@ cm_tomasz = np.array([
 ])
 
 cm_piotr = np.array([
-    [29, 23, 5],
-    [0, 63, 0],
-    [0, 0, 31]
+    [56, 11, 5],
+    [0, 79, 0],
+    [0, 0, 16]
 ])
 
 cm_iwo = np.array([
@@ -51,9 +51,9 @@ cm_good = np.array([
 ])
 
 cm_medium = np.array([
-    [103, 25, 7],
-    [0, 121, 8],
-    [0, 0, 63]
+    [130, 13, 7],
+    [0, 137, 8],
+    [0, 0, 47]
 ])
 
 cm_bad = np.array([
@@ -82,18 +82,18 @@ for cm, title in matrices:
 
 
 
-cykle_model_tomasz = 24 + 15 + 8
-cykle_tomasz = 24 + 15 + 8
-cykle_model_piotr = 27 + 35 + 13
-cykle_piotr = 17 + 36 + 9
-cykle_model_iwo = 6 + 11 + 6 + 5 + 9
-cykle_iwo = 6 + 12 + 7 + 8 + 9
-cykle_model_good = 24
-cykle_good = 24
-cykle_model_medium = 27 + 35 + 15 + 8 + 13 + 6 + 11 + 6 + 5 + 9
-cykle_medium = 17 + 36 + 15 + 8 + 9 + 6 + 12 + 7 + 8 + 9
-cykle_model_bad = 12
-cykle_bad = 14
+cykle_model_tomasz = 16 + 9 + 15 + 8
+cykle_tomasz = 15 + 9 + 15 + 8
+cykle_model_piotr = 11 + 16 + 13 + 13 + 34
+cykle_piotr = 11 + 10 + 13 + 9 + 36
+cykle_model_iwo = 6 + 13 + 7 + 6 + 12
+cykle_iwo = 6 + 12 + 6 + 8 + 10
+cykle_model_good = 16 + 9
+cykle_good = 15 + 9
+cykle_model_medium = 11 + 16 + 13 + 13 + 34 + 15 + 8 + 6 + 13 + 7 + 6 + 12
+cykle_medium = 11 + 10 + 13 + 9 + 36 + 15 + 8 + 6 + 12 + 6 + 8 + 10
+cykle_model_bad = 16
+cykle_bad = + 14
 cykle_model_all = cykle_model_bad + cykle_model_medium + cykle_model_good
 cykle_all = cykle_bad + cykle_medium + cykle_good
 
