@@ -93,7 +93,7 @@ cykle_good = 15 + 9
 cykle_model_medium = 11 + 16 + 13 + 13 + 34 + 15 + 8 + 6 + 13 + 7 + 6 + 12
 cykle_medium = 11 + 10 + 13 + 9 + 36 + 15 + 8 + 6 + 12 + 6 + 8 + 10
 cykle_model_bad = 16
-cykle_bad = + 14
+cykle_bad = 14
 cykle_model_all = cykle_model_bad + cykle_model_medium + cykle_model_good
 cykle_all = cykle_bad + cykle_medium + cykle_good
 
