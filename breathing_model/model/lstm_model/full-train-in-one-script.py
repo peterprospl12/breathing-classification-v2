@@ -28,7 +28,7 @@ REFRESH_TIME = 0.25  # seconds
 BATCH_SIZE = 16
 
 # Directories with data-raw
-data_dir = '../../data-sequences'
+data_dir = '../../deprecated/data-sequences'
 model_file_name = 'model_lstm.pth'
 
 # Function to load labels from csv file to list of tuples (label, start_frame, end_frame)

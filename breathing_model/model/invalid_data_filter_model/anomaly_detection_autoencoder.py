@@ -350,7 +350,7 @@ if __name__ == '__main__':
     from breathing_model.model.transformer_model.transformer_model import BreathSeqDataset
 
     # Ścieżka do folderu z danymi
-    data_dir = "../../data-sequences"
+    data_dir = "../../deprecated/data-sequences"
 
     # Utwórz dataset
     full_dataset = BreathSeqDataset(data_dir, sample_rate=44100, n_mels=40, n_fft=1024, hop_length=512)

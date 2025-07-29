@@ -344,7 +344,7 @@ if __name__ == '__main__':
     early_stopping_patience = 6
 
     # Path to the folder with sequential data-raw
-    data_dir = "../../data-sequences"
+    data_dir = "../../deprecated/data-sequences"
 
     # Create dataset and DataLoader (example split into training and validation)
     full_dataset = BreathSeqDataset(

@@ -7,74 +7,78 @@ import csv
 import pygame
 import pygame.freetype
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 import pyaudio
 from enum import Enum
 
-# ###########################################################################################
-# If there's an issue with the microphone, find the index of the microphone you want to use
-# in the terminal, along with its sampleRate.
-# Then, change the variable RATE and INPUT_DEVICE_INDEX below.
-# ###########################################################################################
-
+# ###########################################################
+# AUDIO_CHUNK = 2205 → dokładnie 50 ms
+# 200 chunków = 10.00 sekund (441_000 próbek)
+# 1200 chunków = 60 sekund (2_646_000 próbek)
+# ###########################################################
 # Audio configuration
-AUDIO_CHUNK = 1024
+AUDIO_CHUNK = 2205  # Must divide 441000 exactly (441000 / 2205 = 200)
 PLOT_CHUNK = 1024
 FORMAT = pyaudio.paInt16
-CHANNELS = 1  # Changed to mono for simplicity
+CHANNELS = 1
 RATE = 44100
 INPUT_DEVICE_INDEX = 1
-TRAINING_RECORDING_DURATION = 10  # Duration in seconds to save each recording
-EVAL_RECORDING_DURATION = 60  # Duration in seconds to save each recording
 
-# Paths for saving files
+# Recording durations
+TRAINING_RECORDING_DURATION = 10  # seconds
+EVAL_RECORDING_DURATION = 60      # seconds
+
+# Target samples
+TRAINING_TARGET_SAMPLES = RATE * TRAINING_RECORDING_DURATION  # 441_000
+EVAL_TARGET_SAMPLES = RATE * EVAL_RECORDING_DURATION          # 2_646_000
+
+# Paths
 DATA_DIR = "../data/"
 RAW_DIR = os.path.join(DATA_DIR, "raw")
 CSV_DIR = os.path.join(DATA_DIR, "label")
-
 EVAL_DATA_DIR = "../eval_data/"
 EVAL_RAW_DIR = os.path.join(EVAL_DATA_DIR, "raw")
 EVAL_CSV_DIR = os.path.join(EVAL_DATA_DIR, "label")
 
+
 class NoseMouth(Enum):
     Nose = 0
     Mouth = 1
+
 
 class MicrophoneQuality(Enum):
     Good = 0
     Medium = 1
     Bad = 2
 
+
 class DataMeansOfUsage(Enum):
     Evaluation = 0
     Training = 1
 
+
 def initialize_paths():
-    """Creates necessary directories if they do not exist."""
     os.makedirs(RAW_DIR, exist_ok=True)
     os.makedirs(CSV_DIR, exist_ok=True)
     os.makedirs(EVAL_RAW_DIR, exist_ok=True)
     os.makedirs(EVAL_CSV_DIR, exist_ok=True)
 
 
-
 class SharedAudioResource:
-    """Manages shared access to the audio device."""
-
     def __init__(self):
         self.p = pyaudio.PyAudio()
         self._log_available_devices()
         self.stream = self.p.open(
-            format=FORMAT, channels=CHANNELS, rate=RATE,
-            input=True, frames_per_buffer=AUDIO_CHUNK,
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=RATE,
+            input=True,
+            frames_per_buffer=AUDIO_CHUNK,
             input_device_index=INPUT_DEVICE_INDEX
         )
         self.buffer = None
         self.read(AUDIO_CHUNK)
 
     def _log_available_devices(self):
-        """Logs available audio devices."""
         print("Available audio devices:")
         for i in range(self.p.get_device_count()):
             dev_info = self.p.get_device_info_by_index(i)
@@ -83,26 +87,22 @@ class SharedAudioResource:
             print(f"  Default Sample Rate: {dev_info['defaultSampleRate']}")
 
     def read(self, size):
-        """Reads audio samples."""
         self.buffer = self.stream.read(size, exception_on_overflow=False)
         return self.buffer
 
     def close(self):
-        """Closes the audio stream and releases resources."""
         self.stream.stop_stream()
         self.stream.close()
         self.p.terminate()
 
 
 class BreathingRecorder:
-    """Records audio and tracks breathing classes with timestamps."""
-
     def __init__(self, audio, noseMouthMode, microphoneQuality, personName, meansOfUsage):
         self.audio = audio
-        self.current_class = "silence"  # Default class
+        self.current_class = "silence"
         self.frames = []
         self.recording = False
-        self.events = []  # List to store class changes with sample positions
+        self.events = []
         self.current_sample = 0
         self.recording_start_time = None
         self.last_save_time = None
@@ -111,129 +111,103 @@ class BreathingRecorder:
         self.microphoneQuality = microphoneQuality
         self.personName = personName
         self.meansOfUsage = meansOfUsage
-        self.record_duration = TRAINING_RECORDING_DURATION if self.meansOfUsage is DataMeansOfUsage.Training else EVAL_RECORDING_DURATION
+
+        # Set target samples
+        self.target_samples = TRAINING_TARGET_SAMPLES if self.meansOfUsage is DataMeansOfUsage.Training else EVAL_TARGET_SAMPLES
 
     def start_recording(self):
-        """Starts a new recording session."""
         self.recording = True
         self.frames = []
-        self.events = []
+        self.events = [(self.current_class, 0)]
         self.current_sample = 0
         self.recording_start_time = time.time()
         self.last_save_time = self.recording_start_time
         self.filename_base = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-
-        # Add initial class
-        self.events.append((self.current_class, 0))
-
         print(f"Recording started. Current class: {self.current_class}")
 
     def change_class(self, new_class):
-        """Changes the breathing class and records the transition."""
         if self.recording:
             self.events.append((new_class, self.current_sample))
             self.current_class = new_class
             print(f"Class changed to: {new_class} at sample {self.current_sample}")
 
     def record_chunk(self):
-        """Records a chunk of audio and updates sample count."""
         if self.recording:
             chunk = self.audio.read(AUDIO_CHUNK)
             self.frames.append(chunk)
             self.current_sample += AUDIO_CHUNK
 
-            # Check if it's time to save (every self.record_duration seconds)
-            current_time = time.time()
-            if current_time - self.last_save_time >= self.record_duration:
+            # ✅ Save ONLY if we have exactly the target number of samples
+            if self.current_sample == self.target_samples:
                 self.save_sequence()
-                self.last_save_time = current_time
+                # Reset for next segment
+                self.frames = []
+                self.events = [(self.current_class, 0)]
+                self.current_sample = 0
+                self.last_save_time = time.time()
+            elif self.current_sample > self.target_samples:
+                # Overshot — reset without saving
+                print(f"⚠️  Overshot: {self.current_sample} > {self.target_samples}. Resetting.")
+                self.frames = []
+                self.events = [(self.current_class, 0)]
+                self.current_sample = 0
+                self.last_save_time = time.time()
 
     def save_sequence(self):
-        """Saves the current audio sequence and corresponding CSV file."""
         if not self.recording or not self.frames:
             return
 
-        # Generate filename prefix with person name, breathing mode, and mic quality
         nose_mouth_str = "nose" if self.noseMouthMode == NoseMouth.Nose else "mouth"
         mic_quality_str = self.microphoneQuality.name.lower()
         file_prefix = f"{self.personName}_{nose_mouth_str}_{mic_quality_str}"
-
         timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
         if self.meansOfUsage is DataMeansOfUsage.Training:
-            wav_filename = os.path.join(RAW_DIR, f"{file_prefix}_{timestamp}.wav")
-            csv_filename = os.path.join(CSV_DIR, f"{file_prefix}_{timestamp}.csv")
-        else:  # Evaluation mode
-            wav_filename = os.path.join(EVAL_RAW_DIR, f"{file_prefix}_{timestamp}.wav")
-            csv_filename = os.path.join(EVAL_CSV_DIR, f"{file_prefix}_{timestamp}.csv")
-        # Save WAV file
-        wf = wave.open(wav_filename, 'wb')
+            wav_path = os.path.join(RAW_DIR, f"{file_prefix}_{timestamp}.wav")
+            csv_path = os.path.join(CSV_DIR, f"{file_prefix}_{timestamp}.csv")
+        else:
+            wav_path = os.path.join(EVAL_RAW_DIR, f"{file_prefix}_{timestamp}.wav")
+            csv_path = os.path.join(EVAL_CSV_DIR, f"{file_prefix}_{timestamp}.csv")
+
+        # Save WAV
+        wf = wave.open(wav_path, 'wb')
         wf.setnchannels(CHANNELS)
         wf.setsampwidth(self.audio.p.get_sample_size(FORMAT))
         wf.setframerate(RATE)
         wf.writeframes(b''.join(self.frames))
         wf.close()
 
-        # Save CSV file with class, start_sample, end_sample format
-        with open(csv_filename, 'w', newline='') as csvfile:
+        # Save CSV
+        with open(csv_path, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(['class', 'start_sample', 'end_sample'])
-
-            # Write each breathing event
             for i in range(len(self.events) - 1):
-                current_class, start_sample = self.events[i]
-                _, end_sample = self.events[i + 1]
-                writer.writerow([current_class, start_sample, end_sample])
-
-            # Write the last event (if there's at least one event)
+                cls, start = self.events[i]
+                _, end = self.events[i + 1]
+                writer.writerow([cls, start, end])
             if self.events:
-                last_class, last_start = self.events[-1]
-                writer.writerow([last_class, last_start, self.current_sample])
+                last_cls, last_start = self.events[-1]
+                writer.writerow([last_cls, last_start, self.current_sample])
 
-        print(f"Saved sequence: {file_prefix}_{timestamp}")
-        print(f"  - Audio file: {wav_filename}")
-        print(f"  - CSV file: {csv_filename}")
-
-        # Reset frames but keep recording
-        self.frames = []
-        # Keep events but adjust sample positions to be relative to the new segment
-        last_sample = self.current_sample
-        self.events = [(self.current_class, 0)]  # Start the new segment with current class
-        self.current_sample = AUDIO_CHUNK  # Reset current sample count but account for first chunk
-
-    def stop_recording(self):
-        """Stops the recording and saves final data."""
-        if self.recording:
-            self.save_sequence()
-            self.recording = False
-            print("Recording stopped.")
-
-
-def draw_text(text, pos, font, screen):
-    """Draws text on the screen."""
-    text_surface, _ = font.render(text, (255, 255, 255))
-    screen.blit(text_surface, (pos[0] - text_surface.get_width() // 2,
-                               pos[1] - text_surface.get_height() // 2))
+        print(f"✅ SAVED EXACT: {file_prefix}_{timestamp} ({self.current_sample} samples)")
+        print(f"    Audio: {wav_path}")
+        print(f"    Labels: {csv_path}")
 
 
 def pygame_thread(recorder, means_of_usage):
-    """Handles the graphical interface and user input."""
     pygame.init()
-
     WIDTH, HEIGHT = 1200, 700
     FONT_SIZE = 24
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Breathing Recorder")
     font = pygame.freetype.SysFont(None, FONT_SIZE)
     clock = pygame.time.Clock()
-
     running = True
 
-    # Define button positions and sizes
     button_width, button_height = 180, 60
     button_margin = 20
     button_y = HEIGHT - button_height - 30
 
-    # Define buttons [x, y, width, height, text, key, action]
     buttons = [
         [WIDTH // 2 - button_width * 2 - button_margin * 1.5, button_y, button_width, button_height,
          "START (SPACE)", pygame.K_SPACE, "start"],
@@ -243,7 +217,6 @@ def pygame_thread(recorder, means_of_usage):
          "QUIT (ESC)", pygame.K_ESCAPE, "quit"],
     ]
 
-    # Class buttons
     class_buttons = [
         [WIDTH // 4 - button_width // 2, HEIGHT // 2, button_width, button_height,
          "INHALE (W)", pygame.K_w, "inhale"],
@@ -256,19 +229,16 @@ def pygame_thread(recorder, means_of_usage):
     def draw_button(button):
         x, y, w, h, text, _, _ = button
         color = (100, 100, 100)
-
-        # Highlight the current breathing class button
         if len(button) > 6 and button[6] == recorder.current_class and recorder.recording:
             color = (0, 200, 0)
-
         pygame.draw.rect(screen, color, (x, y, w, h))
         pygame.draw.rect(screen, (200, 200, 200), (x, y, w, h), 2)
-        draw_text(text, (x + w // 2, y + h // 2), font, screen)
+        text_surface, _ = font.render(text, (255, 255, 255))
+        screen.blit(text_surface, (x + w // 2 - text_surface.get_width() // 2,
+                                   y + h // 2 - text_surface.get_height() // 2))
 
     while running:
         screen.fill((0, 0, 0))
-
-        # Process events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -286,35 +256,29 @@ def pygame_thread(recorder, means_of_usage):
                 elif event.key == pygame.K_r and recorder.recording:
                     recorder.change_class("silence")
 
-        # Record audio chunk if recording
         if recorder.recording:
             recorder.record_chunk()
 
-        # Draw status
+        # Status
         if recorder.recording:
             elapsed = time.time() - recorder.recording_start_time
-            next_save = recorder.record_duration - (time.time() - recorder.last_save_time)
-            status_text = f"RECORDING | Class: {recorder.current_class} | Time: {elapsed:.1f}s | Next save: {next_save:.1f}s"
+            remaining = (recorder.target_samples - recorder.current_sample) / RATE
+            status_text = f"RECORDING | Class: {recorder.current_class.upper()} | Time: {elapsed:.1f}s"
             status_color = (255, 50, 50)
         else:
             status_text = f"NOT RECORDING | Mode: {means_of_usage.name} | Press SPACE to start"
             status_color = (200, 200, 200)
 
-        # Draw status text
         text_surface, _ = font.render(status_text, status_color)
         screen.blit(text_surface, (WIDTH // 2 - text_surface.get_width() // 2, 50))
 
-        # Draw class name in big font if recording
         if recorder.recording:
             class_font = pygame.freetype.SysFont(None, 72)
             class_text, _ = class_font.render(recorder.current_class.upper(), (0, 200, 0))
             screen.blit(class_text, (WIDTH // 2 - class_text.get_width() // 2, 120))
 
-        # Draw all buttons
         for button in buttons:
             draw_button(button)
-
-        # Draw class buttons
         for button in class_buttons:
             draw_button(button)
 
@@ -324,45 +288,23 @@ def pygame_thread(recorder, means_of_usage):
     pygame.quit()
 
 
-def plot_audio(audio):
-    """Displays a real-time audio plot."""
-
-    def animate(i):
-        if audio.buffer:
-            data = np.frombuffer(audio.buffer, dtype=np.int16)
-            line.set_ydata(data[:PLOT_CHUNK])
-        return line,
-
-    fig, ax = plt.subplots(figsize=(10, 4))
-    x = np.arange(0, PLOT_CHUNK)
-    line, = ax.plot(x, np.random.rand(PLOT_CHUNK))
-
-    ax.set_ylim(-32000, 32000)
-    ax.set_xlim(0, PLOT_CHUNK)
-    ax.set_title("Real-time Audio Waveform")
-
-    ani = animation.FuncAnimation(fig, animate, frames=100, blit=True)
-    plt.show()
-
-
 if __name__ == "__main__":
     initialize_paths()
     audio = SharedAudioResource()
-
     MODE = NoseMouth.Nose
-    MICROPHONEQUALITY = MicrophoneQuality.Bad
-    PERSONNAME = "Tomasz"
-    MEANSOFUSAGE = DataMeansOfUsage.Evaluation
-
+    MICROPHONEQUALITY = MicrophoneQuality.Medium
+    PERSONNAME = "Iwo"
+    MEANSOFUSAGE = DataMeansOfUsage.Training
     recorder = BreathingRecorder(audio, MODE, MICROPHONEQUALITY, PERSONNAME, MEANSOFUSAGE)
 
-    # Start the pygame interface in a separate thread
     pygame_thread_instance = threading.Thread(target=pygame_thread, args=(recorder, MEANSOFUSAGE))
     pygame_thread_instance.daemon = True
     pygame_thread_instance.start()
 
-    # Start the audio plot
-    plot_audio(audio)
-
-    # Clean up
-    audio.close()
+    try:
+        while True:
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+    finally:
+        audio.close()

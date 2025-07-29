@@ -23,7 +23,7 @@ except ImportError as e:
         f"Ensure the path '{model_dir}' is correct and contains transformer_model.py")
     sys.exit(1)
 
-DATA_DIR = "../data-sequences" 
+DATA_DIR = "../deprecated/data-sequences"
 MODEL_PATH = "../trained_models/1/transformer_model_88.pth"
 BATCH_SIZE = 4  
 N_MELS = 128 
