@@ -3,7 +3,7 @@ import pandas as pd
 from pydub import AudioSegment
 import shutil
 
-# Ustawienia
+# Settings
 RAW_DIR = './raw'
 LABEL_DIR = './label'
 OUTPUT_RAW_DIR = './raw'        # Można zmienić na nowy folder, np. './raw_trimmed'
