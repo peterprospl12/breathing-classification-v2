@@ -96,7 +96,7 @@ for wav_file in os.listdir(RAW_DIR):
                 new_df.to_csv(output_csv_path, index=False)
                 print(f"  Zapisano zaktualizowany CSV: {output_csv_path}")
             else:
-                # Jeśli nie ma żadnych segmentów — usuwamy CSV
+                # If no segments exist, remove the CSV
                 if os.path.exists(os.path.join(OUTPUT_LABEL_DIR, base_name + '.csv')):
                     os.remove(os.path.join(OUTPUT_LABEL_DIR, base_name + '.csv'))
                 print(f"  Usunięto {base_name}.csv (brak segmentów po przycięciu)")
