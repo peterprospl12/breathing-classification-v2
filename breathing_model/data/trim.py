@@ -26,7 +26,7 @@ for wav_file in os.listdir(RAW_DIR):
 
     # Sprawdź, czy istnieje odpowiadający plik CSV
     if not os.path.exists(csv_path):
-        print(f"Brak pliku CSV dla {wav_file}, pomijam.")
+        print(f"Missing CSV file for {wav_file}, skipping.")
         continue
 
     # Wczytaj plik WAV
