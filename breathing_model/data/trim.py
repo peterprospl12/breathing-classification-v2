@@ -81,7 +81,7 @@ for wav_file in os.listdir(RAW_DIR):
                 if start >= TARGET_LENGTH:
                     continue
 
-                # Obcinamy koniec do TARGET_LENGTH
+                # Trim the end to TARGET_LENGTH
                 if end > TARGET_LENGTH:
                     end = TARGET_LENGTH
 
