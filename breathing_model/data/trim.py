@@ -48,7 +48,7 @@ for wav_file in os.listdir(RAW_DIR):
         # Usuń zarówno wav, jak i csv
         os.remove(wav_path)
         os.remove(csv_path)
-        print(f"  Usunięto {wav_file} i {base_name}.csv (za krótki)")
+        print(f"  Removed {wav_file} and {base_name}.csv (too short)")
     else:
         # Przycinamy dźwięk do pierwszych TARGET_LENGTH próbek
         # Oblicz czas w milisekundach: (samples / frame_rate) * 1000
