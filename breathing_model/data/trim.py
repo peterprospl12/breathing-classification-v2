@@ -42,7 +42,7 @@ for wav_file in os.listdir(RAW_DIR):
     sample_width = audio.sample_width
     frame_rate = audio.frame_rate
 
-    print(f"Przetwarzam: {wav_file}, liczba próbek: {sample_count}")
+    print(f"Processing: {wav_file}, sample count: {sample_count}")
 
     if sample_count < TARGET_LENGTH:
         # Usuń zarówno wav, jak i csv
