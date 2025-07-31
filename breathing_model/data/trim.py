@@ -33,7 +33,7 @@ for wav_file in os.listdir(RAW_DIR):
     try:
         audio = AudioSegment.from_wav(wav_path)
     except Exception as e:
-        print(f"Błąd podczas wczytywania {wav_file}: {e}")
+        print(f"Error loading {wav_file}: {e}")
         continue
 
     # Liczba próbek (AudioSegment ma frame_count())
