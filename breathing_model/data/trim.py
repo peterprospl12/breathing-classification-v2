@@ -85,7 +85,7 @@ for wav_file in os.listdir(RAW_DIR):
                 if end > TARGET_LENGTH:
                     end = TARGET_LENGTH
 
-                # Jeśli po obcięciu segment ma dodatnią długość, dodajemy
+                # If the segment has a positive length after trimming, add it
                 if start < end:
                     valid_segments.append({'class': cls, 'start_sample': start, 'end_sample': end})
 
