@@ -36,7 +36,7 @@ for wav_file in os.listdir(RAW_DIR):
         print(f"Error loading {wav_file}: {e}")
         continue
 
-    # Liczba próbek (AudioSegment ma frame_count())
+    # Number of samples (AudioSegment has frame_count())
     sample_count = len(audio.get_array_of_samples())
     channels = audio.channels
     sample_width = audio.sample_width
