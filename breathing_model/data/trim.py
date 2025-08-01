@@ -9,7 +9,7 @@ LABEL_DIR = './label'
 OUTPUT_RAW_DIR = './raw'        # Can be changed to a new folder, e.g., './raw_trimmed'
 OUTPUT_LABEL_DIR = './label'    # Can be changed, e.g., './label_trimmed'
 
-TARGET_LENGTH = 441000  # docelowa liczba próbek
+TARGET_LENGTH = 441000  # target number of samples
 
 # Upewnij się, że katalogi wyjściowe istnieją
 os.makedirs(OUTPUT_RAW_DIR, exist_ok=True)
@@ -50,7 +50,7 @@ for wav_file in os.listdir(RAW_DIR):
         os.remove(csv_path)
         print(f"  Removed {wav_file} and {base_name}.csv (too short)")
     else:
-        # Przycinamy dźwięk do pierwszych TARGET_LENGTH próbek
+        # Trim audio to the first TARGET_LENGTH samples
         # Calculate time in milliseconds: (samples / frame_rate) * 1000
         target_frames = TARGET_LENGTH
         target_duration_ms = (target_frames / frame_rate) * 1000
