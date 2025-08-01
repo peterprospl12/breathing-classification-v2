@@ -6,8 +6,8 @@ import shutil
 # Settings
 RAW_DIR = './raw'
 LABEL_DIR = './label'
-OUTPUT_RAW_DIR = './raw'        # Można zmienić na nowy folder, np. './raw_trimmed'
-OUTPUT_LABEL_DIR = './label'    # Można zmienić, np. './label_trimmed'
+OUTPUT_RAW_DIR = './raw'        # Can be changed to a new folder, e.g., './raw_trimmed'
+OUTPUT_LABEL_DIR = './label'    # Can be changed, e.g., './label_trimmed'
 
 TARGET_LENGTH = 441000  # docelowa liczba próbek
 
@@ -51,33 +51,33 @@ for wav_file in os.listdir(RAW_DIR):
         print(f"  Removed {wav_file} and {base_name}.csv (too short)")
     else:
         # Przycinamy dźwięk do pierwszych TARGET_LENGTH próbek
-        # Oblicz czas w milisekundach: (samples / frame_rate) * 1000
+        # Calculate time in milliseconds: (samples / frame_rate) * 1000
         target_frames = TARGET_LENGTH
         target_duration_ms = (target_frames / frame_rate) * 1000
 
-        trimmed_audio = audio[:target_duration_ms]  # Przycinamy do tej długości
+        trimmed_audio = audio[:target_duration_ms]  # Trim to this duration
 
         # Zapisz przycięty plik WAV
         output_wav_path = os.path.join(OUTPUT_RAW_DIR, wav_file)
         trimmed_audio.export(output_wav_path, format='wav')
-        print(f"  Zapisano przycięty plik: {output_wav_path}")
+        print(f"  Saved trimmed file: {output_wav_path}")
 
-        # Przetwarzanie CSV: przycinamy lub usuwamy segmenty poza [0, TARGET_LENGTH)
+        # CSV processing: trim or remove segments outside [0, TARGET_LENGTH)
         try:
             df = pd.read_csv(csv_path)
             required_columns = ['class', 'start_sample', 'end_sample']
             if not all(col in df.columns for col in required_columns):
-                print(f"  Błąd: brak wymaganych kolumn w {csv_path}")
+                print(f"  Error: missing required columns in {csv_path}")
                 continue
 
-            # Filtrujemy segmenty, które zaczynają się przed TARGET_LENGTH
+            # Filter segments that start before TARGET_LENGTH
             valid_segments = []
             for _, row in df.iterrows():
                 start = int(row['start_sample'])
                 end = int(row['end_sample'])
                 cls = row['class']
 
-                # Jeśli segment zaczyna się po TARGET_LENGTH — pomijamy
+                # If the segment starts after TARGET_LENGTH — skip it
                 if start >= TARGET_LENGTH:
                     continue
 
@@ -94,12 +94,12 @@ for wav_file in os.listdir(RAW_DIR):
                 new_df = pd.DataFrame(valid_segments)
                 output_csv_path = os.path.join(OUTPUT_LABEL_DIR, base_name + '.csv')
                 new_df.to_csv(output_csv_path, index=False)
-                print(f"  Zapisano zaktualizowany CSV: {output_csv_path}")
+                print(f"  Saved updated CSV: {output_csv_path}")
             else:
                 # If no segments exist, remove the CSV
                 if os.path.exists(os.path.join(OUTPUT_LABEL_DIR, base_name + '.csv')):
                     os.remove(os.path.join(OUTPUT_LABEL_DIR, base_name + '.csv'))
-                print(f"  Usunięto {base_name}.csv (brak segmentów po przycięciu)")
+                print(f"  Removed {base_name}.csv (no segments after trimming)")
 
         except Exception as e:
-            print(f"  Błąd podczas przetwarzania {csv_path}: {e}")
+            print(f"  Error processing {csv_path}: {e}")
