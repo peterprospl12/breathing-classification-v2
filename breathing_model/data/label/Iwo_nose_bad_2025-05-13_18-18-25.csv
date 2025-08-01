@@ -1,4 +1,4 @@
 class,start_sample,end_sample
 exhale,0,121856
 inhale,121856,292864
-exhale,292864,443392
+exhale,292864,441000
