@@ -2,7 +2,6 @@ class,start_sample,end_sample
 inhale,0,3072
 exhale,3072,99328
 silence,99328,149504
-inhale,149504,233472
-inhale,233472,286720
+inhale,149504,286720
 exhale,286720,398336
 inhale,398336,405504
