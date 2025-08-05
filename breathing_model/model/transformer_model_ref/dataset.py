@@ -127,15 +127,15 @@ def collate_fn(batch):
     Pads both mel-spectrograms and labels to the same length (longest in batch).
     Returns:
         spectograms_batch: (batch_size, 1, n_mels, time_frames_padded)
-        labels: (batch_size, time_frames_padded))
+        labels: (batch_size, time_frames_padded)
     """
     spectrograms, labels = zip(*batch)
 
     # Transform spectrograms: (1, n_mels, time_frames) → (time_frames, n_mels)
-    spectrograms_transpoed = [spectrogram.squeeze(0).permute(1, 0) for spectrogram in spectrograms]
+    spectrograms_transposed = [spectrogram.squeeze(0).permute(1, 0) for spectrogram in spectrograms]
 
     # (batch_size, time_frames_max, n_mels=128)
-    spectrograms_padded = pad_sequence(spectrograms_transpoed,
+    spectrograms_padded = pad_sequence(spectrograms_transposed,
                                        batch_first=True,
                                        padding_value=0.0)
 

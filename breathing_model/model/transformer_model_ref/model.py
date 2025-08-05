@@ -96,7 +96,6 @@ class BreathPhaseTransformerSeq(nn.Module):
         # cnn_features: [batch_size, channels=128, n_mels//8, time_frames]
         cnn_features = self.conv_layers(spectrogram)
 
-
         # time_major_features: [batch_size, time_frames, channels, freq_bins]
         time_major_features = cnn_features.permute(0, 3, 1, 2)
 
