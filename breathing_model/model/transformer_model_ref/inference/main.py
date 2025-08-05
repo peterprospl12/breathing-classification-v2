@@ -3,7 +3,7 @@ from audio import AudioStream
 from transform import MelSpectrogramTransform
 from model_loader import BreathPhaseClassifier
 from counter import BreathCounter, BreathType
-from visualtization import RealTimePlot
+from visualization import RealTimePlot
 import time
 import logging
 
