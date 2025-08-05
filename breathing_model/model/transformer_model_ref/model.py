@@ -41,7 +41,7 @@ class BreathPhaseTransformerSeq(nn.Module):
                  num_classes: int = 3):
         super().__init__()
 
-        self.conv_layers = self._build_cnn_layerset()
+        self.conv_layers = self._build_cnn_layers()
 
         self.out_freq = n_mels // 8  # after three pooling operations (vertical only)
         self.cnn_feature_dim = 128 * self.out_freq
@@ -91,7 +91,7 @@ class BreathPhaseTransformerSeq(nn.Module):
         return nn.Sequential(conv1, conv2, conv3)
 
     def forward(self, spectrogram):
-        # spectogram: [batch_size, channels=1, n_mels, time_frames]
+        # spectrogram: [batch_size, channels=1, n_mels, time_frames]
 
         # cnn_features: [batch_size, channels=128, n_mels//8, time_frames]
         cnn_features = self.conv_layers(spectrogram)
