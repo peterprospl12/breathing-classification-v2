@@ -6,9 +6,9 @@ import torch
 import torchaudio
 import torch.nn as nn
 import torch.nn.functional as F
-import json
 from enum import Enum
 
+from model.lib import SharedAudioResource
 
 
 # Updated autoencoder based on SimplerBreathingAutoencoder
@@ -134,28 +134,6 @@ class AudioState(Enum):
 
 running = True
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-
-# Audio handling class
-class SharedAudioResource:
-    def __init__(self):
-        self.p = pyaudio.PyAudio()
-        self.buffer_size = CHUNK_SIZE
-        # Print available devices
-        for i in range(self.p.get_device_count()):
-            print(f"Device {i}: {self.p.get_device_info_by_index(i)['name']}")
-        self.stream = self.p.open(format=FORMAT, channels=CHANNELS, rate=RATE,
-                                  input=True, frames_per_buffer=self.buffer_size,
-                                  input_device_index=DEVICE_INDEX)
-
-    def read(self):
-        data = self.stream.read(self.buffer_size, exception_on_overflow=False)
-        return np.frombuffer(data, dtype=np.int16)
-
-    def close(self):
-        self.stream.stop_stream()
-        self.stream.close()
-        self.p.terminate()
 
 
 # Mel spectrogram transformer
@@ -376,7 +354,8 @@ def update_plot(frames, audio_state, energy_level, error_value, anomaly_threshol
 # Main loop
 if __name__ == '__main__':
     # Initialize audio resources and anomaly detector
-    audio = SharedAudioResource()
+    audio = SharedAudioResource(chunk_size=CHUNK_SIZE, format=FORMAT, channels=CHANNELS,
+                                rate=RATE, device_index=DEVICE_INDEX)
     detector = RealTimeAnomalyDetector(MODEL_PATH)
 
     print(f"Anomaly detection threshold: {detector.threshold:.5f}")
