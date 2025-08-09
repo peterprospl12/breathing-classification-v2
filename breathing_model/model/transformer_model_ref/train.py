@@ -1,6 +1,7 @@
 import torch
 import os
 
+
 def run_train_epoch(model, train_loader, criterion, optimizer, device):
     model.train()
     running_loss = 0.0
@@ -26,6 +27,7 @@ def run_train_epoch(model, train_loader, criterion, optimizer, device):
     train_acc = correct_frames / total_frames
     return train_loss, train_acc
 
+
 def run_val_epoch(model, val_loader, criterion, device):
     model.eval()
     val_loss = 0.0
@@ -47,6 +49,7 @@ def run_val_epoch(model, val_loader, criterion, device):
     val_acc = val_correct / val_total
     return avg_val_loss, val_acc
 
+
 def train_model(model,
                 train_loader,
                 val_loader,
@@ -65,16 +68,16 @@ def train_model(model,
 
     for epoch in range(num_epochs):
         train_loss, train_acc = run_train_epoch(model, train_loader, criterion, optimizer, device)
-        print(f"Epoch {epoch+1} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}")
+        print(f"Epoch {epoch + 1} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}")
 
         val_loss, val_acc = run_val_epoch(model, val_loader, criterion, device)
-        print(f"Epoch {epoch+1} | Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.4f}")
+        print(f"Epoch {epoch + 1} | Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.4f}")
 
         scheduler.step()
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            save_path = os.path.join(save_dir, f"best_model_epoch{epoch+1}.pth")
+            save_path = os.path.join(save_dir, f"best_model_epoch{epoch + 1}.pth")
             torch.save(model.state_dict(), save_path)
             print(f"Saved best model to {save_path}")
             epochs_no_improve = 0
@@ -87,7 +90,6 @@ def train_model(model,
             break
 
     print("Training complete.")
-
 
 
 if __name__ == '__main__':
@@ -104,7 +106,7 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {"gpu" if torch.cuda.is_available() else "cpu"}")
 
-    dataset  = BreathDataset(config['data']['data_dir'], config['data']['label_dir'])
+    dataset = BreathDataset(config['data']['data_dir'], config['data']['label_dir'])
     data_train, data_val = split_dataset(dataset)
 
     train_loader = DataLoader(data_train,
@@ -116,12 +118,12 @@ if __name__ == '__main__':
                               pin_memory=torch.cuda.is_available())
 
     val_loader = DataLoader(data_val,
-                              batch_size=config['train']['batch_size'],
-                              collate_fn=collate_fn,
-                              shuffle=False,
-                              drop_last=False,
-                              num_workers=4,
-                              pin_memory=torch.cuda.is_available())
+                            batch_size=config['train']['batch_size'],
+                            collate_fn=collate_fn,
+                            shuffle=False,
+                            drop_last=False,
+                            num_workers=4,
+                            pin_memory=torch.cuda.is_available())
 
     model = BreathPhaseTransformerSeq(
         n_mels=config['model']['n_mels'],

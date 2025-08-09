@@ -7,6 +7,9 @@ from typing import Iterable, Optional
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 
+from breathing_model.model.transformer_model_ref.utils import BreathType
+
+
 class BreathDataset(Dataset):
     """
     Dataset for breathing sequences with variable-length audio.
@@ -26,8 +29,8 @@ class BreathDataset(Dataset):
     ):
         """
         Args:
-            data_dir: Path to directory with .wav files containing audio (same base name as labels).
-            label_dir: Path to directory with .csv files containing labels (same base name as audio).
+            data_dir: Path to a directory with .wav files containing audio (same base name as labels).
+            label_dir: Path to a directory with .csv files containing labels (same base name as audio).
             sample_rate: Target sampling rate.
             n_mels: Number of mel filters.
             n_fft: FFT window size (larger → better frequency resolution).
@@ -80,7 +83,6 @@ class BreathDataset(Dataset):
 
         # Compute mel-spectrogram
         mel = self.mel_transform(waveform)  # (1, n_mels, T)
-
         mel = self.db_transform(mel)
 
         # Apply optional transforms
@@ -102,7 +104,9 @@ class BreathDataset(Dataset):
         df = pd.read_csv(csv_path, header=0)
         labels = torch.full((num_frames,), 2, dtype=torch.int64)  # Default: silence (2)
 
-        label_map = {"exhale": 0, "inhale": 1, "silence": 2}
+        label_map = {"exhale": BreathType.EXHALE,
+                     "inhale": BreathType.INHALE,
+                     "silence": BreathType.SILENCE}
 
         for _, row in df.iterrows():
             start_frame = int(row['start_sample']) // self.hop_length
@@ -122,28 +126,35 @@ def collate_fn(batch):
     Collate function for DataLoader to handle variable-length sequences.
     Pads both mel-spectrograms and labels to the same length (longest in batch).
     Returns:
-        mels: (B, 1, n_mels, T_padded)
-        labels: (B, T_padded)
+        spectograms_batch: (batch_size, 1, n_mels, time_frames_padded)
+        labels: (batch_size, time_frames_padded)
     """
-    mels, labels = zip(*batch)
+    spectrograms, labels = zip(*batch)
 
-    mels = [mel.squeeze(0).permute(1, 0) for mel in mels]  # lista: [(T1, 128), (T2, 128), ...]
+    # Transform spectrograms: (1, n_mels, time_frames) → (time_frames, n_mels)
+    spectrograms_transposed = [spectrogram.squeeze(0).permute(1, 0) for spectrogram in spectrograms]
 
-    mels_padded = pad_sequence(mels, batch_first=True, padding_value=0.0)  # (B, T_max, 128)
+    # (batch_size, time_frames_max, n_mels=128)
+    spectrograms_padded = pad_sequence(spectrograms_transposed,
+                                       batch_first=True,
+                                       padding_value=0.0)
 
-    mels_padded = mels_padded.permute(0, 2, 1)  # → (B, 128, T_max)
-    mels_padded = mels_padded.unsqueeze(1) # -> (B,1,128,T_max
+    # → (batch_size, n_mels=128, time_frames_max)
+    spectrograms_padded = spectrograms_padded.permute(0, 2, 1)
 
-    labels_padded = pad_sequence(labels, batch_first=True, padding_value=2)  # (B, T_max)
-    return mels_padded, labels_padded
+    # -> (batch_size,1,n_mels=128, time_frames_max)
+    spectrograms_batch = spectrograms_padded.unsqueeze(1)
+
+    labels_batch = pad_sequence(labels, batch_first=True, padding_value=2)  # (B, T_max)
+    return spectrograms_batch, labels_batch
 
 if __name__ == '__main__':
     deprecated_data_dir = "../../deprecated/data-sequences"
     deprecated_label_dir = "../../deprecated/data-sequences"
     data_dir = "../../data/raw"
     label_dir = "../../data/label"
-    #dataset = iter(BreathDataset(data_dir,label_dir))
     dataset = iter(BreathDataset(data_dir,label_dir))
+
     for item, label in dataset:
          #print(item,item.shape,label, label.shape)
         pass
