@@ -1,7 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from breathing_model.model.transformer_model_ref.utils import Config
 
+from breathing_model.model.transformer_model_ref.inference.counter import BreathType
+from breathing_model.model.transformer_model_ref.utils import Config
 
 
 class RealTimePlot:
@@ -12,7 +13,7 @@ class RealTimePlot:
         self.buffer = np.zeros(self.history_samples)
         self.predictions = np.full(self.history_samples // self.chunk_size, 2, dtype=int)
 
-        self.fig, self.ax = plt.subplots(1,1,figsize=(12,6))
+        self.fig, self.ax = plt.subplots(1, 1, figsize=(12, 6))
         self.fig.canvas.manager.set_window_title("Breath phase detector")
         self.fig.suptitle("Live Breath Detection (Space: quit, R: reset)")
 
@@ -20,7 +21,6 @@ class RealTimePlot:
         self.ax.set_ylim(-500, 500)
         self.ax.set_xlim(0, self.history_samples)
         self.ax.axis('off')
-
 
     def _set_key_events(self):
         def on_key(event):
@@ -36,7 +36,6 @@ class RealTimePlot:
         self.predictions.fill(2)
 
     def update(self, audio_chunk: np.ndarray, prediction: int):
-        # Przesuń bufor
         self.buffer = np.roll(self.buffer, -len(audio_chunk))
         self.buffer[-len(audio_chunk):] = audio_chunk
 
@@ -49,17 +48,18 @@ class RealTimePlot:
         self.ax.set_xlim(0, self.history_samples)
         self.ax.axis('off')
 
-        colors = {0: 'green', 1: 'red', 2: 'blue'}
         for i, pred in enumerate(self.predictions):
             start = i * self.chunk_size
             end = start + self.chunk_size
             if end <= len(self.buffer):
                 x = np.arange(start, end)
                 y = self.buffer[start:end] / 4
-                self.ax.plot(x, y, color=colors[pred], linewidth=1.2)
+                self.ax.plot(x, y, color=BreathType(pred).get_color(), linewidth=1.2)
 
         plt.draw()
         plt.pause(0.001)
 
     def close(self):
         plt.close(self.fig)
+        plt.close('all')
+        plt.ioff()

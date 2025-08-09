@@ -2,11 +2,13 @@ from breathing_model.model.transformer_model_ref.utils import Config
 from audio import AudioStream
 from transform import MelSpectrogramTransform
 from model_loader import BreathPhaseClassifier
-from counter import BreathCounter
-from visualtization import RealTimePlot
+from counter import BreathCounter, BreathType
+from visualization import RealTimePlot
 import time
+import logging
 
 def main():
+    logging.basicConfig(level=logging.INFO)
     config = Config.from_yaml('../config.yaml')
 
     audio = AudioStream(config.audio)
@@ -14,9 +16,6 @@ def main():
     classifier = BreathPhaseClassifier('../../../trained_models/3/best_model_epoch13.pth', config.model)
     counter = BreathCounter()
     plot = RealTimePlot(config)
-
-
-    label_map = {0: "Exhale", 1:"Inhale", 2:"Silence"}
 
     try:
         while True:
@@ -32,7 +31,7 @@ def main():
             counter.update(pred_class)
             plot.update(raw_audio, pred_class)
 
-            print(f"Pred: {label_map[pred_class]} | Prob: {probs.round(3)} | "
+            print(f"Pred: {BreathType(pred_class).get_label()} | Prob: {probs.round(3)} | "
                   f"Counters: Inhale={counter.inhale}, Exhale={counter.exhale} | "
                   f"Time: {time.time() - start_time:.3f}s")
 
@@ -46,6 +45,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
