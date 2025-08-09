@@ -172,7 +172,7 @@ class BreathingRecorder:
         # Save WAV
         wf = wave.open(wav_path, 'wb')
         wf.setnchannels(CHANNELS)
-        wf.setsampwidth(self.audio.p.get_sample_size(FORMAT))
+        wf.setsampwidth(self.audio.audio_client.get_sample_size(FORMAT))
         wf.setframerate(RATE)
         wf.writeframes(b''.join(self.frames))
         wf.close()
