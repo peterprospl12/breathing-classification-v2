@@ -16,7 +16,7 @@ class SharedAudioResource:
             data = self.stream.read(self.buffer_size, exception_on_overflow=True)
             return np.frombuffer(data, dtype=np.int16)
         except IOError as e:
-            print(f"Błąd odczytu audio: {e}")
+            print(f"Error reading audio: {e}")
             return None
 
     def close(self):

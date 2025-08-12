@@ -12,11 +12,11 @@ REFRESH_TIME = 0.2
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 44100
-DEVICE_INDEX = 0
+DEVICE_INDEX = 1
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
 
 # Volume threshold for silence detection
-VOLUME_THRESHOLD = 500
+VOLUME_THRESHOLD = 300
 
 SOUND_COUNTER = 0
 SILENCE_COUNTER = 0
@@ -35,9 +35,9 @@ class VolumeBasedClassifier:
 
     def classify(self, audio_data):
         # Use pre-computed squares to avoid repeated calculations
-        rms_volume = np.sqrt(np.mean(np.square(audio_data.astype(np.float32))))
+        vol = np.sqrt(np.mean(np.square(audio_data.astype(np.float32))))
 
-        return (1 if rms_volume > self.threshold else 0), rms_volume
+        return (1 if vol > self.threshold else 0), vol
 
 #############################################
 # Plot configuration with segment coloring
@@ -68,7 +68,7 @@ class OptimizedPlotter:
 
         # Set initial properties
         self.ax.set_facecolor((0, 0, 0))
-        self.ax.set_ylim(-1500, 1500)
+        self.ax.set_ylim(-500, 500)
         self.ax.set_xlim(0, self.max_samples)
         self.ax.set_xlabel('Samples')
         self.ax.set_ylabel('Amplitude')
@@ -89,13 +89,15 @@ class OptimizedPlotter:
             SILENCE_COUNTER = 0
             print("Counters reset")
         elif event.key == 'up':
-            VOLUME_THRESHOLD += 50
+            VOLUME_THRESHOLD += 10
             classifier.set_threshold(VOLUME_THRESHOLD)
             self.update_threshold_lines()
         elif event.key == 'down':
-            VOLUME_THRESHOLD = max(50, VOLUME_THRESHOLD - 50)
+            VOLUME_THRESHOLD = max(10, VOLUME_THRESHOLD - 10)
             classifier.set_threshold(VOLUME_THRESHOLD)
             self.update_threshold_lines()
+        elif event.key == 'k':
+            self.calibrate_threshold()
 
     def update_threshold_lines(self):
         self.threshold_line_pos.set_ydata([VOLUME_THRESHOLD, VOLUME_THRESHOLD])
@@ -141,7 +143,7 @@ class OptimizedPlotter:
 
         # Set properties again after clear
         self.ax.set_facecolor((0, 0, 0))
-        self.ax.set_ylim(-1500, 1500)
+        self.ax.set_ylim(-500, 500)
         self.ax.set_xlim(0, self.max_samples)
         self.ax.set_xlabel('Samples')
         self.ax.set_ylabel('Amplitude')
@@ -156,6 +158,36 @@ class OptimizedPlotter:
         # Draw efficiently
         plt.draw()
         plt.pause(0.01)
+
+    def calibrate_threshold(self):
+        global VOLUME_THRESHOLD, classifier
+
+        print(f"Starting calibration. Initial threshold: {VOLUME_THRESHOLD}")
+
+        silence_duration = 0
+        target_silence = 2.0  # 2 seconds of silence
+
+        while silence_duration < target_silence:
+            start_time = time.time()
+
+            # Get audio sample
+            buffer = audio.read()
+            if buffer is None:
+                continue
+
+            # Check if it's silence
+            prediction, volume = classifier.classify(buffer)
+
+            if prediction == 0:  # Silence
+                silence_duration += REFRESH_TIME
+            else:  # Sound - increase threshold and reset counter
+                silence_duration = 0
+                VOLUME_THRESHOLD += 10
+                classifier.set_threshold(VOLUME_THRESHOLD)
+                print(f"Sound detected. Increasing threshold to: {VOLUME_THRESHOLD}")
+
+        print(f"Calibration completed! New threshold: {VOLUME_THRESHOLD}")
+
 
 if __name__ == '__main__':
     # Initialize components
@@ -181,12 +213,6 @@ if __name__ == '__main__':
 
             # Update plot
             plotter.update(buffer, prediction, volume)
-
-            # Control timing to maintain consistent refresh rate
-            elapsed = time.time() - start_time
-            sleep_time = max(0, REFRESH_TIME - elapsed)
-            if sleep_time > 0:
-                time.sleep(sleep_time)
 
     except KeyboardInterrupt:
         print("\nStopped by user.")
