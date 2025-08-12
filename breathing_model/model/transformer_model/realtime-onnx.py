@@ -152,7 +152,8 @@ def update_plot(frames, current_prediction):
 
 
 if __name__ == '__main__':
-    audio = SharedAudioResource()
+    audio = SharedAudioResource(chunk_size=CHUNK_SIZE, format=FORMAT, channels=CHANNELS,
+                                rate=RATE, device_index=DEVICE_INDEX)
     classifier = RealTimeAudioClassifier(MODEL_PATH)
 
     while running:
