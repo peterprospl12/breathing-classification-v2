@@ -2,7 +2,6 @@ import numpy as np
 import pyaudio
 import matplotlib.pyplot as plt
 import time
-from collections import deque
 from model.lib import SharedAudioResource
 
 #############################################
@@ -18,8 +17,6 @@ CHUNK_SIZE = int(RATE * REFRESH_TIME)
 # Volume threshold for silence detection
 VOLUME_THRESHOLD = 300
 
-SOUND_COUNTER = 0
-SILENCE_COUNTER = 0
 running = True
 
 #############################################
@@ -34,159 +31,103 @@ class VolumeBasedClassifier:
         print(f"Volume threshold updated to: {self.threshold}")
 
     def classify(self, audio_data):
-        # Use pre-computed squares to avoid repeated calculations
         vol = np.sqrt(np.mean(np.square(audio_data.astype(np.float32))))
 
         return (1 if vol > self.threshold else 0), vol
 
 #############################################
-# Plot configuration with segment coloring
+# Threshold calibration function
 #############################################
-class OptimizedPlotter:
-    def __init__(self):
-        self.PLOT_TIME_HISTORY = 3  # seconds to show
-        self.max_samples = RATE * self.PLOT_TIME_HISTORY
-        self.max_predictions = int(self.PLOT_TIME_HISTORY / REFRESH_TIME)
+def calibrate_threshold():
+    global VOLUME_THRESHOLD, classifier
 
-        # Use deques for efficient rolling
-        self.plot_data = deque([0] * self.max_samples, maxlen=self.max_samples)
-        self.predictions = deque([0] * self.max_predictions, maxlen=self.max_predictions)
+    print("Calibration. Keep silence for 3 seconds...")
+    silence_volumes = []
+    start_time = time.time()
 
-        # Setup plot
-        plt.ion()  # Interactive mode
-        self.fig, self.ax = plt.subplots(1, 1, figsize=(12, 6))
+    while time.time() - start_time < 3:
+        buffer = audio.read()
+        if buffer is None:
+            continue
+        _, vol = classifier.classify(buffer)
+        silence_volumes.append(vol)
 
-        # Store line objects for each segment
-        self.line_objects = []
+    mean_silence = np.mean(silence_volumes)
+    std_silence = np.std(silence_volumes)
 
-        # Create x-axis data
-        self.x_data = np.arange(self.max_samples)
+    VOLUME_THRESHOLD = int(mean_silence + 1.5 * std_silence)
+    classifier.set_threshold(VOLUME_THRESHOLD)
 
-        # Create threshold lines
-        self.threshold_line_pos = self.ax.axhline(y=VOLUME_THRESHOLD, color='yellow', linestyle='--', alpha=0.7)
-        self.threshold_line_neg = self.ax.axhline(y=-VOLUME_THRESHOLD, color='yellow', linestyle='--', alpha=0.7)
+    print(f"New treshold: VOLUME_THRESHOLD")
 
-        # Set initial properties
-        self.ax.set_facecolor((0, 0, 0))
-        self.ax.set_ylim(-500, 500)
-        self.ax.set_xlim(0, self.max_samples)
-        self.ax.set_xlabel('Samples')
-        self.ax.set_ylabel('Amplitude')
 
-        # Connect keyboard events
-        self.fig.canvas.mpl_connect('key_press_event', self.on_key)
+#############################################
+# Plot configuration
+#############################################
 
-        # Title text object for efficient updates
-        self.title_text = self.fig.suptitle('', fontsize=10)
+PLOT_TIME_HISTORY = 5  # seconds
+PLOT_CHUNK_SIZE = CHUNK_SIZE
+plot_data = np.zeros((RATE * PLOT_TIME_HISTORY, 1))
+x_line_space = np.arange(0, RATE * PLOT_TIME_HISTORY, 1)
+predictions = np.zeros((int(PLOT_TIME_HISTORY / REFRESH_TIME), 1))
 
-    def on_key(self, event):
-        global running, SOUND_COUNTER, SILENCE_COUNTER, VOLUME_THRESHOLD, classifier
+fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+ax.plot(plot_data, color='white')
 
-        if event.key == ' ':
+
+def on_key(event):
+    global running, VOLUME_THRESHOLD
+    match event.key:
+        case ' ':
+            plt.close()
             running = False
-        elif event.key == 'r':
-            SOUND_COUNTER = 0
-            SILENCE_COUNTER = 0
-            print("Counters reset")
-        elif event.key == 'up':
+        case 'c':
+            calibrate_threshold()
+        case 'up':
             VOLUME_THRESHOLD += 10
             classifier.set_threshold(VOLUME_THRESHOLD)
-            self.update_threshold_lines()
-        elif event.key == 'down':
+        case 'down':
             VOLUME_THRESHOLD = max(10, VOLUME_THRESHOLD - 10)
             classifier.set_threshold(VOLUME_THRESHOLD)
-            self.update_threshold_lines()
-        elif event.key == 'k':
-            self.calibrate_threshold()
 
-    def update_threshold_lines(self):
-        self.threshold_line_pos.set_ydata([VOLUME_THRESHOLD, VOLUME_THRESHOLD])
-        self.threshold_line_neg.set_ydata([-VOLUME_THRESHOLD, -VOLUME_THRESHOLD])
 
-    def update(self, frames, prediction, volume):
-        global SOUND_COUNTER, SILENCE_COUNTER
+fig.canvas.manager.set_window_title('Realtime Breath Detector ([SPACE] to stop, [C] to calibrate, [UP]/[DOWN] to adjust threshold)')
+fig.suptitle(f'Volume Threshold: {VOLUME_THRESHOLD} (Blue - Silence, Red - Breath Detected)')
+fig.canvas.mpl_connect('key_press_event', on_key)
+y_lim = (-500, 500)
+face_color = (0, 0, 0)
+ax.set_facecolor(face_color)
+ax.set_ylim(y_lim)
 
-        # Update data efficiently
-        self.plot_data.extend(frames)
-        self.predictions.append(prediction)
 
-        # Update counters
-        if prediction == 1:
-            SOUND_COUNTER += 1
-        else:
-            SILENCE_COUNTER += 1
+def update_plot(frames, current_prediction):
+    global plot_data, predictions, ax
+    # Update plot buffer
+    plot_data = np.roll(plot_data, -len(frames))
+    plot_data[-len(frames):] = frames.reshape(-1, 1)
+    predictions = np.roll(predictions, -1)
+    predictions[-1] = current_prediction
 
-        # Clear previous plot
-        self.ax.clear()
+    ax.clear()
+    # For each segment (REFRESH_TIME window) plot the signal with color based on prediction
+    for i in range(len(predictions)):
+        if predictions[i] == 0:
+            color = 'blue'  # silence
+        elif predictions[i] == 1:
+            color = 'red'  # breath detected
+        start = i * PLOT_CHUNK_SIZE
+        end = (i + 1) * PLOT_CHUNK_SIZE
+        ax.plot(x_line_space[start:end], plot_data[start:end], color=color)
 
-        # Recreate threshold lines after clear
-        self.threshold_line_pos = self.ax.axhline(y=VOLUME_THRESHOLD, color='yellow', linestyle='--', alpha=0.7, label=f'Threshold: {VOLUME_THRESHOLD}')
-        self.threshold_line_neg = self.ax.axhline(y=-VOLUME_THRESHOLD, color='yellow', linestyle='--', alpha=0.7)
+    threshold_line = VOLUME_THRESHOLD
+    ax.axhline(y=threshold_line, color='yellow', linestyle='--', linewidth=1.5, label='Threshold')
+    ax.axhline(y=-threshold_line, color='yellow', linestyle='--', linewidth=1.5, label='Threshold')
 
-        # Convert data for plotting
-        plot_array = np.array(self.plot_data)
-        predictions_array = np.array(self.predictions)
-
-        # Plot segments with appropriate colors
-        samples_per_prediction = CHUNK_SIZE
-        for i, pred in enumerate(predictions_array):
-            start_idx = i * samples_per_prediction
-            end_idx = min((i + 1) * samples_per_prediction, len(plot_array))
-
-            if start_idx < len(plot_array):
-                color = 'red' if pred == 1 else 'blue'
-                x_segment = self.x_data[start_idx:end_idx]
-                y_segment = plot_array[start_idx:end_idx]
-
-                if len(x_segment) > 0 and len(y_segment) > 0:
-                    self.ax.plot(x_segment, y_segment, color=color, alpha=0.8, linewidth=1)
-
-        # Set properties again after clear
-        self.ax.set_facecolor((0, 0, 0))
-        self.ax.set_ylim(-500, 500)
-        self.ax.set_xlim(0, self.max_samples)
-        self.ax.set_xlabel('Samples')
-        self.ax.set_ylabel('Amplitude')
-        self.ax.legend()
-
-        # Update title
-        title_text = (f'Sound: {SOUND_COUNTER} | Silence: {SILENCE_COUNTER} | '
-                     f'Volume: {volume:.1f} | Threshold: {VOLUME_THRESHOLD}\n'
-                     f'[SPACE] quit | [R] reset | [↑↓] adjust threshold | Red=Sound Blue=Silence')
-        self.fig.suptitle(title_text, fontsize=10)
-
-        # Draw efficiently
-        plt.draw()
-        plt.pause(0.01)
-
-    def calibrate_threshold(self):
-        global VOLUME_THRESHOLD, classifier
-
-        print(f"Starting calibration. Initial threshold: {VOLUME_THRESHOLD}")
-
-        silence_duration = 0
-        target_silence = 2.0  # 2 seconds of silence
-
-        while silence_duration < target_silence:
-            start_time = time.time()
-
-            # Get audio sample
-            buffer = audio.read()
-            if buffer is None:
-                continue
-
-            # Check if it's silence
-            prediction, volume = classifier.classify(buffer)
-
-            if prediction == 0:  # Silence
-                silence_duration += REFRESH_TIME
-            else:  # Sound - increase threshold and reset counter
-                silence_duration = 0
-                VOLUME_THRESHOLD += 10
-                classifier.set_threshold(VOLUME_THRESHOLD)
-                print(f"Sound detected. Increasing threshold to: {VOLUME_THRESHOLD}")
-
-        print(f"Calibration completed! New threshold: {VOLUME_THRESHOLD}")
+    ax.set_facecolor(face_color)
+    ax.set_ylim(y_lim)
+    fig.suptitle(f'Volume Threshold: {VOLUME_THRESHOLD} (Blue - Silence, Red - Breath Detected)')
+    plt.draw()
+    plt.pause(0.01)
 
 
 if __name__ == '__main__':
@@ -194,10 +135,8 @@ if __name__ == '__main__':
     audio = SharedAudioResource(chunk_size=CHUNK_SIZE, format=FORMAT, channels=CHANNELS,
                                 rate=RATE, device_index=DEVICE_INDEX)
     classifier = VolumeBasedClassifier(VOLUME_THRESHOLD)
-    plotter = OptimizedPlotter()
 
     try:
-        # Main processing loop - single thread
         while running:
             start_time = time.time()
 
@@ -212,7 +151,7 @@ if __name__ == '__main__':
             prediction, volume = classifier.classify(buffer)
 
             # Update plot
-            plotter.update(buffer, prediction, volume)
+            update_plot(buffer, prediction)
 
     except KeyboardInterrupt:
         print("\nStopped by user.")
@@ -221,4 +160,3 @@ if __name__ == '__main__':
         audio.close()
         plt.close('all')
         print("Audio stream closed.")
-        print(f"Final stats - Sound: {SOUND_COUNTER}, Silence: {SILENCE_COUNTER}")
