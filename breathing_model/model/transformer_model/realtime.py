@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import time
 import torch
 import torchaudio
-
-from breathing_model.model.transformer_model.transformer_model import BreathPhaseTransformerSeq
+from model.transformer_model_ref.inference.audio import SharedAudioResource
+from model.transformer_model.transformer_model import BreathPhaseTransformerSeq
 
 #############################################
 # Settings and constants
@@ -25,32 +25,6 @@ EXHALE_COUNTER = 0
 running = True
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-#############################################
-# Audio handling class
-#############################################
-class SharedAudioResource:
-    def __init__(self):
-        self.p = pyaudio.PyAudio()
-        self.buffer_size = CHUNK_SIZE
-        # Print available devices
-        for i in range(self.p.get_device_count()):
-            print(self.p.get_device_info_by_index(i))
-        self.stream = self.p.open(format=FORMAT, channels=CHANNELS, rate=RATE,
-                                  input=True, frames_per_buffer=self.buffer_size,
-                                  input_device_index=DEVICE_INDEX)
-    def read(self):
-        try:
-            data = self.stream.read(self.buffer_size, exception_on_overflow=True)
-            return np.frombuffer(data, dtype=np.int16)
-        except IOError as e:
-            print(f"Błąd odczytu audio: {e}")
-            return None 
-
-    def close(self):
-        self.stream.stop_stream()
-        self.stream.close()
-        self.p.terminate()
 
 
 class MelTransformer:
@@ -87,12 +61,12 @@ class RealTimeAudioClassifier:
             num_classes=3,
             d_model=192,
             nhead=8,
-            num_transformer_layers=6 
+            num_transformer_layers=6
         ).to(device)
         self.model.load_state_dict(torch.load(model_path, map_location=device))
         self.model.eval()
 
-        self.mel_transformer = MelTransformer() 
+        self.mel_transformer = MelTransformer()
 
     def predict(self, y):
         """Wykonuje lokalną predykcję."""
@@ -107,11 +81,11 @@ class RealTimeAudioClassifier:
             preds = np.argmax(probs_np, axis=1)
 
             if len(preds) == 0:
-                predicted_class = 2 
+                predicted_class = 2
                 class_probabilities = np.array([0.0, 0.0, 1.0])
             else:
                 predicted_class = int(np.bincount(preds).argmax())
-                class_probabilities = np.mean(probs_np, axis=0) 
+                class_probabilities = np.mean(probs_np, axis=0)
 
 
             return predicted_class, class_probabilities
@@ -185,7 +159,8 @@ def update_plot(frames, current_prediction):
 
 
 if __name__ == '__main__':
-    audio = SharedAudioResource()
+    audio = SharedAudioResource(chunk_size=CHUNK_SIZE, format=FORMAT, channels=CHANNELS,
+                                rate=RATE, device_index=DEVICE_INDEX)
     classifier = RealTimeAudioClassifier(MODEL_PATH)
 
     try:

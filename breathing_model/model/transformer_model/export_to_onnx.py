@@ -1,9 +1,8 @@
 import torch
 import torch.onnx
 import torchaudio
-import json
 from realtime import BreathPhaseTransformerSeq
-from breathing_model.model.invalid_data_filter_model.anomaly_detection_autoencoder import SimplerBreathingAutoencoder, \
+from model.invalid_data_filter_model.anomaly_detection_autoencoder import SimplerBreathingAutoencoder, \
     EnhancedReconstructionLoss
 
 

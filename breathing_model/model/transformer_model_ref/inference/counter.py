@@ -1,4 +1,4 @@
-from breathing_model.model.transformer_model_ref.utils import BreathType
+from model.transformer_model_ref.utils import BreathType
 
 
 class BreathCounter:

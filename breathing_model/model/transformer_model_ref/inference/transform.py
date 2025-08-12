@@ -1,7 +1,7 @@
 import torch
 import torchaudio
 import numpy as np
-from breathing_model.model.transformer_model_ref.utils import DataConfig
+from model.transformer_model_ref.utils import DataConfig
 
 
 class MelSpectrogramTransform:

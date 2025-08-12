@@ -1,4 +1,4 @@
-from breathing_model.model.transformer_model_ref.utils import Config
+from model.transformer_model_ref.utils import Config
 from audio import AudioStream
 from transform import MelSpectrogramTransform
 from model_loader import BreathPhaseClassifier
