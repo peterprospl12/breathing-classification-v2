@@ -2,7 +2,7 @@ import numpy as np
 import pyaudio
 import matplotlib.pyplot as plt
 import time
-from model.lib import SharedAudioResource
+from model.transformer_model_ref.inference.audio import SharedAudioResource
 
 #############################################
 # Settings and constants

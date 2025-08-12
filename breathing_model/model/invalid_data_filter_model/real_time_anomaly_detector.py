@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from enum import Enum
 
-from model.lib import SharedAudioResource
+from model.transformer_model_ref.inference.audio import SharedAudioResource
 
 
 # Updated autoencoder based on SimplerBreathingAutoencoder

@@ -347,7 +347,7 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Użyj tego samego datasetu co w modelu transformer
-    from breathing_model.model.transformer_model.transformer_model import BreathSeqDataset
+    from model.transformer_model.transformer_model import BreathSeqDataset
 
     # Ścieżka do folderu z danymi
     data_dir = "../../deprecated/data-sequences"

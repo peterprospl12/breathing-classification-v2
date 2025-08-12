@@ -1,7 +1,7 @@
 import torch
 import numpy as np
-from breathing_model.model.transformer_model_ref.model import BreathPhaseTransformerSeq
-from breathing_model.model.transformer_model_ref.utils import ModelConfig
+from model.transformer_model_ref.model import BreathPhaseTransformerSeq
+from model.transformer_model_ref.utils import ModelConfig
 
 
 class BreathPhaseClassifier:

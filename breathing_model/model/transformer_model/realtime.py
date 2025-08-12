@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import time
 import torch
 import torchaudio
-from model.lib import SharedAudioResource
+from model.transformer_model_ref.inference.audio import SharedAudioResource
 from model.transformer_model.transformer_model import BreathPhaseTransformerSeq
 
 #############################################
