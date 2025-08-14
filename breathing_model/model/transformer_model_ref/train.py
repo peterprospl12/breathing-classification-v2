@@ -1,12 +1,20 @@
 import torch
 import os
 
+from torch import nn, optim
+from torch.utils.data import DataLoader
+from breathing_model.model.transformer_model_ref.utils import BreathType
 
-def run_train_epoch(model, train_loader, criterion, optimizer, device):
+
+PAD_LABEL = BreathType.SILENCE
+IGNORE_INDEX = -100    # value to give to CrossEntropyLoss for ignored positions
+
+def run_train_epoch(model: nn.Module, data_loader: DataLoader, loss_function: nn.Module, optimizer: optim.Optimizer, device: torch.device):
     model.train()
-    running_loss = 0.0
-    total_frames = 0
-    correct_frames = 0
+
+    total_loss_weighted = 0.0
+    total_valid_frames = 0
+    total_correct_predictions = 0
 
     for inputs, labels in train_loader:
         inputs = inputs.to(device)
@@ -93,7 +101,7 @@ def train_model(model,
 
 
 if __name__ == '__main__':
-    from utils import load_yaml, split_dataset
+    from utils import load_yaml, split_dataset, BreathType
     from dataset import BreathDataset, collate_fn
     from torch.utils.data import DataLoader
     import torch.nn as nn

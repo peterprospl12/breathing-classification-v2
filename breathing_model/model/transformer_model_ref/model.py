@@ -1,13 +1,17 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import math
 
+from torch import Tensor
+
 
 class PositionalEncoding(nn.Module):
     """
-    Adding sinusoidal positional encoding to the input sequence.
+    Sinusoidal positional encoding added to the token embeddings.
+    Input: embeddings tensor of shape [batch_size, sequence_length, d_model]
     """
-
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 1000):
         super().__init__()
         pe = torch.zeros(max_len, d_model) # positional encoding
@@ -28,17 +32,18 @@ class PositionalEncoding(nn.Module):
 
 class BreathPhaseTransformerSeq(nn.Module):
     """
-    Transformer model for breath phase classification at spectrogram frame level.
-    Input: [batch_size, channels=1, n_mels, time_frames]
-    Output: [batch_size, time_frames, num_classes] (logits for each frame)
-    """
+    Transformer model that classifies each spectrogram frame into two classes:
+    0 = exhale, 1 = inhale.
 
+    Forward accepts src_key_padding_mask with shape [batch_size, time_frames] (bool),
+    where True indicates a padded frame that should be ignored by attention.
+    """
     def __init__(self,
                  n_mels: int = 128,
                  d_model: int = 192,
                  nhead: int = 8,
                  num_layers: int = 6,
-                 num_classes: int = 3):
+                 num_classes: int = 2):
         super().__init__()
 
         self.conv_layers = self._build_cnn_layers()
@@ -54,10 +59,8 @@ class BreathPhaseTransformerSeq(nn.Module):
                                                    dropout=0.1,
                                                    batch_first=True)
 
-        self.transformer_layer = nn.Sequential(
-            PositionalEncoding(d_model=d_model, dropout=0.1),
-            nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        )
+        self.pos_encoder = PositionalEncoding(d_model=d_model, dropout=0.1)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=num_layers)
 
         # Classification head
         self.dropout = nn.Dropout(0.3)
@@ -90,22 +93,41 @@ class BreathPhaseTransformerSeq(nn.Module):
 
         return nn.Sequential(conv1, conv2, conv3)
 
-    def forward(self, spectrogram):
-        # spectrogram: [batch_size, channels=1, n_mels, time_frames]
+    def forward(self,
+                spectrogram_batch: Tensor,
+                src_key_padding_mask: Optional[Tensor] = None) -> Tensor:
+        """
+        Args:
+            spectrogram_batch: [batch_size, channels=1, n_mels, time_frames]
+            src_key_padding_mask: Optional[Tensor] with shape [batch_size, time_frames], dtype=bool,
+                                  where True indicates a padded frame (should be ignored).
+        Returns:
+            logits: [batch_size, time_frames, num_classes]
+        """
 
-        # cnn_features: [batch_size, channels=128, n_mels//8, time_frames]
-        cnn_features = self.conv_layers(spectrogram)
+        # 1) CNN features -> shape [batch_size, channels=128, freq_bins, time_frames]
+        cnn_features = self.conv_layers(spectrogram_batch)
 
-        # time_major_features: [batch_size, time_frames, channels, freq_bins]
+        # 2) Permute to time-major: [batch_size, time_frames, channels, freq_bins]
         time_major_features = cnn_features.permute(0, 3, 1, 2)
-
         batch_size, time_frames, channels, freq_bins = time_major_features.size()
+
+        # 3) Flatten channel and freq dims -> [batch_size, time_frames, channels * freq_bins]
         flattened_features = time_major_features.contiguous().view(batch_size,
                                                                    time_frames,
                                                                    channels * freq_bins)
 
-        projected_features = self.feature_projection(flattened_features)  # [batch_size, time_frames, d_model]
-        transformer_output = self.transformer_layer(projected_features)  # [batch_size, time_frames, d_model]
+        # 4) Project to transformer d_model -> [batch_size, time_frames, d_model]
+        projected_features = self.feature_projection(flattened_features)
+
+        # 5) Add positional encoding
+        encoded_features = self.pos_encoder(projected_features)
+
+        # 6) Transformer encoder, pass src_key_padding_mask to ignore padded frames in attention
+        transformer_output = self.transformer_encoder(encoded_features,
+                                                      src_key_padding_mask=src_key_padding_mask)
+
+        # 7) Classification head -> logits per time frame
         dropout_output = self.dropout(transformer_output)
         logits = self.head(dropout_output)  # [batch_size, time_frames, num_classes]
 
