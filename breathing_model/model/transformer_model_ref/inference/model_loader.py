@@ -3,6 +3,7 @@ import numpy as np
 from breathing_model.model.transformer_model_ref.model import BreathPhaseTransformerSeq
 from breathing_model.model.transformer_model_ref.utils import ModelConfig
 
+
 class BreathPhaseClassifier:
     def __init__(self,
                  model_path: str,
@@ -24,10 +25,10 @@ class BreathPhaseClassifier:
         return model
 
     @torch.no_grad()
-    def predict(self, mel_tensor:torch.Tensor):
-        mel_tensor = mel_tensor.to(self.device) #[1,1,n_mels,T]
+    def predict(self, mel_tensor: torch.Tensor):
+        mel_tensor = mel_tensor.to(self.device)  #[1,1,n_mels,T]
 
-        logits = self.model(mel_tensor) #[1,T, 3]
+        logits = self.model(mel_tensor)  #[1,T, 3]
         probs = torch.softmax(logits, dim=-1).cpu().numpy().squeeze(0)
 
         if probs.shape[0] == 0:
