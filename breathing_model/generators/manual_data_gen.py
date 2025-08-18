@@ -293,7 +293,7 @@ if __name__ == "__main__":
     audio = SharedAudioResource()
     MODE = NoseMouth.Nose
     MICROPHONEQUALITY = MicrophoneQuality.Medium
-    PERSONNAME = "Iwo"
+    PERSONNAME = "Piotr"
     MEANSOFUSAGE = DataMeansOfUsage.Training
     recorder = BreathingRecorder(audio, MODE, MICROPHONEQUALITY, PERSONNAME, MEANSOFUSAGE)
 

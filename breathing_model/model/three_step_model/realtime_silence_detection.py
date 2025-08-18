@@ -24,7 +24,11 @@ running = True
 #############################################
 class VolumeBasedClassifier:
     def __init__(self, threshold=VOLUME_THRESHOLD):
-        self.threshold = threshold
+    def __init__(self, threshold=None):
+        if threshold is None:
+            self.threshold = VOLUME_THRESHOLD
+        else:
+            self.threshold = threshold
 
     def set_threshold(self, new_threshold):
         self.threshold = new_threshold
