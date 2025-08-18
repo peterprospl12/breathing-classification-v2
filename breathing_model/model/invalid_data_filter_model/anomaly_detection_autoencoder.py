@@ -10,14 +10,14 @@ import json
 
 class SimplerBreathingAutoencoder(nn.Module):
     """
-    Uproszczona architektura autoenkodera dla lepszego wykrywania anomalii.
-    Mniejsza liczba warstw i parametrów powinna pomóc w lepszym uogólnianiu.
+    Simplified autoencoder architecture for better anomaly detection.
+    Fewer layers and parameters should help with better generalization.
     """
 
     def __init__(self, n_mels=40, latent_dim=8):
         super(SimplerBreathingAutoencoder, self).__init__()
 
-        # Uproszczony enkoder - mniej warstw, mniejsza kompresja
+        # Simplified encoder - fewer layers, less compression
         self.encoder = nn.Sequential(
             # Layer 1: (1, n_mels, time) -> (16, n_mels, time/2)
             nn.Conv2d(1, 16, kernel_size=(3, 3), stride=(1, 2), padding=(1, 1)),
@@ -32,7 +32,7 @@ class SimplerBreathingAutoencoder(nn.Module):
             nn.LeakyReLU(0.2),
         )
 
-        # Uproszczony dekoder
+        # Simplified decoder
         self.decoder = nn.Sequential(
             # Layer 1: (latent_dim, n_mels/4, time/8) -> (32, n_mels/2, time/4)
             nn.ConvTranspose2d(latent_dim, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1),
@@ -50,18 +50,18 @@ class SimplerBreathingAutoencoder(nn.Module):
         )
 
     def forward(self, x):
-        # Normalizacja wejścia z zachowaniem skali
+        # Input normalization with scale preservation
         x_scale = torch.mean(torch.abs(x)) + 1e-8
         x_normalized = x / x_scale
 
-        # Enkodowanie i dekodowanie
+        # Encoding and decoding
         latent = self.encoder(x_normalized)
         reconstructed = self.decoder(latent)
 
-        # Przywrócenie oryginalnej skali
+        # Restore original scale
         reconstructed = reconstructed * x_scale
 
-        # Dopasowanie rozmiaru wyjścia do wejścia
+        # Adjust output size to match input
         if reconstructed.size() != x.size():
             reconstructed = F.interpolate(reconstructed, size=(x.size(2), x.size(3)),
                                           mode='bilinear', align_corners=False)
@@ -75,10 +75,10 @@ class SimplerBreathingAutoencoder(nn.Module):
 
 class EnhancedReconstructionLoss(nn.Module):
     """
-    Ulepszona funkcja straty łącząca kilka metryk:
-    - MSE dla ogólnej rekonstrukcji
-    - Logarytmiczna MSE dla lepszego wychwycenia wzorców o niskiej energii
-    - Korelacja Pearsona dla zachowania wzorca spektrogramu
+    Enhanced loss function combining multiple metrics:
+    - MSE for general reconstruction
+    - Logarithmic MSE for better detection of low-energy patterns
+    - Pearson correlation for preserving spectrogram patterns
     """
 
     def __init__(self, mse_weight=0.3, log_mse_weight=0.4, corr_weight=0.3):
@@ -89,31 +89,31 @@ class EnhancedReconstructionLoss(nn.Module):
         self.mse = nn.MSELoss(reduction='mean')
 
     def forward(self, x, y):
-        # Standardowe MSE
+        # Standard MSE
         mse_loss = self.mse(x, y)
 
-        # Logarytmiczna MSE - lepsza dla wzorców o niskiej energii
-        # Dodajemy małą wartość dla stabilności logarytmu
+        # Logarithmic MSE - better for low-energy patterns
+        # Add small value for logarithm stability
         eps = 1e-8
         log_x = torch.log(torch.abs(x) + eps)
         log_y = torch.log(torch.abs(y) + eps)
         log_mse_loss = self.mse(log_x, log_y)
 
-        # Korelacja Pearsona dla zachowania wzorca
+        # Pearson correlation for pattern preservation
         x_flat = x.reshape(x.size(0), -1)
         y_flat = y.reshape(y.size(0), -1)
 
-        # Centrowanie danych
+        # Center the data
         x_centered = x_flat - x_flat.mean(dim=1, keepdim=True)
         y_centered = y_flat - y_flat.mean(dim=1, keepdim=True)
 
-        # Obliczenie korelacji
+        # Calculate correlation
         x_std = torch.sqrt(torch.sum(x_centered ** 2, dim=1) + eps)
         y_std = torch.sqrt(torch.sum(y_centered ** 2, dim=1) + eps)
         corr = torch.sum(x_centered * y_centered, dim=1) / (x_std * y_std)
-        corr_loss = 1.0 - corr.mean()  # Chcemy maksymalizować korelację
+        corr_loss = 1.0 - corr.mean()  # We want to maximize correlation
 
-        # Łączna strata
+        # Total loss
         total_loss = (self.mse_weight * mse_loss +
                       self.log_mse_weight * log_mse_loss +
                       self.corr_weight * corr_loss)
@@ -123,8 +123,8 @@ class EnhancedReconstructionLoss(nn.Module):
 
 class AnomalyDetector:
     """
-    Klasa do wykrywania anomalii na podstawie autoenkodera.
-    Uwzględnia kilka metryk rekonstrukcji dla lepszej detekcji.
+    Class for anomaly detection based on autoencoder.
+    Considers multiple reconstruction metrics for better detection.
     """
 
     def __init__(self, autoencoder, device, contamination=0.05):
@@ -135,7 +135,7 @@ class AnomalyDetector:
         self.criterion = EnhancedReconstructionLoss()
 
     def fit(self, dataloader):
-        """Wyucz progi anomalii na podstawie danych treningowych"""
+        """Learn anomaly thresholds based on training data"""
         self.autoencoder.eval()
         reconstruction_errors = []
         latent_features = []
@@ -145,7 +145,7 @@ class AnomalyDetector:
                 inputs = inputs.to(self.device)
                 outputs, latent = self.autoencoder(inputs)
 
-                # Oblicz błąd rekonstrukcji dla każdej próbki
+                # Calculate reconstruction error for each sample
                 batch_errors = []
                 for i in range(inputs.size(0)):
                     error = self.criterion(outputs[i:i + 1], inputs[i:i + 1]).item()
@@ -153,13 +153,13 @@ class AnomalyDetector:
 
                 reconstruction_errors.extend(batch_errors)
 
-                # Zapisz cechy z warstwy ukrytej do dalszej analizy
+                # Save latent features for further analysis
                 latent_features.append(latent.cpu().numpy())
 
-        # Oblicz próg anomalii na podstawie percentyla
+        # Calculate anomaly threshold based on percentile
         self.threshold = np.percentile(reconstruction_errors, 100 * (1 - self.contamination))
 
-        # Zapisz rozkład błędów do wizualizacji
+        # Save error distribution for visualization
         plt.figure(figsize=(10, 5))
         plt.hist(reconstruction_errors, bins=50)
         plt.axvline(self.threshold, color='r', linestyle='dashed',
@@ -174,11 +174,11 @@ class AnomalyDetector:
         return self.threshold
 
     def detect(self, mel_spec):
-        """Wykryj czy próbka jest anomalią"""
+        """Detect if sample is an anomaly"""
         self.autoencoder.eval()
 
         if mel_spec.dim() == 3:
-            mel_spec = mel_spec.unsqueeze(0)  # Dodaj wymiar batcha
+            mel_spec = mel_spec.unsqueeze(0)  # Add batch dimension
         mel_spec = mel_spec.to(self.device)
 
         with torch.no_grad():
@@ -193,7 +193,7 @@ class AnomalyDetector:
 def train_autoencoder(autoencoder, train_loader, val_loader, device, num_epochs=30,
                       learning_rate=1e-3, scheduler_factor=0.5, scheduler_patience=3):
     """
-    Ulepszona funkcja treningowa z regularyzacją i planowaniem współczynnika uczenia.
+    Enhanced training function with regularization and learning rate scheduling.
     """
     autoencoder.to(device)
     optimizer = optim.AdamW(autoencoder.parameters(), lr=learning_rate, weight_decay=1e-5)
@@ -208,7 +208,7 @@ def train_autoencoder(autoencoder, train_loader, val_loader, device, num_epochs=
     best_val_loss = float('inf')
 
     for epoch in range(num_epochs):
-        # Faza treningowa
+        # Training phase
         autoencoder.train()
         train_loss = 0
 
@@ -219,11 +219,11 @@ def train_autoencoder(autoencoder, train_loader, val_loader, device, num_epochs=
             outputs, _ = autoencoder(inputs)
             loss = criterion(outputs, inputs)
 
-            # Backward i optymalizacja
+            # Backward and optimization
             optimizer.zero_grad()
             loss.backward()
 
-            # Przycinanie gradientów dla stabilności
+            # Gradient clipping for stability
             torch.nn.utils.clip_grad_norm_(autoencoder.parameters(), max_norm=1.0)
 
             optimizer.step()
@@ -233,7 +233,7 @@ def train_autoencoder(autoencoder, train_loader, val_loader, device, num_epochs=
         train_loss = train_loss / len(train_loader.dataset)
         train_losses.append(train_loss)
 
-        # Faza walidacyjna
+        # Validation phase
         autoencoder.eval()
         val_loss = 0
 
@@ -247,10 +247,10 @@ def train_autoencoder(autoencoder, train_loader, val_loader, device, num_epochs=
         val_loss = val_loss / len(val_loader.dataset)
         val_losses.append(val_loss)
 
-        # Aktualizacja schedulera
+        # Update scheduler
         scheduler.step(val_loss)
 
-        # Zapisz najlepszy model
+        # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(autoencoder.state_dict(), 'best_breathing_anomaly_detector.pth')
@@ -258,11 +258,11 @@ def train_autoencoder(autoencoder, train_loader, val_loader, device, num_epochs=
 
         print(f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
 
-        # Co kilka epok, generuj przykładowe rekonstrukcje dla wizualizacji
+        # Every few epochs, generate sample reconstructions for visualization
         if (epoch + 1) % 5 == 0 and epoch > 0:
             visualize_reconstructions(autoencoder, val_loader, device, epoch + 1)
 
-    # Wizualizacja krzywych uczenia
+    # Visualize learning curves
     plt.figure(figsize=(10, 5))
     plt.plot(train_losses, label='Training Loss')
     plt.plot(val_losses, label='Validation Loss')
@@ -277,10 +277,10 @@ def train_autoencoder(autoencoder, train_loader, val_loader, device, num_epochs=
 
 
 def visualize_reconstructions(autoencoder, dataloader, device, epoch):
-    """Generuj wizualizacje rekonstrukcji dla oceny jakości autoenkodera"""
+    """Generate reconstruction visualizations for autoencoder quality assessment"""
     autoencoder.eval()
 
-    # Pobierz kilka próbek z dataloaderów
+    # Get few samples from dataloader
     dataiter = iter(dataloader)
     images, _ = next(dataiter)
 
@@ -288,18 +288,18 @@ def visualize_reconstructions(autoencoder, dataloader, device, epoch):
         images = images.to(device)
         reconstructions, _ = autoencoder(images)
 
-        # Wybierz kilka obrazów do wizualizacji
+        # Select few images for visualization
         num_images = min(4, images.size(0))
 
         plt.figure(figsize=(12, 6))
         for i in range(num_images):
-            # Oryginalne obrazy
+            # Original images
             ax = plt.subplot(2, num_images, i + 1)
             plt.imshow(images[i, 0].cpu().numpy(), aspect='auto', cmap='viridis')
             plt.title(f"Original {i + 1}")
             plt.colorbar()
 
-            # Rekonstrukcje
+            # Reconstructions
             ax = plt.subplot(2, num_images, i + 1 + num_images)
             plt.imshow(reconstructions[i, 0].cpu().numpy(), aspect='auto', cmap='viridis')
             plt.title(f"Reconstructed {i + 1}")
@@ -311,7 +311,7 @@ def visualize_reconstructions(autoencoder, dataloader, device, epoch):
 
 
 def extract_latent_features(autoencoder, dataloader, device):
-    """Wyodrębnij cechy z warstwy ukrytej dla dalszej analizy"""
+    """Extract features from latent layer for further analysis"""
     autoencoder.eval()
     features = []
     labels = []
@@ -321,10 +321,10 @@ def extract_latent_features(autoencoder, dataloader, device):
             inputs = inputs.to(device)
             latent = autoencoder.encode(inputs)
 
-            # Spłaszcz cechy latentne dla każdej próbki
+            # Flatten latent features for each sample
             batch_size = inputs.size(0)
             for i in range(batch_size):
-                # Średnia przestrzenna cech latentnych
+                # Spatial average of latent features
                 feat = latent[i].mean(dim=(1, 2)).cpu().numpy()
                 features.append(feat)
                 labels.append(label[i].item() if isinstance(label[i], torch.Tensor) else label[i])
@@ -334,7 +334,7 @@ def extract_latent_features(autoencoder, dataloader, device):
 
 def apply_spectral_normalization(model):
     """
-    Dodaj normalizację spektralną do warstw konwolucyjnych dla lepszej stabilności.
+    Add spectral normalization to convolutional layers for better stability.
     """
     for name, module in model.named_modules():
         if isinstance(module, (nn.Conv2d, nn.ConvTranspose2d)):
@@ -346,39 +346,39 @@ if __name__ == '__main__':
     print(torch.cuda.is_available())
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Użyj tego samego datasetu co w modelu transformer
+    # Use the same dataset as in transformer model
     from model.transformer_model.transformer_model import BreathSeqDataset
 
-    # Ścieżka do folderu z danymi
+    # Path to data folder
     data_dir = "../../deprecated/data-sequences"
 
-    # Utwórz dataset
+    # Create dataset
     full_dataset = BreathSeqDataset(data_dir, sample_rate=44100, n_mels=40, n_fft=1024, hop_length=512)
 
-    print(f"Znaleziono {len(full_dataset)} plików audio w {data_dir}")
+    print(f"Found {len(full_dataset)} audio files in {data_dir}")
 
-    # Podział zbioru danych na treningowy i walidacyjny
+    # Split dataset into training and validation
     num_samples = len(full_dataset)
     indices = list(range(num_samples))
-    np.random.shuffle(indices)  # Tasowanie dla losowego podziału
+    np.random.shuffle(indices)  # Shuffle for random split
     split = int(0.8 * num_samples)
     train_indices, val_indices = indices[:split], indices[split:]
 
     train_dataset = Subset(full_dataset, train_indices)
     val_dataset = Subset(full_dataset, val_indices)
 
-    # Utwórz data loadery
-    batch_size = 16  # Zwiększenie rozmiaru batcha dla lepszej stabilności
+    # Create data loaders
+    batch_size = 16  # Increase batch size for better stability
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
 
-    # Inicjalizacja ulepszonego autoenkodera
+    # Initialize enhanced autoencoder
     autoencoder = SimplerBreathingAutoencoder(n_mels=40, latent_dim=8)
 
-    # Opcjonalnie zastosuj normalizację spektralną
+    # Optionally apply spectral normalization
     # autoencoder = apply_spectral_normalization(autoencoder)
 
-    # Trenuj autoenkoder z nową funkcją straty
+    # Train autoencoder with new loss function
     train_losses, val_losses = train_autoencoder(
         autoencoder=autoencoder,
         train_loader=train_loader,
@@ -388,23 +388,22 @@ if __name__ == '__main__':
         learning_rate=1e-3
     )
 
-    # Utwórz i dopasuj detektor anomalii
+    # Create and fit anomaly detector
     anomaly_detector = AnomalyDetector(autoencoder, device, contamination=0.05)
     threshold = anomaly_detector.fit(val_loader)
-    print(f"Obliczony próg anomalii: {threshold:.6f}")
+    print(f"Calculated anomaly threshold: {threshold:.6f}")
 
-    # Zapisz próg do pliku dla późniejszego użycia
+    # Save threshold to file for later use
     with open('anomaly_threshold.json', 'w') as f:
         json.dump({"threshold": float(threshold)}, f)
 
-    # Opcjonalnie: analiza cech latentnych
+    # Optional: latent features analysis
     features, labels = extract_latent_features(autoencoder, val_loader, device)
 
-    # Zapisz model do użycia w produkcji
+    # Save model for production use
     torch.save({
         'autoencoder_state_dict': autoencoder.state_dict(),
         'anomaly_threshold': threshold,
-        'silence_threshold': silence_threshold
     }, 'breathing_anomaly_detector_complete.pth')
 
-    print("Trening i konfiguracja detektora anomalii zakończone.")
+    print("Training and anomaly detector configuration completed.")
