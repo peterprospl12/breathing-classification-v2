@@ -58,7 +58,7 @@ def calibrate_threshold():
     mean_silence = np.mean(silence_volumes)
     std_silence = np.std(silence_volumes)
 
-    VOLUME_THRESHOLD = int(mean_silence + 1.5 * std_silence)
+    VOLUME_THRESHOLD = int(mean_silence + 2.0 * std_silence)
     classifier.set_threshold(VOLUME_THRESHOLD)
 
     print(f"New threshold: {VOLUME_THRESHOLD}")
