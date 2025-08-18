@@ -23,7 +23,6 @@ running = True
 # Volume-based classifier
 #############################################
 class VolumeBasedClassifier:
-    def __init__(self, threshold=VOLUME_THRESHOLD):
     def __init__(self, threshold=None):
         if threshold is None:
             self.threshold = VOLUME_THRESHOLD
@@ -62,7 +61,7 @@ def calibrate_threshold():
     VOLUME_THRESHOLD = int(mean_silence + 1.5 * std_silence)
     classifier.set_threshold(VOLUME_THRESHOLD)
 
-    print(f"New threshold: VOLUME_THRESHOLD")
+    print(f"New threshold: {VOLUME_THRESHOLD}")
 
 
 #############################################
