@@ -403,7 +403,7 @@ if __name__ == '__main__':
     # Save model for production use
     torch.save({
         'autoencoder_state_dict': autoencoder.state_dict(),
-        'anomaly_threshold': threshold,
-    }, 'breathing_anomaly_detector_complete.pth')
+        'anomaly_threshold': threshold},
+        'breathing_anomaly_detector_complete.pth')
 
     print("Training and anomaly detector configuration completed.")
