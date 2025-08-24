@@ -128,9 +128,12 @@ def collate_fn(batch):
     Returns:
         spectrograms_batch: [batch_size, 1, n_mels, time_frames_padded]
         labels_padded: [batch_size, time_frames_padded]
-        padding_mask: [batch_size, time_frames_padded] (bool) True where padding / silence
+        padding_mask: [batch_size, time_frames_padded] (bool) True where padding
     """
     spectrograms, labels = zip(*batch)
+
+    # Remember original lenghts before padding
+    original_lengths = [spec.shape[-1] for spec in spectrograms]
 
     # Convert spectrograms from shape (1, n_mels, T) -> (T, n_mels) for pad_sequence,
     # then pad and permute back to [B, 1, n_mels, T]
@@ -143,7 +146,8 @@ def collate_fn(batch):
     labels_padded = pad_sequence(labels, batch_first=True, padding_value=float(BreathType.SILENCE))  # [B, T_max]
 
     # Build padding mask (True where silence/pad)
-    padding_mask = (labels_padded == BreathType.SILENCE)  # bool tensor [B, T_max]
+    max_len = spectrograms_batch.shape[-1]
+    padding_mask = torch.arange(max_len)[None, :] >= torch.tensor(original_lengths)[:, None] # [B, T_max]
 
     return spectrograms_batch, labels_padded, padding_mask
 

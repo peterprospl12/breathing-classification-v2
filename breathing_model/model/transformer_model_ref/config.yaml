@@ -19,7 +19,7 @@ train:
   patience: 6
 
 model:
-  num_classes: 2
+  num_classes: 3
   n_mels: 128
   d_model: 192
   nhead: 8

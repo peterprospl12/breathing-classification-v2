@@ -33,7 +33,7 @@ class PositionalEncoding(nn.Module):
 class BreathPhaseTransformerSeq(nn.Module):
     """
     Transformer model that classifies each spectrogram frame into two classes:
-    0 = exhale, 1 = inhale.
+    0 = exhale, 1 = inhale, 2 = silence.
 
     Forward accepts src_key_padding_mask with shape [batch_size, time_frames] (bool),
     where True indicates a padded frame that should be ignored by attention.
@@ -43,7 +43,7 @@ class BreathPhaseTransformerSeq(nn.Module):
                  d_model: int = 192,
                  nhead: int = 8,
                  num_layers: int = 6,
-                 num_classes: int = 2):
+                 num_classes: int = 3):
         super().__init__()
 
         self.conv_layers = self._build_cnn_layers()
