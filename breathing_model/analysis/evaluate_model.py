@@ -23,8 +23,8 @@ except ImportError as e:
         f"Ensure the path '{model_dir}' is correct and contains transformer_model.py")
     sys.exit(1)
 
-DATA_DIR = "../deprecated/data-sequences"
-MODEL_PATH = "../trained_models/1/transformer_model_88.pth"
+DATA_DIR = "../archive/data-sequences"
+MODEL_PATH = "../model/trained_models/1/transformer_model_88.pth"
 BATCH_SIZE = 4  
 N_MELS = 128 
 NUM_CLASSES = 3
@@ -246,13 +246,13 @@ if __name__ == "__main__":
 
     # Confusion Matrix
     plot_confusion_matrix(true_labels_filtered, pred_labels_filtered,
-                          CLASS_NAMES, filename="../trained_models/15/confusion_matrix_test.png")
+                          CLASS_NAMES, filename="../model/trained_models/15/confusion_matrix_test.png")
 
     # ROC Curve and AUC
     unique_classes_present = np.unique(true_labels_filtered)
 
     roc_class_names = {i: CLASS_NAMES[i] for i in unique_classes_present if i in CLASS_NAMES}
     plot_roc_curve(true_labels_filtered, pred_probs_filtered, len(roc_class_names),
-                   roc_class_names, filename="../trained_models/15/roc_curve_test.png")
+                   roc_class_names, filename="../model/trained_models/15/roc_curve_test.png")
 
     print("\nEvaluation complete.")
