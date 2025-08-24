@@ -2,6 +2,8 @@ import numpy as np
 import pyaudio
 import matplotlib.pyplot as plt
 import time
+
+from model.transformer_model_ref.inference.audio import SharedAudioResource
 from model_classes import AudioClassifierLSTM as AudioClassifier
 import torch
 import librosa
@@ -47,6 +49,7 @@ EXHALE_COUNTER = 0
 CHANNELS = 1
 RATE = 44100
 DEVICE_INDEX = 4
+FORMAT = pyaudio.paInt16
 CHUNK_SIZE = int(RATE * REFRESH_TIME)
 
 running = True
@@ -54,34 +57,6 @@ running = True
 state = torch.load(CLASSIFIER_MODEL_PATH, map_location=torch.device('cpu'))
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-# Audio resource class
-
-
-class SharedAudioResource:
-
-    def __init__(self):
-        self.p = pyaudio.PyAudio()
-        self.buffer_size = int(RATE * REFRESH_TIME)
-        self.buffer = np.zeros(self.buffer_size, dtype=np.int16)
-        for i in range(self.p.get_device_count()):
-            print(self.p.get_device_info_by_index(i))
-        self.stream = self.p.open(format=pyaudio.paInt16, channels=CHANNELS, rate=RATE, input=True,
-                                  frames_per_buffer=self.buffer_size, input_device_index=DEVICE_INDEX)
-
-    def read(self):
-        self.buffer = self.stream.read(
-            self.buffer_size, exception_on_overflow=False)
-        audio_data = np.frombuffer(self.buffer, dtype=np.int16)
-        if CHANNELS == 2:
-            audio_data = audio_data.reshape(-1, 2)
-            audio_data = audio_data.mean(axis=1).astype(np.int16)
-        return audio_data
-
-    def close(self):
-        self.stream.stop_stream()
-        self.stream.close()
-        self.p.terminate()
 
 
 # Class for prediction
@@ -235,7 +210,8 @@ if __name__ == "__main__":
 
     # Initialize microphone and classifier
 
-    audio = SharedAudioResource()
+    audio = SharedAudioResource(chunk_size=CHUNK_SIZE, format=FORMAT, channels=CHANNELS,
+                                rate=RATE, device_index=DEVICE_INDEX)
 
     classifier = RealTimeAudioClassifier(CLASSIFIER_MODEL_PATH)
 

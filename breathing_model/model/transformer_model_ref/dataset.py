@@ -7,7 +7,7 @@ from typing import Iterable, Optional
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 
-from breathing_model.model.transformer_model_ref.utils import BreathType
+from model.transformer_model_ref.utils import BreathType
 
 
 class BreathDataset(Dataset):

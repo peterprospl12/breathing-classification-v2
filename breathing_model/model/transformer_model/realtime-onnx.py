@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import time
 import onnxruntime as ort
 from enum import Enum
+from model.transformer_model_ref.inference.audio import SharedAudioResource
 
 #############################################
 # Settings and constants
@@ -21,30 +22,6 @@ INHALE_COUNTER = 0
 EXHALE_COUNTER = 0
 
 running = True
-
-
-#############################################
-# Audio handling class
-#############################################
-class SharedAudioResource:
-    def __init__(self):
-        self.p = pyaudio.PyAudio()
-        self.buffer_size = CHUNK_SIZE
-        # Wypisz dostępne urządzenia
-        for i in range(self.p.get_device_count()):
-            print(self.p.get_device_info_by_index(i))
-        self.stream = self.p.open(format=FORMAT, channels=CHANNELS, rate=RATE,
-                                  input=True, frames_per_buffer=self.buffer_size,
-                                  input_device_index=DEVICE_INDEX)
-
-    def read(self):
-        data = self.stream.read(self.buffer_size, exception_on_overflow=False)
-        return np.frombuffer(data, dtype=np.int16)
-
-    def close(self):
-        self.stream.stop_stream()
-        self.stream.close()
-        self.p.terminate()
 
 
 class PredictionModes(Enum):
@@ -175,7 +152,8 @@ def update_plot(frames, current_prediction):
 
 
 if __name__ == '__main__':
-    audio = SharedAudioResource()
+    audio = SharedAudioResource(chunk_size=CHUNK_SIZE, format=FORMAT, channels=CHANNELS,
+                                rate=RATE, device_index=DEVICE_INDEX)
     classifier = RealTimeAudioClassifier(MODEL_PATH)
 
     while running:
