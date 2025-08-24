@@ -65,7 +65,7 @@ The LSTM model processes audio features (MFCC) to classify breathing phases:
 
 ```python
 # Example usage
-from breathing_model.model.lstm_model.realtime import RealTimeAudioClassifier
+from breathing_model.archive.lstm.realtime import RealTimeAudioClassifier
 
 classifier = RealTimeAudioClassifier("model_path.pth")
 prediction = classifier.predict(audio_data)
@@ -77,7 +77,7 @@ The Transformer-based model provides enhanced sequence modeling capabilities:
 
 ```python
 # Example usage
-from breathing_model.model.transformer_model.realtime import RealTimeAudioClassifier, PredictionModes
+from breathing_model.archive.transformer_model.realtime import RealTimeAudioClassifier, PredictionModes
 
 classifier = RealTimeAudioClassifier("model_path.pth", PredictionModes.LOCAL)
 prediction = classifier.predict(audio_data)
@@ -125,7 +125,7 @@ To train a model:
 python breathing_model/model/transformer_model/transformer_model.py
 
 # Train LSTM model
-python breathing_model/model/lstm_model/full-train-in-one-script.py
+python breathing_model/model/lstm/full_train_in_one_script.py
 ```
 
 ## 📝 License

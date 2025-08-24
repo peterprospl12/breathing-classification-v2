@@ -1,8 +1,0 @@
-class,start_sample,end_sample
-inhale,0,39936
-exhale,39936,83968
-inhale,83968,131072
-exhale,131072,214016
-inhale,214016,292864
-exhale,292864,356352
-inhale,356352,441000
