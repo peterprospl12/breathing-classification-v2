@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from breathing_model.model.breath_vs_world_model.model import BreathPhaseTransformerSeq
-from breathing_model.model.breath_vs_world_model.utils import ModelConfig
+from breathing_model.model.breath_vs_world_model.utils import ModelConfig, BreathType
 
 
 class BreathPhaseClassifier:
@@ -32,8 +32,8 @@ class BreathPhaseClassifier:
         probs = torch.softmax(logits, dim=-1).cpu().numpy().squeeze(0)
 
         if probs.shape[0] == 0:
-            predicted_class = 2
-            class_probs = np.array([0.0, 0.0, 1.0])
+            predicted_class = BreathType.OTHER.value
+            class_probs = np.array([1.0, 0.0])
         else:
             preds = probs.argmax(axis=1)
             predicted_class = int(np.bincount(preds).argmax())
