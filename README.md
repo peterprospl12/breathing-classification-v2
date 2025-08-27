@@ -7,7 +7,7 @@ This repository contains a comprehensive solution for real-time breathing phase 
 - **Multiple ML Architectures**: Transformer, LSTM, and Spectrum-based models with different performance characteristics
 - **Real-time Classification**: Live audio processing and breath phase detection
 - **Tensometer Integration**: Synchronized breathing data collection using tensometer sensors via Bluetooth
-- **Cross-platform Mobile App**: Flutter application for Windows, Web, Android, and iOS
+- **Cross-platform Mobile App**: Flutter application for Windows, Android, and future iOS support
 - **ONNX Model Export**: Convert trained models to ONNX format for deployment
 - **Advanced Data Generation**: Tools for creating labeled training data from tensometer readings
 - **Model Evaluation Tools**: Comprehensive evaluation and visualization utilities
@@ -44,12 +44,7 @@ breathing-classification-v2/
 ## 📋 Requirements
 
 ### Python Environment
-- **Python 3.7+** (recommended: 3.9+)
-- **PyTorch 2.5.1+** with torchaudio support
-- **NumPy 2.0.2+** for numerical computations
-- **librosa 0.10.0+** for audio processing
-- **scikit-learn 1.6.0+** for ML utilities
-- **ONNX Runtime 1.22.1+** for model deployment
+- **Python 3.10** (recommended: 3.12)
 
 ### Flutter Environment (for mobile app)
 - **Flutter SDK 3.7.0+**
@@ -99,9 +94,7 @@ breathing-classification-v2/
    ```bash
    # For development on different platforms:
    flutter run -d windows      # Windows desktop
-   flutter run -d chrome       # Web browser
    flutter run -d android      # Android device/emulator
-   flutter run -d ios          # iOS device/simulator
    ```
 
 ### Quick Start Example
@@ -139,24 +132,13 @@ Model parameters can be adjusted in `breathing_model/model/transformer/config.ya
 
 ### Legacy Models (Archive)
 
-#### LSTM Model
-Traditional sequential model for breath phase classification:
-```python
-# Example usage (archived)
-from breathing_model.archive.lstm.realtime import RealTimeAudioClassifier
+The project includes legacy implementations that are preserved in the archive directory:
 
-classifier = RealTimeAudioClassifier("model_path.pth")
-prediction = classifier.predict(audio_data)
-```
+#### LSTM Model
+Traditional sequential model for breath phase classification located in `breathing_model/archive/lstm/`.
 
 #### Transformer v1 (Archive)
-Previous transformer implementation with ONNX export support:
-```python
-# ONNX export example
-from breathing_model.archive.transformer_model.export_to_onnx import export_breath_classifier_to_onnx
-
-export_breath_classifier_to_onnx("model.pth", "model.onnx")
-```
+Previous transformer implementation with ONNX export support located in `breathing_model/archive/transformer_model/`.
 
 ## 📊 Data Generation & Collection
 
@@ -217,7 +199,7 @@ The Flutter application provides a user-friendly interface for real-time breathi
 - **Phase Classification**: Visual indicators for inhale, exhale, and silence phases
 - **Breath Counting**: Automatic inhale/exhale cycle counting
 - **Audio Recording**: Built-in recording capabilities with permission handling
-- **Cross-platform**: Supports Windows, Web, Android, and iOS
+- **Cross-platform**: Supports Windows, Android, with future iOS support
 
 ### Platform-Specific Setup
 
@@ -227,20 +209,13 @@ cd app
 flutter run -d windows
 ```
 
-#### Web
-```bash
-flutter run -d chrome
-```
-
-#### Android (Future Release)
+#### Android
 ```bash
 flutter run -d android
 ```
 
-#### iOS (Future Release)
-```bash
-flutter run -d ios
-```
+#### iOS (Currently Unsupported)
+iOS support may be added in future releases.
 
 ### App Configuration
 - **Models**: Place ONNX models in `app/assets/models/`
@@ -248,50 +223,6 @@ flutter run -d ios
 - **Themes**: Customizable UI themes available
 
 For detailed app setup instructions, see [app/README.md](app/README.md).
-
-## 🔧 ONNX Model Export
-
-Convert trained PyTorch models to ONNX format for deployment:
-
-```python
-# Export transformer model to ONNX
-from breathing_model.archive.transformer_model.export_to_onnx import export_breath_classifier_to_onnx
-
-model_path = "breathing_model/model/trained_models/1/transformer_model.pth"
-onnx_path = "breathing_model/model/trained_models/1/transformer_model.onnx"
-
-export_breath_classifier_to_onnx(model_path, onnx_path)
-```
-
-**ONNX Benefits:**
-- **Cross-platform Deployment**: Use models in different environments
-- **Performance Optimization**: Optimized inference on various hardware
-- **Mobile Integration**: Deploy in Flutter app for offline inference
-
-## 🛠️ Development Tools
-
-### Data Analysis
-Jupyter notebooks for data exploration and model analysis:
-```bash
-# Navigate to analysis tools
-cd breathing_model/archive/scripts
-jupyter notebook useful-scripts.ipynb
-```
-
-### Audio Processing Utilities
-```python
-# Audio file trimming and preprocessing
-python breathing_model/data/trim.py
-```
-
-### Model Validation
-```python
-# Validate model performance
-from breathing_model.model.transformer.inference.model_loader import load_model
-
-model = load_model("path/to/model.pth")
-# Perform validation...
-```
 
 ## 📚 Documentation
 
@@ -333,11 +264,12 @@ flutter doctor
 # List available audio devices (Python)
 python -c "import pyaudio; p = pyaudio.PyAudio(); [print(f'{i}: {p.get_device_info_by_index(i)}') for i in range(p.get_device_count())]"
 ```
+Available audio devices will also be listed when running manual data generator on realtime (inference).
 
 ### Performance Optimization
 - **GPU Acceleration**: Ensure CUDA is available for PyTorch training
 - **Audio Latency**: Adjust chunk size in config for real-time performance
-- **Model Size**: Use ONNX quantization for mobile deployment
+- **Model Size**: ONNX is required for mobile deployment (model can't be run on mobiles without ONNX)
 
 ## 🤝 Contributing
 
@@ -375,19 +307,17 @@ Copyright (c) 2024 Piotr Sulewski
 
 ## 👨‍💻 Authors
 
-- **Piotr Sulewski** - *Lead Developer* - [peterprospl12](https://github.com/peterprospl12)
-
-## 🙏 Acknowledgments
-
-- Medical professionals who provided guidance on breathing pattern analysis
-- Open source community for excellent libraries (PyTorch, Flutter, librosa)
-- Contributors who helped with testing and validation
+- **Piotr Sulewski** - [peterprospl12](https://github.com/peterprospl12)
+- **Tomasz Sankowski** - [tomaszsankowski](https://github.com/tomaszsankowski)
+- **Iwo Czartowski** - [IwsonHD](https://github.com/IwsonHD)
 
 ## 📧 Contact
 
 For questions, issues, or collaboration opportunities:
 - **GitHub Issues**: [Create an issue](https://github.com/peterprospl12/breathing-classification-v2/issues)
 - **Project Repository**: [breathing-classification-v2](https://github.com/peterprospl12/breathing-classification-v2)
+
+Feel free to contact any of the [Authors](#-authors).
 
 ---
 
