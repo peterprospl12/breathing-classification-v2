@@ -2,7 +2,7 @@ from typing import Optional
 import pyaudio
 import numpy as np
 import logging
-from model.transformer_model_ref.utils import AudioConfig
+from breathing_model.model.transformer_model_ref.utils import AudioConfig
 
 logger = logging.getLogger(__name__)
 

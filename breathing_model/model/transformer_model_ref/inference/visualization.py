@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from model.transformer_model_ref.inference.counter import BreathType
-from model.transformer_model_ref.utils import Config
+from breathing_model.model.transformer_model_ref.inference.counter import BreathType
+from breathing_model.model.transformer_model_ref.utils import Config
 
 
 class RealTimePlot:
