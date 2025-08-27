@@ -6,9 +6,9 @@ import torch
 import torchaudio
 import torch.nn as nn
 import torch.nn.functional as F
+import json
 from enum import Enum
-
-from model.transformer_model_ref.inference.audio import SharedAudioResource
+from breathing_model.model.transformer_model_ref.inference.audio import SharedAudioResource
 
 
 # Updated autoencoder based on SimplerBreathingAutoencoder
