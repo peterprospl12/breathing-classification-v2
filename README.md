@@ -184,12 +184,6 @@ Modify training parameters in `breathing_model/model/transformer/config.yaml`:
 - Audio processing parameters
 - Model architecture settings
 
-### Model Evaluation
-```bash
-# Evaluate trained models
-python breathing_model/model/transformer/inference/main.py --evaluate
-```
-
 ## 📱 Mobile Application
 
 The Flutter application provides a user-friendly interface for real-time breathing monitoring with cross-platform support.
@@ -269,32 +263,9 @@ Available audio devices will also be listed when running manual data generator o
 ### Performance Optimization
 - **GPU Acceleration**: Ensure CUDA is available for PyTorch training
 - **Audio Latency**: Adjust chunk size in config for real-time performance
+
+### Mobile Deployment
 - **Model Size**: ONNX is required for mobile deployment (model can't be run on mobiles without ONNX)
-
-## 🤝 Contributing
-
-We welcome contributions! Please follow these guidelines:
-
-1. **Fork the repository** and create a feature branch
-2. **Follow code style** consistent with existing codebase
-3. **Add tests** for new functionality
-4. **Update documentation** for significant changes
-5. **Submit a pull request** with clear description
-
-### Development Setup
-```bash
-# Install development dependencies
-pip install -r breathing_model/requirements.txt
-
-# Install pre-commit hooks (if available)
-pre-commit install
-```
-
-### Coding Standards
-- **Python**: Follow PEP 8 guidelines
-- **Dart/Flutter**: Follow official Dart style guide
-- **Documentation**: Update README and inline comments
-- **Testing**: Include unit tests for new features
 
 ## 📄 License
 
