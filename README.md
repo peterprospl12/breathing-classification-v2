@@ -1,6 +1,6 @@
 # Breathing Phase Classification Project
 
-This repository contains a comprehensive solution for real-time breathing phase classification using machine learning models. The system can detect three breath phases: **inhale**, **exhale**, and **silence** from audio recordings, with additional support for tensometer-based data collection and analysis.
+This repository contains a comprehensive solution for real-time breathing phase classification using machine learning models. The system can detect three breath phases: **inhale**, **exhale**, and **silence** from audio recordings, with additional support for tensometer-based automatic data labeling.
 
 ## 🌟 Features
 
@@ -9,9 +9,9 @@ This repository contains a comprehensive solution for real-time breathing phase 
 - **Tensometer Integration**: Synchronized breathing data collection using tensometer sensors via Bluetooth
 - **Cross-platform Mobile App**: Flutter application for Windows, Android, and future iOS support
 - **ONNX Model Export**: Convert trained models to ONNX format for deployment
-- **Advanced Data Generation**: Tools for creating labeled training data from tensometer readings
+- **Advanced Data Generation**: Tools for creating labeled training data from tensometer and microphone readings
 - **Model Evaluation Tools**: Comprehensive evaluation and visualization utilities
-- **Multi-language Support**: Interface supports both English and Polish
+
 
 ## 🧩 Project Structure
 
@@ -21,8 +21,8 @@ breathing-classification-v2/
 │   ├── model/                # Current model implementations
 │   │   ├── transformer/      # Latest transformer architecture
 │   │   ├── trained_models/   # Pre-trained model checkpoints
-│   │   ├── silence_detector/ # Silence detection utilities
-│   │   └── invalid_data_filter/ # Data quality filtering
+│   │   ├── silence_detector/ # Silence detection model
+│   │   └── invalid_data_filter/ # Breath sounds detection using autoencoder
 │   ├── data/                 # Data processing and generation
 │   │   ├── generators/       # Training data generation tools
 │   │   ├── train/           # Training datasets
@@ -44,7 +44,7 @@ breathing-classification-v2/
 ## 📋 Requirements
 
 ### Python Environment
-- **Python 3.10** (recommended: 3.12)
+- **Python 3.12**
 
 ### Flutter Environment (for mobile app)
 - **Flutter SDK 3.7.0+**
@@ -54,7 +54,6 @@ breathing-classification-v2/
 ### Hardware Requirements
 - **Microphone** for real-time audio capture
 - **Tensometer device** (optional, for data collection)
-- **Bluetooth support** (for tensometer connectivity)
 
 ## 🚀 Getting Started
 
