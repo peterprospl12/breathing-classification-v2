@@ -43,10 +43,10 @@ class BreathPhaseClassifier:
                        mel_tensor: torch.Tensor,
                        src_key_padding_mask: Optional[torch.Tensor] = None) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Zwraca (preds_frame, probs_frame_mean).
+        Returns (preds_frame, probs_frame_mean).
         Args:
-            mel_tensor: Tensor o kształcie [1, 1, n_mels, T]
-            src_key_padding_mask: opcjonalnie [1, T] (bool), True = pozycja do ignorowania
+            mel_tensor: Tensor of shape [1, 1, n_mels, T]
+            src_key_padding_mask: optional [1, T] (bool), True = position to ignore
         """
         mel_tensor = mel_tensor.to(self.device)
         if src_key_padding_mask is not None:
@@ -57,7 +57,7 @@ class BreathPhaseClassifier:
 
         probs_np = probs.squeeze(0).cpu().numpy()  # [T, C]
         if probs_np.shape[0] == 0:
-            # Pusta sekwencja: zwróć równomierny rozkład
+            # Empty sequence: return a uniform distribution
             num_classes = self.config.num_classes
             return np.array([], dtype=int), np.full((num_classes,), 1.0 / num_classes, dtype=float)
 
@@ -70,12 +70,12 @@ class BreathPhaseClassifier:
                 mel_tensor: torch.Tensor,
                 src_key_padding_mask: Optional[torch.Tensor] = None) -> Tuple[int, np.ndarray]:
         """
-        Klasyfikacja całej sekwencji (większość ramek).
-        Zwraca (predicted_class, mean_class_probs).
+        Classification of the entire sequence (majority of frames).
+        Returns (predicted_class, mean_class_probs).
         """
-        # predict_frames zwraca (predykcje_per_ramka, średnie_prawdopodobieństwa_na_klasę)
+        # predict_frames returns (frame_predictions, mean_class_probabilities)
         _, mean_probs = self.predict_frames(mel_tensor, src_key_padding_mask)
 
-        # Wybierz klasę z najwyższym średnim prawdopodobieństwem na przestrzeni wszystkich ramek
+        # Select the class with the highest mean probability across all frames
         predicted_class = int(np.argmax(mean_probs))
         return predicted_class, mean_probs

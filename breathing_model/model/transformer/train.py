@@ -10,7 +10,6 @@ from breathing_model.model.transformer.dataset import BreathDataset, collate_fn
 from breathing_model.model.transformer.model import BreathPhaseTransformerSeq
 from breathing_model.model.transformer.utils import BreathType, split_dataset, load_yaml
 
-PAD_LABEL = BreathType.SILENCE
 IGNORE_INDEX = -100    # value to give to CrossEntropyLoss for ignored positions
 
 def run_train_epoch(model: nn.Module,
@@ -35,7 +34,9 @@ def run_train_epoch(model: nn.Module,
         optimizer.zero_grad()
 
         # Forward pass: pass src_key_padding_mask (True = padded positions)
-        outputs = model(spectograms_batch, src_key_padding_mask=padding_mask_batch) # [batch_size, time_frames, num_classes]
+        outputs = model(spectograms_batch, src_key_padding_mask=padding_mask_batch) # [batch_size,
+                                                                                    # time_frames,
+                                                                                    # num_classes]
 
         # Compute loss: CrossEntropyLoss expects [N, C] logits and [N] targets
         logits_flat = outputs.view(-1, outputs.size(-1))  # [B*T, num_classes]
@@ -45,6 +46,7 @@ def run_train_epoch(model: nn.Module,
 
         # Count valid frames in this batch to weight loss averaging correctly
         valid_frames_in_batch = (~padding_mask_batch).sum().item()  # number of frames with real labels
+
         # If there are no valid frames in this batch (all padding) skip metric counting but still propagate loss
         # Note: loss_function will return 0 if there are no valid elements; guard divide by zero below.
         batch_loss_value = batch_loss.item()
