@@ -132,11 +132,11 @@ def collate_fn(batch):
     """
     spectrograms, labels = zip(*batch)
 
-    # Remember original lenghts before padding
+    # Remember original lengths before padding
     original_lengths = [spec.shape[-1] for spec in spectrograms]
 
     # Convert spectrograms from shape (1, n_mels, T) -> (T, n_mels) for pad_sequence,
-    # then pad and permute back to [B, 1, n_mels, T]
+    # then pad and permute back to [B, 1, n_mels, T_max], where T_max is the padded (max) length in the batch
     spectrograms_transposed = [spectrogram.squeeze(0).permute(1, 0) for spectrogram in spectrograms]
     spectrograms_padded = pad_sequence(spectrograms_transposed, batch_first=True, padding_value=0.0)  # [B, T_max, n_mels]
     spectrograms_padded = spectrograms_padded.permute(0, 2, 1)  # [B, n_mels, T_max]

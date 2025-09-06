@@ -23,8 +23,8 @@ def run_train_epoch(model: nn.Module,
     total_valid_frames = 0
     total_correct_predictions = 0
 
-    for batch_index, (spectograms_batch, labels_batch, padding_mask_batch) in enumerate(data_loader):
-        spectograms_batch = spectograms_batch.to(device)
+    for batch_index, (spectrograms_batch, labels_batch, padding_mask_batch) in enumerate(data_loader):
+        spectrograms_batch = spectrograms_batch.to(device)
         labels_batch = labels_batch.to(device)
         padding_mask_batch = padding_mask_batch.to(device)
 
@@ -34,7 +34,7 @@ def run_train_epoch(model: nn.Module,
         optimizer.zero_grad()
 
         # Forward pass: pass src_key_padding_mask (True = padded positions)
-        outputs = model(spectograms_batch, src_key_padding_mask=padding_mask_batch) # [batch_size,
+        outputs = model(spectrograms_batch, src_key_padding_mask=padding_mask_batch) # [batch_size,
                                                                                     # time_frames,
                                                                                     # num_classes]
 
