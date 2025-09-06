@@ -1,9 +1,0 @@
-class,start_sample,end_sample
-exhale,0,8820
-silence,8820,86440
-exhale,86440,125352
-exhale,125352,159144
-silence,159144,253352
-exhale,253352,371112
-inhale,371112,438717
-silence,438717,441000

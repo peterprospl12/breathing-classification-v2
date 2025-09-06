@@ -4,10 +4,10 @@ from pydub import AudioSegment
 import shutil
 
 # Settings
-RAW_DIR = './raw'
-LABEL_DIR = './label'
-OUTPUT_RAW_DIR = './raw'        # Can be changed to a new folder, e.g., './raw_trimmed'
-OUTPUT_LABEL_DIR = './label'    # Can be changed, e.g., './label_trimmed'
+RAW_DIR = 'train/raw'
+LABEL_DIR = 'train/label'
+OUTPUT_RAW_DIR = 'train/raw'  # Can be changed to a new folder, e.g., './raw_trimmed'
+OUTPUT_LABEL_DIR = 'train/label'  # Can be changed, e.g., './label_trimmed'
 
 TARGET_LENGTH = 441000  # target number of samples
 

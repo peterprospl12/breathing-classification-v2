@@ -1,0 +1,4 @@
+In oreder to generate labelled data procceed acording to these steps:
+
+1. Run data_recorder.py - it will connect to your tensometer and record sound simontenusly
+2. Run tenso_model_based_data_gen.py 
