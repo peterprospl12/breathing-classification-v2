@@ -11,14 +11,14 @@ class RealTimePlot:
         self.history_samples = int(config.audio.sample_rate * config.plot.history_seconds)
         self.chunk_size = int(config.audio.sample_rate * config.audio.chunk_length)
         self.buffer = np.zeros(self.history_samples)
-        self.predictions = np.full(self.history_samples // self.chunk_size, 2, dtype=int)
+        self.predictions = np.full(self.history_samples // self.chunk_size, 1, dtype=int)
 
         self.fig, self.ax = plt.subplots(1, 1, figsize=(12, 6))
         self.fig.canvas.manager.set_window_title("Breath phase detector")
         self.fig.suptitle("Live Breath Detection (Space: quit, R: reset)")
 
         self.ax.set_facecolor('black')
-        self.ax.set_ylim(-500, 500)
+        self.ax.set_ylim(-10, 10)
         self.ax.set_xlim(0, self.history_samples)
         self.ax.axis('off')
 
@@ -33,7 +33,7 @@ class RealTimePlot:
 
     def reset_data(self):
         self.buffer.fill(0)
-        self.predictions.fill(2)
+        self.predictions.fill(1)
 
     def update(self, audio_chunk: np.ndarray, prediction: int):
         self.buffer = np.roll(self.buffer, -len(audio_chunk))
@@ -44,7 +44,7 @@ class RealTimePlot:
 
         self.ax.clear()
         self.ax.set_facecolor('black')
-        self.ax.set_ylim(-500, 500)
+        self.ax.set_ylim(-10, 10)
         self.ax.set_xlim(0, self.history_samples)
         self.ax.axis('off')
 
@@ -53,7 +53,7 @@ class RealTimePlot:
             end = start + self.chunk_size
             if end <= len(self.buffer):
                 x = np.arange(start, end)
-                y = self.buffer[start:end] / 4
+                y = self.buffer[start:end] * 100
                 self.ax.plot(x, y, color=BreathType(pred).get_color(), linewidth=1.2)
 
         plt.draw()

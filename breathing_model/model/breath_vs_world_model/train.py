@@ -45,7 +45,7 @@ def run_train_epoch(model, train_loader, criterion, optimizer, device):
     all_precisions = []
     all_recalls = []
     all_f1s = []
-
+ 
     for inputs, labels in train_loader:
         inputs = inputs.to(device)
         labels = labels.to(device)
