@@ -6,9 +6,9 @@ import os
 from torch import nn, optim
 from torch.utils.data import DataLoader
 
-from breathing_model.model.transformer_model_ref.dataset import BreathDataset, collate_fn
-from breathing_model.model.transformer_model_ref.model import BreathPhaseTransformerSeq
-from breathing_model.model.transformer_model_ref.utils import BreathType, split_dataset, load_yaml
+from breathing_model.model.transformer.dataset import BreathDataset, collate_fn
+from breathing_model.model.transformer.model import BreathPhaseTransformerSeq
+from breathing_model.model.transformer.utils import BreathType, split_dataset, load_yaml
 
 PAD_LABEL = BreathType.SILENCE
 IGNORE_INDEX = -100    # value to give to CrossEntropyLoss for ignored positions
