@@ -10,6 +10,16 @@ from breathing_model.model.transformer.dataset import BreathDataset, collate_fn
 from breathing_model.model.transformer.model import BreathPhaseTransformerSeq
 from breathing_model.model.transformer.utils import BreathType, split_dataset, load_yaml
 
+def calculate_class_weights(dataset):
+    all_labels = []
+    for _, labels in dataset:
+        all_labels.extend(labels.flatten().tolist())
+
+    unique, counts = np.unique(all_labels, return_counts=True)
+    total = len(all_labels)
+    weights = total / (len(unique) * counts)
+    return torch.FloatTensor(weights)
+
 IGNORE_INDEX = -100    # value to give to CrossEntropyLoss for ignored positions
 
 def run_train_epoch(model: nn.Module,
@@ -118,6 +128,7 @@ def train_model(model: nn.Module,
                 val_loader: DataLoader,
                 device: torch.device,
                 num_epochs: int,
+                loss_function: nn.Module,
                 optimizer: optim.Optimizer,
                 scheduler: optim.lr_scheduler._LRScheduler,
                 save_directory: str,
@@ -127,7 +138,6 @@ def train_model(model: nn.Module,
     """
     os.makedirs(save_directory, exist_ok=True)
 
-    loss_function = nn.CrossEntropyLoss(ignore_index=IGNORE_INDEX)
     best_val_loss = float('inf')
     epochs_since_improvement = 0
 
@@ -228,11 +238,16 @@ if __name__ == "__main__":
     patience = config['train'].get('patience', 6)
     save_directory = config['train'].get('save_dir', 'checkpoints')
 
+    # Class weight balance
+    class_weights = calculate_class_weights(train_dataset)
+    criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
+
     train_model(model=model,
                 train_loader=train_loader,
                 val_loader=val_loader,
                 device=device,
                 num_epochs=num_epochs,
+                loss_function=criterion,
                 optimizer=optimizer,
                 scheduler=scheduler,
                 save_directory=save_directory,
