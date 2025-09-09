@@ -13,7 +13,7 @@ def main():
 
     audio = AudioStream(config.audio)
     mel_transform = MelSpectrogramTransform(config.data)
-    classifier = BreathPhaseClassifier('../checkpoints/best_model_epoch_16.pth', config.model)
+    classifier = BreathPhaseClassifier('../checkpoints/best_model_epoch_12.pth', config.model)
     counter = BreathCounter()
     plot = RealTimePlot(config)
 

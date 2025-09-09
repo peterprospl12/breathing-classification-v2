@@ -2,13 +2,13 @@ from typing import Tuple
 
 import torch
 import os
-
+import numpy as np
 from torch import nn, optim
 from torch.utils.data import DataLoader
 
 from breathing_model.model.transformer.dataset import BreathDataset, collate_fn
 from breathing_model.model.transformer.model import BreathPhaseTransformerSeq
-from breathing_model.model.transformer.utils import BreathType, split_dataset, load_yaml
+from breathing_model.model.transformer.utils import split_dataset, load_yaml
 
 def calculate_class_weights(dataset):
     all_labels = []
