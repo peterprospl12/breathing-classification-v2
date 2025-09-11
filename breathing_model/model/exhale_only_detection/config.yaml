@@ -1,0 +1,30 @@
+data:
+  data_dir: "../../data/train/raw"
+  label_dir: "../../data/train/label"
+  sample_rate: 44100
+  n_mels: 128
+  hop_length: 512
+  n_fft: 2048
+
+audio:
+  channels: 1
+  chunk_length: 0.3
+  device_index: 1
+  sample_rate: 44100
+
+train:
+  batch_size: 8
+  learning_rate: 0.0001
+  num_epochs: 50
+  patience: 6
+
+model:
+  num_classes: 2
+  n_mels: 128
+  d_model: 192
+  nhead: 8
+  num_layers: 6
+
+plot:
+  history_seconds: 5
+  update_interval: 0.3
