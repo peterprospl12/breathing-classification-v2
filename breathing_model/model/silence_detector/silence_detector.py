@@ -1,5 +1,7 @@
 import time
 import logging
+from collections import deque
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -9,6 +11,78 @@ from breathing_model.model.transformer.inference.model_loader import BreathPhase
 from breathing_model.model.transformer.inference.counter import BreathCounter
 from breathing_model.model.transformer.inference.visualization import RealTimePlot
 from breathing_model.model.transformer.utils import Config, BreathType
+
+class ArtifactDetector:
+    """
+    Artifact detector (cough, speech, clicks). Returns True only after several
+    consecutive suspicious chunks (hysteresis) to avoid over-silencing.
+    Suspicion criteria (OR with grouping):
+      1. (low_conf AND low_rms)   -> model uncertain and quiet
+      2. spike                    -> sudden energy spike
+      3. (low_rms AND zcr_out)    -> noise/click with unusual structure
+    """
+    def __init__(self,
+                 min_prob: float = 0.45,
+                 spike_factor: float = 3.5,
+                 rms_window: int = 60,
+                 zcr_min: float = 0.005,
+                 zcr_max: float = 0.12,
+                 hysteresis: int = 2):
+        self.min_prob = min_prob
+        self.spike_factor = spike_factor
+        self.zcr_min = zcr_min
+        self.zcr_max = zcr_max
+        self.hysteresis = max(1, hysteresis)
+        self.rms_hist = deque(maxlen=rms_window)
+        self._pending = 0  # how many suspicious in a row
+
+    @staticmethod
+    def _zcr(x: np.ndarray) -> float:
+        if x.size < 2:
+            return 0.0
+        return float(np.mean(np.abs(np.diff(np.signbit(x)))))
+
+    def check(self,
+              audio: np.ndarray,
+              model_class: int,
+              probs: np.ndarray,
+              rms_val: float,
+              silence_threshold: float):
+
+        prob = float(probs[model_class])
+        self.rms_hist.append(rms_val)
+        med_rms = np.median(self.rms_hist) if self.rms_hist else rms_val
+
+        zcr = self._zcr(audio)
+        peak = float(np.max(np.abs(audio)) + 1e-12)
+        energy = float(np.sum(audio ** 2) + 1e-12)
+        mean_e = energy / max(1, audio.size)
+        spike_ratio = (peak * peak) / mean_e
+
+        low_conf = prob < self.min_prob
+        low_rms = rms_val < silence_threshold
+        zcr_out = (zcr < self.zcr_min) or (zcr > self.zcr_max)
+        rms_spike = (rms_val > med_rms * self.spike_factor) and (len(self.rms_hist) > 10)
+        spike = rms_spike or (spike_ratio > 10.0 and peak > 5 * rms_val)
+
+        suspicious = (low_conf and low_rms) or spike or (low_rms and zcr_out)
+
+        if suspicious:
+            self._pending += 1
+        else:
+            self._pending = 0
+
+        override = self._pending >= self.hysteresis
+
+        reasons = []
+        if low_conf and low_rms: reasons.append("low_conf&low_rms")
+        if spike: reasons.append("spike")
+        if low_rms and zcr_out: reasons.append("low_rms&zcr")
+        print(f"[ArtifactDbg] prob={prob:.3f} rms={rms_val:.5f} thr={silence_threshold:.5f} "
+              f"med_rms={med_rms:.5f} zcr={zcr:.4f} spike_ratio={spike_ratio:.2f} "
+              f"pend={self._pending} override={override} reasons={reasons}")
+
+        return override, reasons
 
 
 class VolumeBasedSilenceDetector:
@@ -58,6 +132,11 @@ def run():
     counter = BreathCounter()
     plot = RealTimePlot(config)
     silence = VolumeBasedSilenceDetector(threshold=0.02)
+    artifact_detector = ArtifactDetector(min_prob=0.55,
+                                         spike_factor=3.5,
+                                         rms_window=60,
+                                         zcr_min=0.005,
+                                         zcr_max=0.12)
 
     print("[Keys] [ / ] threshold adjust | c calibrate | r reset counters | SPACE exit")
 
@@ -99,17 +178,21 @@ def run():
             mel = mel_transform(raw_audio)
             model_class, probs = classifier.predict(mel)
             print(f"[Model] Inference time: {(time.time()-transform_start)*1000:.1f} ms")
-
-            if is_sil:
-                final_class = BreathType.SILENCE
-                silence.push_for_calibration(raw_audio)
-            else:
-                final_class = BreathType(model_class)
+            final_class = BreathType(model_class)
 
             if final_class != BreathType.SILENCE:
+                override, reasons = artifact_detector.check(
+                    raw_audio, model_class, probs, rms_val, silence.threshold
+                )
+                if override:
+                    final_class = BreathType.SILENCE
+                    print(f"[Artifact] -> SILENCE ({','.join(reasons)})")
+
+            if final_class == BreathType.SILENCE:
+                silence.push_for_calibration(raw_audio)
+            else:
                 counter.update(int(final_class))
 
-            # Aktualizacja wykresu (z liniami progu)
             start = time.time()
             plot.update(raw_audio, int(final_class), silence.threshold)
             print(f"[Plot] Update time: {(time.time()-start)*1000:.1f} ms")
