@@ -17,6 +17,7 @@ class MelSpectrogramTransform:
 
     def __call__(self, signal: np.ndarray) -> torch.Tensor:
         if signal.ndim > 1:
+            print("Warning: multi-channel audio detected. Averaging to mono.")
             signal = signal.mean(axis=1)
 
         waveform = torch.tensor(signal).unsqueeze(0)
