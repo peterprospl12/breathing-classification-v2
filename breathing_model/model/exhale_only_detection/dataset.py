@@ -12,8 +12,7 @@ from utils import BreathType
 
 class BreathDataset(Dataset):
     """
-    Dataset for breathing sequences with variable-length audio.
-    Each element is a mel-spectrogram and a sequence of frame-level labels (0: exhale, 1: other).
+    Each element is a MFCC and a sequence of frame-level labels (0: exhale, 1: inhale, 2: silence).
     Sequences are kept at their original length; padding is applied during batching via collate_fn.
     """
 
@@ -23,6 +22,7 @@ class BreathDataset(Dataset):
         label_dir: str,
         sample_rate: int = 44100,
         n_mels: int = 128,
+        n_mfcc: int = 20,
         n_fft: int = 2048,
         hop_length: int = 512,
         transforms: Optional[Iterable] = None
@@ -33,6 +33,7 @@ class BreathDataset(Dataset):
             label_dir: Path to a directory with .csv files containing labels (same base name as audio).
             sample_rate: Target sampling rate.
             n_mels: Number of mel filters.
+            n_mfcc: Number of mfcc coefficients.
             n_fft: FFT window size (larger → better frequency resolution).
             hop_length: Hop length for STFT.
             transforms: Optional list of transforms applied to mel spectrogram.
@@ -40,14 +41,15 @@ class BreathDataset(Dataset):
         self.data_dir = data_dir
         self.label_dir = label_dir
         self.sample_rate = sample_rate
-        self.n_mels = n_mels  # TODO używamy jako n_mfcc, jak zadziałą to zmienić
+        self.n_mels = n_mels
+        self.n_mfcc = n_mfcc
         self.n_fft = n_fft
         self.hop_length = hop_length
         self.transforms = transforms
 
         self.mfcc_transform = torchaudio.transforms.MFCC(
             sample_rate=self.sample_rate,
-            n_mfcc=self.n_mels,
+            n_mfcc=self.n_mfcc,
             melkwargs={
                 'n_fft': self.n_fft,
                 'hop_length': self.hop_length,
@@ -122,12 +124,13 @@ class BreathDataset(Dataset):
 
         return labels
 
+
 def collate_fn(batch):
     """
     Collate function for DataLoader to handle variable-length sequences.
     Pads both mel-spectrograms and labels to the same length (longest in batch).
     Returns:
-        spectrograms_batch: [batch_size, 1, n_mels, time_frames_padded]
+        spectrograms_batch: [batch_size, 1, n_mfcc, time_frames_padded]
         labels_padded: [batch_size, time_frames_padded]
         padding_mask: [batch_size, time_frames_padded] (bool) True where padding
     """
@@ -136,7 +139,7 @@ def collate_fn(batch):
     # Remember original lengths before padding
     original_lengths = [spec.shape[-1] for spec in spectrograms]
 
-    # Convert spectrograms from shape (1, n_mfcc, T) -> (T, n_mfcc) for pad_sequence,
+    # Convert MFCC from shape (1, n_mfcc, T) -> (T, n_mfcc) for pad_sequence,
     # then pad and permute back to [B, 1, n_mfcc, T_max], where T_max is the padded (max) length in the batch
     spectrograms_transposed = [spectrogram.squeeze(0).permute(1, 0) for spectrogram in spectrograms]
     spectrograms_padded = pad_sequence(spectrograms_transposed, batch_first=True, padding_value=0.0)  # [B, T_max, n_mfcc]

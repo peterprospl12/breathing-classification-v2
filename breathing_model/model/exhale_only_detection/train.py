@@ -8,7 +8,7 @@ from torch import nn, optim
 from torch.utils.data import DataLoader
 
 from breathing_model.model.exhale_only_detection.dataset import BreathDataset, collate_fn
-from breathing_model.model.transformer.model import BreathPhaseTransformerSeq
+from breathing_model.model.exhale_only_detection.model import BreathPhaseTransformerSeq
 from breathing_model.model.exhale_only_detection.utils import split_dataset, load_yaml
 
 def calculate_class_weights(dataset):
@@ -217,7 +217,8 @@ if __name__ == "__main__":
         data_dir=config['data']['data_dir'],
         label_dir=config['data']['label_dir'],
         sample_rate=config['data'].get('sample_rate', 44100),
-        n_mels=config['model'].get('n_mels', 128),
+        n_mels=config['data'].get('n_mels', 128),
+        n_mfcc=config['data'].get('n_mfcc', 20),
         n_fft=config['data'].get('n_fft', 2048),
         hop_length=config['data'].get('hop_length', 512),
     )
@@ -247,7 +248,6 @@ if __name__ == "__main__":
 
     # Model instantiation: force 2 classes (exhale=0, inhale=1)
     model = BreathPhaseTransformerSeq(
-        n_mels=config['model'].get('n_mels', 128),
         d_model=config['model'].get('d_model', 192),
         nhead=config['model'].get('nhead', 8),
         num_layers=config['model'].get('num_layers', 6),

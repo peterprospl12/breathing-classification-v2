@@ -2,8 +2,8 @@ from typing import Optional, Tuple
 
 import torch
 import numpy as np
-from breathing_model.model.transformer.model import BreathPhaseTransformerSeq
-from breathing_model.model.transformer.utils import ModelConfig
+from breathing_model.model.exhale_only_detection.model import BreathPhaseTransformerSeq
+from breathing_model.model.exhale_only_detection.utils import ModelConfig
 
 
 class BreathPhaseClassifier:
@@ -21,7 +21,6 @@ class BreathPhaseClassifier:
                     config: ModelConfig,
                     strict: bool) -> BreathPhaseTransformerSeq:
         model = BreathPhaseTransformerSeq(
-            n_mels=config.n_mels,
             d_model=config.d_model,
             nhead=config.nhead,
             num_layers=config.num_layers,
@@ -45,7 +44,7 @@ class BreathPhaseClassifier:
         """
         Returns (preds_frame, probs_frame_mean).
         Args:
-            mel_tensor: Tensor of shape [1, 1, n_mels, T]
+            mfcc_tensor: Tensor of shape [1, 1, n_mfcc, T]
             src_key_padding_mask: optional [1, T] (bool), True = position to ignore
         """
         mel_tensor = mel_tensor.to(self.device)

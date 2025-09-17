@@ -3,6 +3,7 @@ data:
   label_dir: "../../data/train/label"
   sample_rate: 44100
   n_mels: 128
+  n_mfcc: 20
   hop_length: 512
   n_fft: 2048
 
@@ -20,7 +21,6 @@ train:
 
 model:
   num_classes: 2
-  n_mels: 128
   d_model: 192
   nhead: 8
   num_layers: 6

@@ -1,7 +1,7 @@
 from breathing_model.model.exhale_only_detection.utils import Config
 from breathing_model.model.transformer.inference.audio import AudioStream
-from breathing_model.model.transformer.inference.transform import MelSpectrogramTransform
-from breathing_model.model.transformer.inference.model_loader import BreathPhaseClassifier
+from breathing_model.model.exhale_only_detection.inference.transform import MelSpectrogramTransform
+from breathing_model.model.exhale_only_detection.inference.model_loader import BreathPhaseClassifier
 from counter import BreathCounter, BreathType
 from visualization import RealTimePlot
 import time
@@ -13,7 +13,7 @@ def main():
 
     audio = AudioStream(config.audio)
     mel_transform = MelSpectrogramTransform(config.data)
-    classifier = BreathPhaseClassifier('../best_models/best_model_epoch_7.pth', config.model)
+    classifier = BreathPhaseClassifier('../best_models/best_model_epoch_14.pth', config.model)
     counter = BreathCounter()
     plot = RealTimePlot(config)
 

@@ -26,6 +26,7 @@ class DataConfig:
     label_dir: str
     sample_rate: int
     n_mels: int
+    n_mfcc: int
     hop_length: int
     n_fft: int
 
@@ -49,7 +50,6 @@ class TrainConfig:
 @dataclass
 class ModelConfig:
     num_classes: int
-    n_mels: int
     d_model: int
     nhead: int
     num_layers: int
