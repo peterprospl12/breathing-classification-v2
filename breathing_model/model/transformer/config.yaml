@@ -6,17 +6,39 @@ data:
   hop_length: 512
   n_fft: 2048
 
+augment:
+  enabled: true
+  p_noise: 0.3
+  p_volume: 0.2
+  p_shift: 0.2
+  volume_range: [0.3, 1.0]
+  noise_factor_range: [0.00001, 0.001]
+  max_shift_seconds: 0.3
+  seed: 123456
+
 audio:
   channels: 1
-  chunk_length: 0.3
+  chunk_length: 0.2
   device_index: 1
   sample_rate: 44100
 
 train:
-  batch_size: 8
-  learning_rate: 0.0001
+  batch_size: 16
+  learning_rate: 0.0003
+  weight_decay: 0.00001
   num_epochs: 50
   patience: 6
+  save_dir: "checkpoints"
+
+scheduler:
+  type: "onecycle"   # onecycle / steplr
+  max_lr: 0.0003
+  pct_start: 0.3
+  anneal_strategy: "cos"
+  div_factor: 25
+  final_div_factor: 10000
+  step_size: 5        # tylko dla StepLR
+  gamma: 0.5          # tylko dla StepLR
 
 model:
   num_classes: 3
