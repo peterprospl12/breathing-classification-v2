@@ -11,14 +11,14 @@ from torch.nn.utils.rnn import pad_sequence
 
 import torchaudio
 
-from utils import BreathType  # <- podmień na prawidłowy import
+from utils import BreathType  
 
 
 class BreathDataset(Dataset):
     """
     Dataset for breathing sequences with on-the-fly augmentation.
-    Augmentacje: random Gaussian noise, random volume change, random time-shift.
-    Augmentacje zachowują rozmiary wynikowych mel-spectrogramów.
+    Augmentations: random Gaussian noise, random volume change, random time-shift.
+    Augmentations preserve mel-spectrogram output sizes.
     """
 
     def __init__(
@@ -223,15 +223,15 @@ def collate_fn(batch):
 
 def analyze_label_distribution(dataset: 'BreathDataset', breath_type_class=None) -> dict:
     """
-    Analizuje rozkład klas (faz oddechowych) w całym zbiorze danych.
+    Analyzes class distribution (breathing phases) in the entire dataset.
 
     Args:
-        dataset: Instancja BreathDataset
-        breath_type_class: Klasa enum z wartościami typów oddechu (np. BreathType.EXHALE = 0 itd.)
-                         Jeśli None, używane są liczby całkowite jako klucze.
+        dataset: BreathDataset instance
+        breath_type_class: Enum class with breath type values (e.g. BreathType.EXHALE = 0 etc.)
+                         If None, integers are used as keys.
 
     Returns:
-        Dict zawierający liczbę ramek i procent dla każdej klasy.
+        Dict containing frame count and percentage for each class.
     """
     from collections import Counter
 
@@ -245,7 +245,7 @@ def analyze_label_distribution(dataset: 'BreathDataset', breath_type_class=None)
             breath_type_class.SILENCE: "silence"
         }
 
-    print("Analizuję rozkład etykiet w zbiorze danych...")
+    print("Analyzing label distribution in dataset...")
     all_labels = []
 
     for i in range(len(dataset)):
@@ -253,7 +253,7 @@ def analyze_label_distribution(dataset: 'BreathDataset', breath_type_class=None)
         all_labels.extend(labels.tolist())
 
         if (i + 1) % 10 == 0:  # Informacja co 10 plików
-            print(f"Przetworzono {i + 1}/{len(dataset)} plików")
+            print(f"Processed {i + 1}/{len(dataset)} files")
 
     # Zlicz etykiety
     label_counts = Counter(all_labels)
@@ -261,7 +261,7 @@ def analyze_label_distribution(dataset: 'BreathDataset', breath_type_class=None)
 
     results = {}
     print("\n" + "=" * 50)
-    print("ROZKŁAD KLAS W DATASECIE")
+    print("DISTRIBUTION IN DATASET CLASS")
     print("=" * 50)
 
     for label_code in sorted(label_counts.keys()):
@@ -270,22 +270,22 @@ def analyze_label_distribution(dataset: 'BreathDataset', breath_type_class=None)
         percentage = (count / total_frames) * 100
         results[class_name] = {"count": count, "percentage": round(percentage, 2)}
 
-        print(f"{class_name:>10}: {count:>8} ramek ({percentage:>6.2f}%)")
+        print(f"{class_name:>10}: {count:>8} frames ({percentage:>6.2f}%)")
 
     print("-" * 50)
-    print(f"{'ŁĄCZNIE':>10}: {total_frames:>8} ramek (100.00%)")
+    print(f"{'TOTAL':>10}: {total_frames:>8} frames (100.00%)")
 
     # Ocena zrównoważenia
     percentages = [info["percentage"] for info in results.values()]
     max_diff = max(percentages) - min(percentages)
 
-    print("\n" + "OCENA ZRÓWNOWAŻENIA:")
+    print("\n" + "ASSESMENT OF BALANCE DISTRIBUTION:")
     if max_diff < 10:
-        print("✅ Bardzo dobrze zbalansowany!")
+        print("✅ Very well balanced!")
     elif max_diff < 20:
-        print("⚠️  Umiarkowanie zbalansowany")
+        print("⚠️  Moderately balanced")
     else:
-        print("❌ Słabo zbalansowany – może wymagać augmentacji lub ważonej straty")
+        print("❌ Weakly balanced – may require augmentation or focal loss")
 
     return results
 

@@ -44,8 +44,8 @@ class TrainConfig:
     learning_rate: float
     num_epochs: int
     patience: int
-    scheduler_step_size: int
-    scheduler_gamma: float
+    weight_decay: float
+    save_dir: str
 
 
 @dataclass
@@ -93,7 +93,7 @@ class Config:
     model: ModelConfig
     plot: PlotConfig
     scheduler: SchedulerConfig
-    augment: AugmentConfig   # <-- dodane
+    augment: AugmentConfig
 
     @classmethod
     def from_yaml(cls, path: str):
@@ -105,7 +105,7 @@ class Config:
         model = ModelConfig(**raw_data['model'])
         plot = PlotConfig(**raw_data['plot'])
         scheduler = SchedulerConfig(**raw_data['scheduler'])
-        augment = AugmentConfig(**raw_data['augment'])   # <-- dodane
+        augment = AugmentConfig(**raw_data['augment'])
 
         return cls(
             data=data,
@@ -125,7 +125,7 @@ class Config:
             'model': asdict(self.model),
             'plot': asdict(self.plot),
             'scheduler': asdict(self.scheduler),
-            'augment': asdict(self.augment),   # <-- dodane
+            'augment': asdict(self.augment),
         }
 
 class BreathType(IntEnum):
