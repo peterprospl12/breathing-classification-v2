@@ -1,20 +1,24 @@
-import torchaudio
-import torch
 import os
+import random
+from typing import Optional, Iterable, Tuple
+
+import numpy as np
 import pandas as pd
-from torch.utils.data import Dataset
-from typing import Iterable, Optional
+import torch
 from torch import Tensor
+from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
 
-from utils import BreathType
+import torchaudio
+
+from utils import BreathType  
 
 
 class BreathDataset(Dataset):
     """
-    Dataset for breathing sequences with variable-length audio.
-    Each element is a mel-spectrogram and a sequence of frame-level labels (0: exhale, 1: inhale, 2: silence).
-    Sequences are kept at their original length; padding is applied during batching via collate_fn.
+    Dataset for breathing sequences with on-the-fly augmentation.
+    Augmentations: random Gaussian noise, random volume change, random time-shift.
+    Augmentations preserve mel-spectrogram output sizes.
     """
 
     def __init__(
@@ -23,20 +27,19 @@ class BreathDataset(Dataset):
         label_dir: str,
         sample_rate: int = 44100,
         n_mels: int = 128,
-        n_fft: int = 2048,  # Changed from 1024 to match original pipeline
+        n_fft: int = 2048,
         hop_length: int = 512,
-        transforms: Optional[Iterable] = None
+        transforms: Optional[Iterable] = None,
+        # Augmentation params:
+        augment: bool = True,
+        p_noise: float = 0.2,
+        p_volume: float = 0.2,
+        p_shift: float = 0.2,
+        noise_factor_range: Tuple[float, float] = (1e-5, 5e-4),
+        volume_range: Tuple[float, float] = (0.5, 1.2),
+        max_shift_seconds: float = 0.1,
+        seed: Optional[int] = None,
     ):
-        """
-        Args:
-            data_dir: Path to a directory with .wav files containing audio (same base name as labels).
-            label_dir: Path to a directory with .csv files containing labels (same base name as audio).
-            sample_rate: Target sampling rate.
-            n_mels: Number of mel filters.
-            n_fft: FFT window size (larger → better frequency resolution).
-            hop_length: Hop length for STFT.
-            transforms: Optional list of transforms applied to mel spectrogram.
-        """
         self.data_dir = data_dir
         self.label_dir = label_dir
         self.sample_rate = sample_rate
@@ -45,12 +48,25 @@ class BreathDataset(Dataset):
         self.hop_length = hop_length
         self.transforms = transforms
 
+        self.augment = augment
+        self.p_noise = p_noise
+        self.p_volume = p_volume
+        self.p_shift = p_shift
+        self.noise_factor_range = noise_factor_range
+        self.volume_range = volume_range
+        self.max_shift_seconds = max_shift_seconds
+
+        if seed is not None:
+            random.seed(seed)
+            torch.manual_seed(seed)
+            np.random.seed(seed)
 
         self.mel_transform = torchaudio.transforms.MelSpectrogram(
             sample_rate=self.sample_rate,
             n_fft=self.n_fft,
             hop_length=self.hop_length,
-            n_mels=self.n_mels
+            n_mels=self.n_mels,
+            power=2.0
         )
         self.db_transform = torchaudio.transforms.AmplitudeToDB(stype='power')
 
@@ -72,45 +88,110 @@ class BreathDataset(Dataset):
             raise FileNotFoundError(f"Missing label file: {csv_path}")
 
         # Load audio
-        waveform, sr = torchaudio.load(wav_path)
+        waveform, sr = torchaudio.load(wav_path)  # shape [channels, samples]
 
         if sr != self.sample_rate:
             waveform = torchaudio.functional.resample(waveform, sr, self.sample_rate)
 
         # Convert to mono
         if waveform.shape[0] > 1:
-            waveform = waveform.mean(dim=0, keepdim=True)
+            waveform = waveform.mean(dim=0, keepdim=True)  # [1, samples]
 
-        # Compute mel-spectrogram
+        # Apply augmentation (on waveform). Returns (waveform, shift_frames)
+        shift_frames = 0
+        if self.augment:
+            waveform, shift_frames = self._maybe_augment_waveform(waveform)
+
+        # Compute mel-spectrogram (keeps shapes consistent)
         mel = self.mel_transform(waveform)  # (1, n_mels, T)
         mel = self.db_transform(mel)
 
-        # Apply optional transforms
+        # Apply optional mel transforms (e.g., normalization, SpecAugment later)
         if self.transforms:
             for transform in self.transforms:
                 mel = transform(mel)
 
-        # Parse labels
-        labels = self.__parse_intervals(csv_path, num_frames=mel.shape[-1])
+        # Parse labels aligned to mel frames (before applying shift fix)
+        num_frames = mel.shape[-1]
+        labels = self.__parse_intervals(csv_path, num_frames=num_frames)  # (num_frames,)
+
+        # If we applied time-shift, roll labels accordingly and fill rolled-in area with SILENCE
+        if shift_frames != 0:
+            # If shift_frames magnitude >= num_frames => make all silence
+            if abs(shift_frames) >= num_frames:
+                labels = torch.full((num_frames,), int(BreathType.SILENCE), dtype=torch.int64)
+            else:
+                labels = torch.roll(labels, shifts=shift_frames)
+                if shift_frames > 0:
+                    # content moved right; fill first shift_frames with SILENCE
+                    labels[:shift_frames] = int(BreathType.SILENCE)
+                else:
+                    # shift_frames < 0: content moved left; fill last abs(shift_frames) with SILENCE
+                    labels[shift_frames:] = int(BreathType.SILENCE)
 
         return mel, labels
+
+    def _maybe_augment_waveform(self, waveform: Tensor) -> Tuple[Tensor, int]:
+        """
+        Apply zero or more augmentations (noise, volume, time-shift) to the input waveform.
+        Returns (waveform, shift_frames) where shift_frames is integer number of spectrogram frames shifted.
+        """
+        # waveform: Tensor shape [1, samples], dtype float
+        x = waveform.clone()
+        shift_frames = 0
+
+        # 1) Add noise
+        if random.random() < self.p_noise:
+            f = random.uniform(self.noise_factor_range[0], self.noise_factor_range[1])
+            noise = torch.randn_like(x) * f
+            x = x + noise
+            # avoid overflow: clamp to [-1, 1] (common for audio floats)
+            x = torch.clamp(x, -1.0, 1.0)
+
+        # 2) Random volume
+        if random.random() < self.p_volume:
+            factor = random.uniform(self.volume_range[0], self.volume_range[1])
+            x = x * factor
+            x = torch.clamp(x, -1.0, 1.0)
+
+        # 3) Time shift (circular roll + zero-fill at the wrapped area to avoid wrap-around artifacts)
+        if random.random() < self.p_shift:
+            max_shift_samples = int(self.max_shift_seconds * self.sample_rate)
+            if max_shift_samples > 0:
+                shift_samples = random.randint(-max_shift_samples, max_shift_samples)
+                if shift_samples != 0:
+                    x = torch.roll(x, shifts=shift_samples, dims=-1)
+                    # zero out wrapped region
+                    if shift_samples > 0:
+                        x[..., :shift_samples] = 0.0
+                    else:
+                        x[..., shift_samples:] = 0.0
+                    # compute equivalent frame shift (rounded)
+                    shift_frames = int(np.round(shift_samples / float(self.hop_length)))
+
+        return x, shift_frames
 
     def __parse_intervals(self, csv_path: str, num_frames: int) -> Tensor:
         """
         Parse CSV file and map labels to spectrogram frames.
-        CSV columns: class, start_sample, end_sample
-        Returns: (num_frames,) tensor of labels.
+        CSV columns expected: class, start_sample, end_sample
+        Returns: (num_frames,) tensor of labels (dtype int64).
         """
         df = pd.read_csv(csv_path, header=0)
-        labels = torch.full((num_frames,), 2, dtype=torch.int64)  # Default: silence (2)
+        labels = torch.full((num_frames,), int(BreathType.SILENCE), dtype=torch.int64)
 
-        label_map = {"exhale": BreathType.EXHALE,
-                     "inhale": BreathType.INHALE,
-                     "silence": BreathType.SILENCE}
+        label_map = {
+            "exhale": int(BreathType.EXHALE),
+            "inhale": int(BreathType.INHALE),
+            "silence": int(BreathType.SILENCE)
+        }
 
         for _, row in df.iterrows():
-            start_frame = int(row['start_sample']) // self.hop_length
-            end_frame = (int(row['end_sample']) + self.hop_length - 1) // self.hop_length
+            start_sample = int(row['start_sample'])
+            end_sample = int(row['end_sample'])
+            start_frame = start_sample // self.hop_length
+            # ceil-like end_frame calculation:
+            end_frame = (end_sample + self.hop_length - 1) // self.hop_length
             end_frame = min(end_frame, num_frames)
 
             if start_frame < num_frames:
@@ -121,43 +202,99 @@ class BreathDataset(Dataset):
 
         return labels
 
-def collate_fn(batch):
-    """
-    Collate function for DataLoader to handle variable-length sequences.
-    Pads both mel-spectrograms and labels to the same length (longest in batch).
-    Returns:
-        spectrograms_batch: [batch_size, 1, n_mels, time_frames_padded]
-        labels_padded: [batch_size, time_frames_padded]
-        padding_mask: [batch_size, time_frames_padded] (bool) True where padding
-    """
-    spectrograms, labels = zip(*batch)
 
-    # Remember original lengths before padding
+def collate_fn(batch):
+    spectrograms, labels = zip(*batch)
     original_lengths = [spec.shape[-1] for spec in spectrograms]
 
-    # Convert spectrograms from shape (1, n_mels, T) -> (T, n_mels) for pad_sequence,
-    # then pad and permute back to [B, 1, n_mels, T_max], where T_max is the padded (max) length in the batch
-    spectrograms_transposed = [spectrogram.squeeze(0).permute(1, 0) for spectrogram in spectrograms]
-    spectrograms_padded = pad_sequence(spectrograms_transposed, batch_first=True, padding_value=0.0)  # [B, T_max, n_mels]
-    spectrograms_padded = spectrograms_padded.permute(0, 2, 1)  # [B, n_mels, T_max]
-    spectrograms_batch = spectrograms_padded.unsqueeze(1)  # [B, 1, n_mels, T_max]
+    spectrograms_transposed = [spec.squeeze(0).permute(1, 0) for spec in spectrograms]
+    spectrograms_padded = pad_sequence(spectrograms_transposed, batch_first=True, padding_value=0.0)
+    spectrograms_padded = spectrograms_padded.permute(0, 2, 1)
+    spectrograms_batch = spectrograms_padded.unsqueeze(1)
 
-    # Pad labels with SILENCE_LABEL
-    labels_padded = pad_sequence(labels, batch_first=True, padding_value=float(BreathType.SILENCE))  # [B, T_max]
+    labels_padded = pad_sequence(labels, batch_first=True, padding_value=int(BreathType.SILENCE))
 
-    # Build padding mask (True where silence/pad)
     max_len = spectrograms_batch.shape[-1]
-    padding_mask = torch.arange(max_len)[None, :] >= torch.tensor(original_lengths)[:, None] # [B, T_max]
+    padding_mask = torch.arange(max_len)[None, :] >= torch.tensor(original_lengths)[:, None]
 
     return spectrograms_batch, labels_padded, padding_mask
+
+
+
+def analyze_label_distribution(dataset: 'BreathDataset', breath_type_class=None) -> dict:
+    """
+    Analyzes class distribution (breathing phases) in the entire dataset.
+
+    Args:
+        dataset: BreathDataset instance
+        breath_type_class: Enum class with breath type values (e.g. BreathType.EXHALE = 0 etc.)
+                         If None, integers are used as keys.
+
+    Returns:
+        Dict containing frame count and percentage for each class.
+    """
+    from collections import Counter
+
+    if breath_type_class is None:
+        # Domyślne nazwy, jeśli brak BreathType
+        reverse_map = {0: "exhale", 1: "inhale", 2: "silence"}
+    else:
+        reverse_map = {
+            breath_type_class.EXHALE: "exhale",
+            breath_type_class.INHALE: "inhale",
+            breath_type_class.SILENCE: "silence"
+        }
+
+    print("Analyzing label distribution in dataset...")
+    all_labels = []
+
+    for i in range(len(dataset)):
+        _, labels = dataset[i]
+        all_labels.extend(labels.tolist())
+
+        if (i + 1) % 10 == 0:  # Informacja co 10 plików
+            print(f"Processed {i + 1}/{len(dataset)} files")
+
+    # Zlicz etykiety
+    label_counts = Counter(all_labels)
+    total_frames = sum(label_counts.values())
+
+    results = {}
+    print("\n" + "=" * 50)
+    print("DISTRIBUTION IN DATASET CLASS")
+    print("=" * 50)
+
+    for label_code in sorted(label_counts.keys()):
+        class_name = reverse_map.get(label_code, f"Unknown_{label_code}")
+        count = label_counts[label_code]
+        percentage = (count / total_frames) * 100
+        results[class_name] = {"count": count, "percentage": round(percentage, 2)}
+
+        print(f"{class_name:>10}: {count:>8} frames ({percentage:>6.2f}%)")
+
+    print("-" * 50)
+    print(f"{'TOTAL':>10}: {total_frames:>8} frames (100.00%)")
+
+    # Ocena zrównoważenia
+    percentages = [info["percentage"] for info in results.values()]
+    max_diff = max(percentages) - min(percentages)
+
+    print("\n" + "ASSESMENT OF BALANCE DISTRIBUTION:")
+    if max_diff < 10:
+        print("✅ Very well balanced!")
+    elif max_diff < 20:
+        print("⚠️  Moderately balanced")
+    else:
+        print("❌ Weakly balanced – may require augmentation or focal loss")
+
+    return results
+
 
 if __name__ == '__main__':
     deprecated_data_dir = "../../archive/data-sequences"
     deprecated_label_dir = "../../archive/data-sequences"
     data_dir = "../../data/train/raw"
     label_dir = "../../data/train/label"
-    dataset = iter(BreathDataset(data_dir,label_dir))
+    dataset = BreathDataset(data_dir,label_dir, augment=False)
 
-    for item, label in dataset:
-         #print(item,item.shape,label, label.shape)
-        pass
+    analyze_label_distribution(dataset)

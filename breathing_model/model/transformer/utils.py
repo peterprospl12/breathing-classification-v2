@@ -44,6 +44,8 @@ class TrainConfig:
     learning_rate: float
     num_epochs: int
     patience: int
+    weight_decay: float
+    save_dir: str
 
 
 @dataclass
@@ -60,6 +62,28 @@ class PlotConfig:
     history_seconds: int
     update_interval: float
 
+@dataclass
+class SchedulerConfig:
+    type: str
+    max_lr: float = 3e-4
+    pct_start: float = 0.3
+    anneal_strategy: str = "cos"
+    div_factor: int = 25
+    final_div_factor: int = 10000
+    step_size: int = 5
+    gamma: float = 0.5
+
+@dataclass
+class AugmentConfig:
+    enabled: bool
+    p_noise: float
+    p_volume: float
+    p_shift: float
+    volume_range: tuple[float, float]
+    noise_factor_range: tuple[float, float]
+    max_shift_seconds: float
+    seed: int
+
 
 @dataclass
 class Config:
@@ -68,19 +92,30 @@ class Config:
     train: TrainConfig
     model: ModelConfig
     plot: PlotConfig
+    scheduler: SchedulerConfig
+    augment: AugmentConfig
 
     @classmethod
     def from_yaml(cls, path: str):
         raw_data = load_yaml(path)
 
-        # Build each sub-config
         data = DataConfig(**raw_data['data'])
         audio = AudioConfig(**raw_data['audio'])
         train = TrainConfig(**raw_data['train'])
         model = ModelConfig(**raw_data['model'])
         plot = PlotConfig(**raw_data['plot'])
+        scheduler = SchedulerConfig(**raw_data['scheduler'])
+        augment = AugmentConfig(**raw_data['augment'])
 
-        return cls(data=data, audio=audio, train=train, model=model, plot=plot)
+        return cls(
+            data=data,
+            audio=audio,
+            train=train,
+            model=model,
+            plot=plot,
+            scheduler=scheduler,
+            augment=augment
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -88,8 +123,10 @@ class Config:
             'audio': asdict(self.audio),
             'train': asdict(self.train),
             'model': asdict(self.model),
+            'plot': asdict(self.plot),
+            'scheduler': asdict(self.scheduler),
+            'augment': asdict(self.augment),
         }
-
 
 class BreathType(IntEnum):
     EXHALE = 0
