@@ -130,21 +130,18 @@ class Config:
 
 class BreathType(IntEnum):
     EXHALE = 0
-    INHALE = 1
-    SILENCE = 2
+    OTHER = 1
 
     def get_label(self):
         labels = {
             self.EXHALE: "exhale",
-            self.INHALE: "inhale",
-            self.SILENCE: "silence"
+            self.OTHER: "other"
         }
         return labels[self]
 
     def get_color(self):
         colors = {
             self.EXHALE: 'green',
-            self.INHALE: 'red',
-            self.SILENCE: 'blue'
+            self.OTHER: 'blue'
         }
         return colors[self]

@@ -1,10 +1,10 @@
-from breathing_model.model.transformer.utils import Config
-from audio import AudioStream
-from transform import MelSpectrogramTransform
+from breathing_model.model.exhale_only_detection.utils import Config
+from breathing_model.model.transformer.inference.audio import AudioStream
+from breathing_model.model.transformer.inference.transform import MelSpectrogramTransform
 from model_loader import BreathPhaseClassifier
 from counter import BreathCounter, BreathType
 from visualization import RealTimePlot
-from audio_buffer import AudioBuffer
+from breathing_model.model.transformer.inference.audio_buffer import AudioBuffer
 import time
 import logging
 
@@ -14,7 +14,7 @@ def main():
 
     audio = AudioStream(config.audio)
     mel_transform = MelSpectrogramTransform(config.data)
-    classifier = BreathPhaseClassifier('../../trained_models/augmented_data_model/best_model_epoch_31.pth', config.model, config.data)
+    classifier = BreathPhaseClassifier('../best_models/best_model_epoch_21.pth', config.model, config.data)
     counter = BreathCounter()
     plot = RealTimePlot(config)
     buffer = AudioBuffer(config.audio.sample_rate, 3.5)
@@ -37,7 +37,7 @@ def main():
             plot.update(raw_audio, pred_class)
 
             print(f"Pred: {BreathType(pred_class).get_label()} | Prob: {probs.round(3)} | "
-                  f"Counters: Inhale={counter.inhale}, Exhale={counter.exhale} | "
+                  f"Counters: Exhale={counter.exhale} | "
                   f"Time: {time.time() - start_time:.3f}s")
 
     except KeyboardInterrupt:

@@ -2,8 +2,8 @@ from typing import Optional, Tuple
 
 import torch
 import numpy as np
-from breathing_model.model.transformer.model import BreathPhaseTransformerSeq
-from breathing_model.model.transformer.utils import ModelConfig, DataConfig
+from breathing_model.model.exhale_only_detection.model import BreathPhaseTransformerSeq
+from breathing_model.model.exhale_only_detection.utils import ModelConfig, DataConfig
 
 
 class BreathPhaseClassifier:

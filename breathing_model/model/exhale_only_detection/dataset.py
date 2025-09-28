@@ -119,15 +119,15 @@ class BreathDataset(Dataset):
         if shift_frames != 0:
             # If shift_frames magnitude >= num_frames => make all silence
             if abs(shift_frames) >= num_frames:
-                labels = torch.full((num_frames,), int(BreathType.SILENCE), dtype=torch.int64)
+                labels = torch.full((num_frames,), int(BreathType.OTHER), dtype=torch.int64)
             else:
                 labels = torch.roll(labels, shifts=shift_frames)
                 if shift_frames > 0:
                     # content moved right; fill first shift_frames with SILENCE
-                    labels[:shift_frames] = int(BreathType.SILENCE)
+                    labels[:shift_frames] = int(BreathType.OTHER)
                 else:
                     # shift_frames < 0: content moved left; fill last abs(shift_frames) with SILENCE
-                    labels[shift_frames:] = int(BreathType.SILENCE)
+                    labels[shift_frames:] = int(BreathType.OTHER)
 
         return mel, labels
 
@@ -178,12 +178,12 @@ class BreathDataset(Dataset):
         Returns: (num_frames,) tensor of labels (dtype int64).
         """
         df = pd.read_csv(csv_path, header=0)
-        labels = torch.full((num_frames,), int(BreathType.SILENCE), dtype=torch.int64)
+        labels = torch.full((num_frames,), int(BreathType.OTHER), dtype=torch.int64)
 
         label_map = {
             "exhale": int(BreathType.EXHALE),
-            "inhale": int(BreathType.INHALE),
-            "silence": int(BreathType.SILENCE)
+            "inhale": int(BreathType.OTHER),
+            "silence": int(BreathType.OTHER)
         }
 
         for _, row in df.iterrows():
@@ -212,7 +212,7 @@ def collate_fn(batch):
     spectrograms_padded = spectrograms_padded.permute(0, 2, 1)
     spectrograms_batch = spectrograms_padded.unsqueeze(1)
 
-    labels_padded = pad_sequence(labels, batch_first=True, padding_value=int(BreathType.SILENCE))
+    labels_padded = pad_sequence(labels, batch_first=True, padding_value=int(BreathType.OTHER))
 
     max_len = spectrograms_batch.shape[-1]
     padding_mask = torch.arange(max_len)[None, :] >= torch.tensor(original_lengths)[:, None]
@@ -237,12 +237,11 @@ def analyze_label_distribution(dataset: 'BreathDataset', breath_type_class=None)
 
     if breath_type_class is None:
         # Domyślne nazwy, jeśli brak BreathType
-        reverse_map = {0: "exhale", 1: "inhale", 2: "silence"}
+        reverse_map = {0: "exhale", 1: "other"}
     else:
         reverse_map = {
             breath_type_class.EXHALE: "exhale",
-            breath_type_class.INHALE: "inhale",
-            breath_type_class.SILENCE: "silence"
+            breath_type_class.OTHER: "other"
         }
 
     print("Analyzing label distribution in dataset...")

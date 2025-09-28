@@ -43,7 +43,7 @@ class BreathPhaseTransformerSeq(nn.Module):
                  d_model: int = 192,
                  nhead: int = 8,
                  num_layers: int = 6,
-                 num_classes: int = 3):
+                 num_classes: int = 2):
         super().__init__()
 
         self.conv_layers = self._build_cnn_layers()

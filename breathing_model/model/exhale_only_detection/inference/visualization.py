@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from breathing_model.model.transformer.inference.counter import BreathType
-from breathing_model.model.transformer.utils import Config
+from breathing_model.model.exhale_only_detection.inference.counter import BreathType
+from breathing_model.model.exhale_only_detection.utils import Config
 
 
 class RealTimePlot:
@@ -11,7 +11,7 @@ class RealTimePlot:
         self.history_samples = int(config.audio.sample_rate * config.plot.history_seconds)
         self.chunk_size = int(config.audio.sample_rate * config.audio.chunk_length)
         self.buffer = np.zeros(self.history_samples)
-        self.predictions = np.full(self.history_samples // self.chunk_size, 2, dtype=int)
+        self.predictions = np.full(self.history_samples // self.chunk_size, 1, dtype=int)
 
         self.fig, self.ax = plt.subplots(1, 1, figsize=(12, 6))
         self.fig.canvas.manager.set_window_title("Breath phase detector")
@@ -33,7 +33,7 @@ class RealTimePlot:
 
     def reset_data(self):
         self.buffer.fill(0)
-        self.predictions.fill(2)
+        self.predictions.fill(1)
 
     def update(self, audio_chunk: np.ndarray, prediction: int):
         self.buffer = np.roll(self.buffer, -len(audio_chunk))

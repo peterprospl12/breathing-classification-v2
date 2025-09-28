@@ -41,7 +41,7 @@ scheduler:
   gamma: 0.5          # tylko dla StepLR
 
 model:
-  num_classes: 3
+  num_classes: 2
   n_mels: 128
   d_model: 192
   nhead: 8
