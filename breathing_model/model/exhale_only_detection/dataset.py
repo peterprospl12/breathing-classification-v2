@@ -278,7 +278,7 @@ def analyze_label_distribution(dataset: 'BreathDataset', breath_type_class=None)
     percentages = [info["percentage"] for info in results.values()]
     max_diff = max(percentages) - min(percentages)
 
-    print("\n" + "ASSESMENT OF BALANCE DISTRIBUTION:")
+    print("\n" + "ASSESSMENT OF BALANCE DISTRIBUTION:")
     if max_diff < 10:
         print("✅ Very well balanced!")
     elif max_diff < 20:

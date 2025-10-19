@@ -33,7 +33,7 @@ class PositionalEncoding(nn.Module):
 class BreathPhaseTransformerSeq(nn.Module):
     """
     Transformer model that classifies each spectrogram frame into two classes:
-    0 = exhale, 1 = inhale, 2 = silence.
+    0 = exhale, 1 = other (inhale or silence).
 
     Forward accepts src_key_padding_mask with shape [batch_size, time_frames] (bool),
     where True indicates a padded frame that should be ignored by attention.

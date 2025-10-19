@@ -34,7 +34,7 @@ def parse_label_csv(csv_path: str) -> list[dict]:
     labels = []
     with open(csv_path, 'r') as f:
         reader = csv.reader(f)
-        _ = next(reader)  # skip
+        _ = next(reader)  # skip header
         for row in reader:
             if len(row) < 3:
                 continue
