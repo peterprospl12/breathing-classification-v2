@@ -172,7 +172,7 @@ class BreathingRecorder:
         # Save WAV
         wf = wave.open(wav_path, 'wb')
         wf.setnchannels(CHANNELS)
-        wf.setsampwidth(self.audio.audio_client.get_sample_size(FORMAT))
+        wf.setsampwidth(self.audio.p.get_sample_size(FORMAT))
         wf.setframerate(RATE)
         wf.writeframes(b''.join(self.frames))
         wf.close()
@@ -192,6 +192,12 @@ class BreathingRecorder:
         print(f"✅ SAVED EXACT: {file_prefix}_{timestamp} ({self.current_sample} samples)")
         print(f"    Audio: {wav_path}")
         print(f"    Labels: {csv_path}")
+
+    def stop_recording(self):
+        if self.recording:
+            self.save_sequence()
+            self.recording = False
+            print("Recording stopped.")
 
 
 def pygame_thread(recorder, means_of_usage):
@@ -293,7 +299,7 @@ if __name__ == "__main__":
     audio = SharedAudioResource()
     MODE = NoseMouth.Nose
     MICROPHONEQUALITY = MicrophoneQuality.Medium
-    PERSONNAME = "Piotr"
+    PERSONNAME = "iwo"
     MEANSOFUSAGE = DataMeansOfUsage.Training
     recorder = BreathingRecorder(audio, MODE, MICROPHONEQUALITY, PERSONNAME, MEANSOFUSAGE)
 

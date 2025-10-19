@@ -3,18 +3,21 @@ from typing import Optional, Tuple
 import torch
 import numpy as np
 from breathing_model.model.transformer.model import BreathPhaseTransformerSeq
-from breathing_model.model.transformer.utils import ModelConfig
+from breathing_model.model.transformer.utils import ModelConfig, DataConfig
 
 
 class BreathPhaseClassifier:
     def __init__(self,
                  model_path: str,
-                 config: ModelConfig,
+                 model_config: ModelConfig,
+                 data_config: DataConfig,
                  device: Optional[torch.device] = None,
                  strict: bool = True):
         self.device = device if device else torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.config = config
-        self.model = self._load_model(model_path, config, strict)
+        self.model_config = model_config
+        self.model = self._load_model(model_path, model_config, strict)
+
+        self.last_mel_frames = int(0.2 * data_config.sample_rate / data_config.hop_length)
 
     def _load_model(self,
                     model_path: str,
@@ -58,11 +61,13 @@ class BreathPhaseClassifier:
         probs_np = probs.squeeze(0).cpu().numpy()  # [T, C]
         if probs_np.shape[0] == 0:
             # Empty sequence: return a uniform distribution
-            num_classes = self.config.num_classes
+            num_classes = self.model_config.num_classes
             return np.array([], dtype=int), np.full((num_classes,), 1.0 / num_classes, dtype=float)
 
-        frame_preds = probs_np.argmax(axis=1)  # [T]
-        mean_probs = probs_np.mean(axis=0)     # [C]
+        recent_probs = probs_np[-self.last_mel_frames:]
+
+        frame_preds = recent_probs.argmax(axis=1)  # [T]
+        mean_probs = recent_probs.mean(axis=0)     # [C]
         return frame_preds, mean_probs
 
     @torch.no_grad()

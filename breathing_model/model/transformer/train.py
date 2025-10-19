@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
 from typing import Tuple
 
 import torch
@@ -16,7 +19,8 @@ def run_train_epoch(model: nn.Module,
                     data_loader: DataLoader,
                     loss_function: nn.Module,
                     optimizer: optim.Optimizer,
-                    device: torch.device):
+                    device: torch.device,
+                    scheduler):
     model.train()
 
     total_loss_weighted = 0.0
@@ -54,6 +58,8 @@ def run_train_epoch(model: nn.Module,
         # Backprop and optimizer step
         batch_loss.backward()
         optimizer.step()
+        if scheduler is not None and isinstance(scheduler, torch.optim.lr_scheduler.OneCycleLR):
+            scheduler.step()
 
         # Accumulate weighted loss
         total_loss_weighted += batch_loss_value * valid_frames_in_batch
@@ -119,7 +125,7 @@ def train_model(model: nn.Module,
                 device: torch.device,
                 num_epochs: int,
                 optimizer: optim.Optimizer,
-                scheduler: optim.lr_scheduler._LRScheduler,
+                scheduler,
                 save_directory: str,
                 patience: int = 6) -> None:
     """
@@ -132,14 +138,14 @@ def train_model(model: nn.Module,
     epochs_since_improvement = 0
 
     for epoch in range(1, num_epochs + 1):
-        train_loss, train_accuracy = run_train_epoch(model, train_loader, loss_function, optimizer, device)
+        train_loss, train_accuracy = run_train_epoch(model, train_loader, loss_function, optimizer, device, scheduler)
         print(f"Epoch {epoch} / {num_epochs} - Train Loss: {train_loss:.6f} | Train Acc: {train_accuracy:.4f}")
 
         val_loss, val_accuracy = run_validation_epoch(model, val_loader, loss_function, device)
         print(f"Epoch {epoch} / {num_epochs} - Val   Loss: {val_loss:.6f} | Val   Acc: {val_accuracy:.4f}")
 
         # Step scheduler (if provided)
-        if scheduler is not None:
+        if scheduler is not None and isinstance(scheduler, torch.optim.lr_scheduler.StepLR):
             scheduler.step()
 
         # Checkpointing based on validation loss
@@ -165,75 +171,108 @@ def train_model(model: nn.Module,
     print("Training finished.")
 
 
-if __name__ == "__main__":
-    # Load config (YAML)
+def main():
+    # === Load config ===
     config = load_yaml("./config.yaml")
 
-    # Device selection
+    # === Device ===
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {'cuda' if device.type == 'cuda' else 'cpu'}")
+    print(f"Using device: {device}")
 
-    # Create dataset and split
+    # === Dataset ===
     dataset = BreathDataset(
         data_dir=config['data']['data_dir'],
         label_dir=config['data']['label_dir'],
-        sample_rate=config['data'].get('sample_rate', 44100),
-        n_mels=config['model'].get('n_mels', 128),
-        n_fft=config['data'].get('n_fft', 2048),
-        hop_length=config['data'].get('hop_length', 512),
+        sample_rate=config['data']['sample_rate'],
+        n_mels=config['data']['n_mels'],
+        n_fft=config['data']['n_fft'],
+        hop_length=config['data']['hop_length'],
+        augment=config['augment']['enabled'],
+        p_noise=config['augment']['p_noise'],
+        p_volume=config['augment']['p_volume'],
+        p_shift=config['augment']['p_shift'],
+        volume_range=tuple(config['augment']['volume_range']),
+        noise_factor_range=tuple(config['augment']['noise_factor_range']),
+        max_shift_seconds=config['augment']['max_shift_seconds'],
+        seed=config['augment']['seed']
     )
 
     train_dataset, val_dataset = split_dataset(dataset)
 
-    # DataLoader
-    batch_size = config['train'].get('batch_size', 8)
-    num_workers = config['train'].get('num_workers', 4)
-    pin_memory_flag = True if device.type == 'cuda' else False
+    # === DataLoaders ===
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=config['train']['batch_size'],
+        shuffle=True,
+        collate_fn=collate_fn,
+        drop_last=True,
+        num_workers=4,
+        pin_memory=device.type == 'cuda'
+    )
 
-    train_loader = DataLoader(train_dataset,
-                              batch_size=batch_size,
-                              shuffle=True,
-                              collate_fn=collate_fn,
-                              drop_last=True,
-                              num_workers=num_workers,
-                              pin_memory=pin_memory_flag)
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config['train']['batch_size'],
+        shuffle=False,
+        collate_fn=collate_fn,
+        drop_last=False,
+        num_workers=4,
+        pin_memory=device.type == 'cuda'
+    )
 
-    val_loader = DataLoader(val_dataset,
-                            batch_size=batch_size,
-                            shuffle=False,
-                            collate_fn=collate_fn,
-                            drop_last=False,
-                            num_workers=num_workers,
-                            pin_memory=pin_memory_flag)
-
-    # Model instantiation: force 2 classes (exhale=0, inhale=1)
+    # === Model ===
     model = BreathPhaseTransformerSeq(
-        n_mels=config['model'].get('n_mels', 128),
-        d_model=config['model'].get('d_model', 192),
-        nhead=config['model'].get('nhead', 8),
-        num_layers=config['model'].get('num_layers', 6),
-        num_classes=config['model'].get('num_classes', 3)
+        n_mels=config['model']['n_mels'],
+        d_model=config['model']['d_model'],
+        nhead=config['model']['nhead'],
+        num_layers=config['model']['num_layers'],
+        num_classes=config['model']['num_classes']
     ).to(device)
 
-    # Optimizer & scheduler
-    learning_rate = config['train'].get('learning_rate', 1e-3)
-    weight_decay = config['train'].get('weight_decay', 1e-5)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    scheduler_step_size = config['train'].get('scheduler_step_size', 10)
-    scheduler_gamma = config['train'].get('scheduler_gamma', 0.5)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step_size, gamma=scheduler_gamma)
+    # === Optimizer ===
+    optimizer = optim.Adam(
+        model.parameters(),
+        lr=config['train']['learning_rate'],
+        weight_decay=config['train']['weight_decay']
+    )
 
-    # Train
-    num_epochs = config['train'].get('num_epochs', 50)
-    patience = config['train'].get('patience', 6)
-    save_directory = config['train'].get('save_dir', 'checkpoints')
+    # === Scheduler ===
+    scheduler_cfg = config['scheduler']
+    scheduler_type = scheduler_cfg['type'].lower()
 
-    train_model(model=model,
-                train_loader=train_loader,
-                val_loader=val_loader,
-                device=device,
-                num_epochs=num_epochs,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                save_directory=save_directory,
-                patience=patience)
+    if scheduler_type == "onecycle":
+        scheduler = optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=scheduler_cfg['max_lr'],
+            epochs=config['train']['num_epochs'],
+            steps_per_epoch=len(train_loader),
+            pct_start=scheduler_cfg['pct_start'],
+            anneal_strategy=scheduler_cfg['anneal_strategy'],
+            div_factor=scheduler_cfg['div_factor'],
+            final_div_factor=scheduler_cfg['final_div_factor'],
+        )
+    elif scheduler_type == "steplr":
+        scheduler = optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=scheduler_cfg['step_size'],
+            gamma=scheduler_cfg['gamma']
+        )
+    else:
+        scheduler = None
+
+    # === Training ===
+    train_model(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        device=device,
+        num_epochs=config['train']['num_epochs'],
+        optimizer=optimizer,
+        scheduler=scheduler,
+        save_directory=config['train']['save_dir'],
+        patience=config['train']['patience']
+    )
+
+
+if __name__ == "__main__":
+    main()

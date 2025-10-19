@@ -4,6 +4,7 @@ from transform import MelSpectrogramTransform
 from model_loader import BreathPhaseClassifier
 from counter import BreathCounter, BreathType
 from visualization import RealTimePlot
+from audio_buffer import AudioBuffer
 import time
 import logging
 
@@ -13,9 +14,10 @@ def main():
 
     audio = AudioStream(config.audio)
     mel_transform = MelSpectrogramTransform(config.data)
-    classifier = BreathPhaseClassifier('../checkpoints/best_model_epoch_16.pth', config.model)
+    classifier = BreathPhaseClassifier('../../trained_models/augmented_data_model/best_model_epoch_31.pth', config.model, config.data)
     counter = BreathCounter()
     plot = RealTimePlot(config)
+    buffer = AudioBuffer(config.audio.sample_rate, 3.5)
 
     try:
         while True:
@@ -25,7 +27,10 @@ def main():
             if raw_audio is None:
                 time.sleep(config.audio.chunk_length)
 
-            mel = mel_transform(raw_audio)
+            buffer.append(raw_audio)
+            buf_audio = buffer.get()
+
+            mel = mel_transform(buf_audio)
             pred_class, probs = classifier.predict(mel)
 
             counter.update(pred_class)
