@@ -18,7 +18,7 @@ class RealTimePlot:
         self.fig.suptitle("Live Breath Detection (Space: quit, R: reset)")
 
         self.ax.set_facecolor('black')
-        self.ax.set_ylim(-500, 500)
+        self.ax.set_ylim(-0.25, 0.25)
         self.ax.set_xlim(0, self.history_samples)
         self.ax.axis('off')
 
@@ -44,7 +44,7 @@ class RealTimePlot:
 
         self.ax.clear()
         self.ax.set_facecolor('black')
-        self.ax.set_ylim(-500, 500)
+        self.ax.set_ylim(-0.25, 0.25)
         self.ax.set_xlim(0, self.history_samples)
         self.ax.axis('off')
 
