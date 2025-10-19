@@ -9,27 +9,19 @@ from breathing_model.model.transformer.utils import Config, BreathType
 from breathing_model.model.transformer.inference.transform import MelSpectrogramTransform
 from breathing_model.model.transformer.inference.model_loader import BreathPhaseClassifier
 
-# =============================================================================
-# USTAWIENIA (zmień tutaj – brak argparse)
-# =============================================================================
-CONFIG_PATH = 'config.yaml'  # ścieżka do config.yaml (relatywnie do tego pliku)
-MODEL_PATH = 'checkpoints/best_model_epoch_30.pth'  # domyślny checkpoint (zmień jeśli inny)
-WAV_DIR_OVERRIDE = '../../data/eval/raw'            # jeśli None -> użyje config.data.data_dir
-LABEL_DIR_OVERRIDE = '../../data/eval/label'        # jeśli None -> użyje config.data.label_dir
-OUTPUT_DIR = 'offline_plots'                       # katalog na wykresy wynikowe
-BUFFER_SECONDS = 3.5                                # długość ruchomego bufora (sekundy)
-LIMIT_WAV = None                                    # np. 5 aby ograniczyć liczbę przetwarzanych plików
-MIN_CHUNK_SAMPLES_SKIP = 0                          # pomiń chunk jeśli krótszy niż ten próg (0 = wyłączone)
-NORMALIZE_AUDIO_FOR_PLOT = False                    # jeśli True normalizuje amplitudy do [-1,1] tylko dla rysunku
-PRINT_PROBS = False                                 # jeśli True wypisuje również średnie prawdopodobieństwa
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# Funkcje pomocnicze
-# -----------------------------------------------------------------------------
+CONFIG_PATH = 'config.yaml'
+MODEL_PATH = 'checkpoints/best_model_epoch_30.pth'
+WAV_DIR_OVERRIDE = '../../data/eval/raw'
+LABEL_DIR_OVERRIDE = '../../data/eval/label'
+OUTPUT_DIR = 'offline_plots'
+BUFFER_SECONDS = 3.5
+LIMIT_WAV = None
+MIN_CHUNK_SAMPLES_SKIP = 0
+NORMALIZE_AUDIO_FOR_PLOT = False
+PRINT_PROBS = False
 
 def load_audio(wav_path: str, target_sr: int) -> np.ndarray:
-    """Wczytaj plik WAV -> mono float32 przy zadanym sample_rate."""
+    """Load WAV file, convert to mono float32 numpy array at target_sr."""
     waveform, sr = torchaudio.load(wav_path)
     if sr != target_sr:
         waveform = torchaudio.functional.resample(waveform, sr, target_sr)
@@ -39,12 +31,12 @@ def load_audio(wav_path: str, target_sr: int) -> np.ndarray:
 
 
 def parse_label_csv(csv_path: str) -> list[dict]:
-    """CSV z kolumnami: class,start_sample,end_sample -> lista słowników."""
+    """Parse CSV with columns: class,start_sample,end_sample"""
     import csv
     labels = []
     with open(csv_path, 'r') as f:
         reader = csv.reader(f)
-        header = next(reader, None)
+        _ = next(reader, None)
         for row in reader:
             if len(row) < 3:
                 continue
@@ -59,23 +51,18 @@ def parse_label_csv(csv_path: str) -> list[dict]:
 
 
 def label_to_breath_type(label: str) -> BreathType:
-    """Mapowanie pełnych etykiet (exhale/inhale/silence) na enum BreathType."""
+    """Map dataset labels to BreathType (EXHALE / OTHER)."""
     if label == 'exhale':
         return BreathType.EXHALE
     if label == 'inhale':
         return BreathType.INHALE
     if label == 'silence':
         return BreathType.SILENCE
-    # Nieznane traktujemy jako SILENCE (najbardziej neutralne)
     return BreathType.SILENCE
 
 
 def get_color(bt: BreathType) -> str:
     return bt.get_color()
-
-# -----------------------------------------------------------------------------
-# Główna logika offline (symulacja trybu realtime chunk po chunku)
-# -----------------------------------------------------------------------------
 
 def process_file(wav_path: str,
                  csv_path: str,
@@ -86,7 +73,6 @@ def process_file(wav_path: str,
                  output_dir: str) -> None:
     base_name = os.path.splitext(os.path.basename(wav_path))[0]
 
-    # 1. Audio
     audio = load_audio(wav_path, config.data.sample_rate)
     n_samples = audio.shape[0]
     sr = config.data.sample_rate
@@ -96,10 +82,8 @@ def process_file(wav_path: str,
     else:
         audio_for_plot = audio
 
-    # 2. Ground truth etykiety
     labels = parse_label_csv(csv_path)
 
-    # 3. Symulacja strumienia
     chunk_size = int(config.audio.chunk_length * sr)
     max_buffer = int(buffer_seconds * sr)
     audio_buffer = deque(maxlen=max_buffer)
@@ -124,7 +108,6 @@ def process_file(wav_path: str,
         if PRINT_PROBS:
             print(f"Chunk {start}:{end} -> pred={BreathType(pred_cls).name} probs={probs.round(3)}")
 
-    # 4. Ground truth segmenty (mapowanie na BreathType)
     gt_segments: list[dict] = []
     for lab in labels:
         s = max(0, lab['start'])
@@ -133,13 +116,11 @@ def process_file(wav_path: str,
             continue
         gt_segments.append({'start': s, 'end': e, 'cls': label_to_breath_type(lab['class'])})
 
-    # 5. Wykresy
     time_axis = np.arange(n_samples) / sr
 
     fig, (ax_gt, ax_pred) = plt.subplots(2, 1, figsize=(15, 9), sharex=True)
     fig.suptitle(f"Offline comparison (transformer): {base_name}")
 
-    # GT
     ax_gt.set_title('Ground truth labels')
     ax_gt.set_ylabel('Amplitude')
     for seg in gt_segments:
@@ -147,7 +128,6 @@ def process_file(wav_path: str,
                    audio_for_plot[seg['start']:seg['end']],
                    color=get_color(seg['cls']))
 
-    # Predictions
     ax_pred.set_title('Model predictions (streaming simulation)')
     ax_pred.set_xlabel('Time [s]')
     ax_pred.set_ylabel('Amplitude')
@@ -160,7 +140,6 @@ def process_file(wav_path: str,
                      audio_for_plot[seg['start']:seg['end']],
                      color=get_color(btype))
 
-    # Legenda
     custom_lines = [
         Line2D([0], [0], color=BreathType.EXHALE.get_color(), lw=2),
         Line2D([0], [0], color=BreathType.INHALE.get_color(), lw=2),
@@ -175,10 +154,6 @@ def process_file(wav_path: str,
     plt.savefig(out_path)
     plt.close(fig)
     print(f"Saved plot: {out_path}")
-
-# -----------------------------------------------------------------------------
-# Uruchomienie
-# -----------------------------------------------------------------------------
 
 def run():
     config = Config.from_yaml(CONFIG_PATH)

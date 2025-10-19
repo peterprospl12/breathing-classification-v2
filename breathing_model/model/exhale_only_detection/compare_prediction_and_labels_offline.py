@@ -9,22 +9,14 @@ from breathing_model.model.exhale_only_detection.utils import Config, BreathType
 from breathing_model.model.transformer.inference.transform import MelSpectrogramTransform
 from breathing_model.model.exhale_only_detection.inference.model_loader import BreathPhaseClassifier
 
-# =============================================================================
-# USTAWIENIA (zmień tutaj zamiast podawania w terminalu)
-# =============================================================================
-CONFIG_PATH = 'config.yaml'                 # ścieżka do config.yaml
-MODEL_PATH = 'best_models/best_model_epoch_21.pth'  # checkpoint modelu
-WAV_DIR_OVERRIDE = '../../data/eval/raw'                      # jeśli None -> użyje config.data.data_dir
-LABEL_DIR_OVERRIDE = '../../data/eval/label'                     # jeśli None -> użyje config.data.label_dir
-OUTPUT_DIR = 'offline_plots'                 # katalog na wykresy
-BUFFER_SECONDS = 3.5                         # długość bufora przesuwnego (sekundy)
-LIMIT_WAV = None                             # np. 5 aby ograniczyć liczbę plików, None = wszystkie
-MIN_CHUNK_SAMPLES_SKIP = 0                   # ew. próg minimalny chunku do klasyfikacji
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# Helper functions
-# -----------------------------------------------------------------------------
+CONFIG_PATH = 'config.yaml'
+MODEL_PATH = 'best_models/best_model_epoch_21.pth'
+WAV_DIR_OVERRIDE = '../../data/eval/raw'
+LABEL_DIR_OVERRIDE = '../../data/eval/label'
+OUTPUT_DIR = 'offline_plots'
+BUFFER_SECONDS = 3.5
+LIMIT_WAV = None
+MIN_CHUNK_SAMPLES_SKIP = 0
 
 def load_audio(wav_path: str, target_sr: int) -> np.ndarray:
     """Load WAV file, convert to mono float32 numpy array at target_sr."""
@@ -69,12 +61,8 @@ def label_to_breath_type(label: str) -> BreathType:
 
 
 def get_color(btype: BreathType) -> str:
-    # ...existing code...
     return btype.get_color()
 
-# -----------------------------------------------------------------------------
-# Core offline comparison logic
-# -----------------------------------------------------------------------------
 
 def process_file(wav_path: str,
                  csv_path: str,
@@ -111,7 +99,7 @@ def process_file(wav_path: str,
         buf_np = np.array(audio_buffer, dtype=np.float32)
         if buf_np.size == 0:
             continue
-        # 4. Mel spectrogram & classification (same as in main.py)
+        # Mel spectrogram & classification (same as in main.py)
         mel = mel_transform(buf_np)
         pred_cls, _ = classifier.predict(mel)
         predicted_segments.append({'start': start, 'end': end, 'pred': pred_cls})
@@ -168,10 +156,6 @@ def process_file(wav_path: str,
     plt.savefig(out_path)
     plt.close(fig)
     print(f"Saved plot: {out_path}")
-
-# -----------------------------------------------------------------------------
-# RUN (bez argparse)
-# -----------------------------------------------------------------------------
 
 def run():
     config = Config.from_yaml(CONFIG_PATH)
