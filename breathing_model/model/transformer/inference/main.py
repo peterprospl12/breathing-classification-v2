@@ -14,7 +14,7 @@ def main():
 
     audio = AudioStream(config.audio)
     mel_transform = MelSpectrogramTransform(config.data)
-    classifier = BreathPhaseClassifier('../../trained_models/augmented_data_model/best_model_epoch_31.pth', config.model, config.data)
+    classifier = BreathPhaseClassifier('../best_models/best_model_epoch_31.pth', config.model, config.data)
     counter = BreathCounter()
     plot = RealTimePlot(config)
     buffer = AudioBuffer(config.audio.sample_rate, 3.5)
