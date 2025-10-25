@@ -1,6 +1,7 @@
 import time
 import logging
 import numpy as np
+import torch
 import onnxruntime as ort
 
 from breathing_model.model.exhale_only_detection.utils import Config, BreathType
@@ -10,16 +11,12 @@ from breathing_model.model.exhale_only_detection.inference.counter import Breath
 from breathing_model.model.exhale_only_detection.inference.visualization import RealTimePlot
 
 
-def softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
-    x_max = np.max(x, axis=axis, keepdims=True)
-    e = np.exp(x - x_max)
-    return e / np.sum(e, axis=axis, keepdims=True)
-
-
 class OnnxBreathPhaseClassifier:
     """ONNX classifier expecting raw audio input [batch, audio_length]. Preprocessing (MelSpectrogram) is inside ONNX model."""
     def __init__(self, onnx_path: str, config: Config):
         self.config = config
+
+        self.last_mel_frames = int(0.2 * config.data.sample_rate / config.data.hop_length)
 
         self.session_options = ort.SessionOptions()
         self.session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -35,18 +32,16 @@ class OnnxBreathPhaseClassifier:
     def _pad_audio_to_length(self, audio: np.ndarray, target_length: int = 154350) -> np.ndarray:
         """
         Pad or trim audio to exact target length.
-        target_length = 154350 (odpowiada ok. 3.5s przy sample_rate=44100)
+        target_length = 154350 (about 3.5s with sample_rate=44100)
         """
         audio = np.asarray(audio, dtype=np.float32).squeeze()
         if audio.ndim != 1:
             raise ValueError(f"Expected 1D audio, got shape {audio.shape}")
 
         if len(audio) < target_length:
-            # Pad na końcu
             padding = np.zeros(target_length - len(audio), dtype=np.float32)
             audio = np.concatenate([audio, padding])
         elif len(audio) > target_length:
-            # Trim ostatnie próbki
             audio = audio[-target_length:]
 
         return audio
@@ -56,40 +51,35 @@ class OnnxBreathPhaseClassifier:
         audio_waveform: np.ndarray shape [T], float32 in [-1, 1]
         Returns (pred_class, mean_probs[classes]).
         """
-        # Dopasuj długość audio
-        audio_fixed = self._pad_audio_to_length(audio_waveform)  # [target_length]
+        audio_padded = self._pad_audio_to_length(audio_waveform)  # [target_length]
 
-        # Dodaj batch dimension: [1, target_length]
-        audio_batch = np.expand_dims(audio_fixed, axis=0)
-
-        # Uruchom model ONNX (zawiera preprocessing Mel!)
-        ort_inputs = {self.input_name: audio_batch}
+        ort_inputs = {self.input_name: audio_padded}
         ort_outputs = self.session.run(None, ort_inputs)
 
         logits = ort_outputs[0]  # [1, time_frames, num_classes]
         if logits.ndim != 3 or logits.shape[0] != 1:
             raise RuntimeError(f"Unexpected ONNX output shape: {logits.shape}")
 
-        # Oblicz prawdopodobieństwa
-        probs = softmax(logits, axis=-1)[0]  # [time_frames, num_classes]
-        if probs.shape[0] == 0:
-            num_classes = probs.shape[1] if probs.ndim == 2 else 2
+        logits_tensor = torch.from_numpy(logits).float()
+        probs_tensor = torch.softmax(logits_tensor, dim=-1)  # [1, time_frames, num_classes]
+        probs_np = probs_tensor.squeeze(0).numpy()  # [time_frames, num_classes]
+
+        if probs_np.shape[0] == 0:
+            num_classes = 2
             return 0, np.full((num_classes,), 1.0 / num_classes, dtype=np.float32)
 
-        # Prognoza - użyj ostatnich 10 ramek
-        recent = probs[-min(10, probs.shape[0]):]
-        frame_preds = np.argmax(recent, axis=1)
-        mean_probs = recent.mean(axis=0)
-        pred_class = int(np.bincount(frame_preds, minlength=mean_probs.shape[0]).argmax())
-        return pred_class, mean_probs
+        recent_probs = probs_np[-self.last_mel_frames:]
+
+        mean_probs = recent_probs.mean(axis=0)
+
+        predicted_class = int(np.argmax(mean_probs))
+        return predicted_class, mean_probs
 
 
 def main():
     logging.basicConfig(level=logging.INFO)
     config = Config.from_yaml('../config.yaml')
     onnx_path = '../best_models/best_model_epoch_21.onnx'
-
-    print("INFER config.data:", config.data.sample_rate, config.data.n_fft, config.data.hop_length, config.data.n_mels)
 
     audio = AudioStream(config.audio)
     classifier = OnnxBreathPhaseClassifier(onnx_path, config)
@@ -106,7 +96,7 @@ def main():
                 continue
 
             buffer.append(raw_audio)
-            buf_audio = buffer.get()  # np.ndarray [T]
+            buf_audio = buffer.get()
 
             pred_class, probs = classifier.predict(buf_audio)
 
