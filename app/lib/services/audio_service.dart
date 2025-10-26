@@ -93,28 +93,52 @@ class AudioService extends ChangeNotifier {
   }
 
   void _setupAudioProcessing() {
+    final List<int> _chunkBuffer = [];
+    int _samplesPerInterval =
+        (audioProcessingInterval * 44100 / 1000).toInt(); // 13,230 samples
+
     _recordingService.audioStream.listen((audioData) {
       if (isRecording) {
-        _audioBufferForClassification.addAll(audioData);
-        var audioDataLength = audioData.length;
-        _logger.info('Incoming audio data: ($audioDataLength)');
+        _chunkBuffer.addAll(audioData);
+        _logger.info(
+          'Chunk buffer: ${_chunkBuffer.length}/$_samplesPerInterval samples',
+        );
 
-        if (_audioBufferForClassification.length > bufferSize) {
-          final excessSize = _audioBufferForClassification.length - bufferSize;
-          _audioBufferForClassification.removeRange(0, excessSize);
-        }
+        // Czekaj aż zbierze się pełny interwał (300ms)
+        if (_chunkBuffer.length >= _samplesPerInterval) {
+          // Weź dokładnie 13,230 samples i dodaj do bufora klasyfikacji
+          final chunk = _chunkBuffer.sublist(0, _samplesPerInterval);
+          _audioBufferForClassification.addAll(chunk);
 
-        if (_audioBufferForClassification.length == bufferSize &&
-            !_isProcessing) {
-          _isProcessing = true;
+          // Usuń przetworzone samples z chunk bufora
+          _chunkBuffer.removeRange(0, _samplesPerInterval);
 
-          final samplesToProcess = List<int>.from(
-            _audioBufferForClassification,
+          _logger.info(
+            'Adding chunk to classification buffer: ${_audioBufferForClassification.length}/$bufferSize samples',
           );
 
-          _processAudioData(samplesToProcess).then((_) {
-            _isProcessing = false;
-          });
+          // Sliding window: jeśli bufor przekroczy maksymalny rozmiar
+          if (_audioBufferForClassification.length > bufferSize) {
+            final excessSize =
+                _audioBufferForClassification.length - bufferSize;
+            _audioBufferForClassification.removeRange(0, excessSize);
+            _logger.info('Sliding window: removed $excessSize old samples');
+          }
+
+          // Gdy bufor jest pełny, klasyfikuj
+          if (_audioBufferForClassification.length == bufferSize &&
+              !_isProcessing) {
+            _isProcessing = true;
+            _logger.info('Buffer full! Starting classification...');
+
+            final samplesToProcess = List<int>.from(
+              _audioBufferForClassification,
+            );
+
+            _processAudioData(samplesToProcess).then((_) {
+              _isProcessing = false;
+            });
+          }
         }
       }
     });
