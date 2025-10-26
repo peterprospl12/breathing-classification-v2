@@ -94,9 +94,12 @@ def export_breath_classifier_to_onnx(model_path, onnx_path, audio_length=154350)
         do_constant_folding=True,
         input_names=input_names,
         output_names=output_names,
-        opset_version=14,
+        opset_version=18,  # Zwiększ do 18
         verbose=False,
-        dynamo=True
+        dynamic_axes={
+            "audio_input": {0: "batch"},
+            "logits": {0: "batch"}
+        }
     )
 
     import onnx

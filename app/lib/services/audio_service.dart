@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:breathing_app/enums/enums.dart';
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 import '../models/breath_classifier.dart';
@@ -15,6 +16,9 @@ class AudioService extends ChangeNotifier {
   final BreathClassifier _classifier;
 
   Timer? _audioProcessingTimer;
+
+  bool _onlyExhaleMode = false;
+  bool get onlyExhaleMode => _onlyExhaleMode;
 
   AudioRecordingService get recordingService => _recordingService;
   BreathTrackingService get breathTrackingService => _breathTrackingService;
@@ -37,7 +41,7 @@ class AudioService extends ChangeNotifier {
 
   static const int audioProcessingInterval = 300; // ms
 
-  static const int bufferSize = 13230;
+  static const int bufferSize = 154350;
 
   final List<int> _audioBufferForClassification = [];
   bool _isProcessing = false;
@@ -57,7 +61,7 @@ class AudioService extends ChangeNotifier {
 
   Future<void> _initialize() async {
     try {
-      await _classifier.initialize();
+      await _classifier.initialize(model: ModelType.standard);
       _logger.info('Breath classifier successfully initialized');
     } catch (e) {
       _logger.severe('Error during classifier initialization: $e');
@@ -70,20 +74,43 @@ class AudioService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setOnlyExhaleMode(bool enabled) async {
+    _onlyExhaleMode = enabled;
+    _logger.info(
+      'Switching to mode: ${enabled ? ModelType.exhaleOnly.name : ModelType.standard.name}',
+    );
+
+    try {
+      await _classifier.switchModel(
+        enabled ? ModelType.exhaleOnly : ModelType.standard,
+      );
+      notifyListeners();
+    } catch (e) {
+      _logger.severe('Error switching model: $e');
+      _onlyExhaleMode = !enabled;
+      notifyListeners();
+    }
+  }
+
   void _setupAudioProcessing() {
     _recordingService.audioStream.listen((audioData) {
       if (isRecording) {
         _audioBufferForClassification.addAll(audioData);
+        var audioDataLength = audioData.length;
+        _logger.info('Incoming audio data: ($audioDataLength)');
 
-        if (_audioBufferForClassification.length >= bufferSize &&
+        if (_audioBufferForClassification.length > bufferSize) {
+          final excessSize = _audioBufferForClassification.length - bufferSize;
+          _audioBufferForClassification.removeRange(0, excessSize);
+        }
+
+        if (_audioBufferForClassification.length == bufferSize &&
             !_isProcessing) {
           _isProcessing = true;
 
-          final samplesToProcess = _audioBufferForClassification.sublist(
-            _audioBufferForClassification.length - bufferSize,
+          final samplesToProcess = List<int>.from(
+            _audioBufferForClassification,
           );
-
-          _audioBufferForClassification.clear();
 
           _processAudioData(samplesToProcess).then((_) {
             _isProcessing = false;

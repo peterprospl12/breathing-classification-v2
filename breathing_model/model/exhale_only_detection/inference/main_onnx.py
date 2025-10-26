@@ -58,13 +58,21 @@ class OnnxBreathPhaseClassifier:
         """
         # Dopasuj długość audio
         audio_fixed = self._pad_audio_to_length(audio_waveform)  # [target_length]
+        print(f"DEBUG: audio_fixed shape = {audio_fixed.shape}, dtype = {audio_fixed.dtype}")
+        audio_fixed = np.clip(audio_fixed, -1.0, 1.0).astype(np.float32)
+        print(f"DEBUG: audio_fixed2 shape = {audio_fixed.shape}, dtype = {audio_fixed.dtype}")
 
         # Dodaj batch dimension: [1, target_length]
-        audio_batch = np.expand_dims(audio_fixed, axis=0)
+        audio_batch = np.expand_dims(audio_fixed, axis=0).astype(np.float32)
+        print(f"DEBUG: audio_batch shape = {audio_batch.shape}")
 
         # Uruchom model ONNX (zawiera preprocessing Mel!)
         ort_inputs = {self.input_name: audio_batch}
-        ort_outputs = self.session.run(None, ort_inputs)
+        try:
+            ort_outputs = self.session.run(None, ort_inputs)
+        except Exception as e:
+            print(f"ERROR during inference: {e}")
+            raise
 
         logits = ort_outputs[0]  # [1, time_frames, num_classes]
         if logits.ndim != 3 or logits.shape[0] != 1:

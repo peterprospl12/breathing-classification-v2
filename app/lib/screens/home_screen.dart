@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:breathing_app/enums/enums.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/breath_classifier.dart';
@@ -23,7 +24,7 @@ class _HomeScreenState extends State<HomeScreen>
   final List<BreathPhase> _breathPhases = [];
   StreamSubscription<List<int>>? _audioSubscription;
   DisplayMode _selectedMode = DisplayMode.circular;
-  bool _showSeparateCounters = false;
+  bool _showSeparateCounters = true;
 
   static const int _maxBreathPhasesToStore = 20;
 
@@ -925,7 +926,7 @@ class _HomeScreenState extends State<HomeScreen>
                       vertical: 8.0,
                     ),
                     child: Text(
-                      'Counters',
+                      'Modes',
                       style: theme.textTheme.labelLarge?.copyWith(
                         color: theme.colorScheme.primary,
                       ),
@@ -933,16 +934,22 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   SwitchListTile(
                     title: Text(
-                      'Show Separate Inhale/Exhale Counters',
+                      'Only exhale',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurface,
                       ),
                     ),
                     value: tempShowSeparateCounters,
-                    onChanged: (bool value) {
+                    onChanged: (bool value) async {
                       setStateDialog(() {
                         tempShowSeparateCounters = value;
                       });
+
+                      final audioService = Provider.of<AudioService>(
+                        context,
+                        listen: false,
+                      );
+                      await audioService.setOnlyExhaleMode(value);
                     },
                     secondary: Icon(
                       Icons.compare_arrows_outlined,
