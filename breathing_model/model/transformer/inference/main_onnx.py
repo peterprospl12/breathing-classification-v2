@@ -32,7 +32,7 @@ class OnnxBreathPhaseClassifier:
     def _pad_audio_to_length(self, audio: np.ndarray, target_length: int = 154350) -> np.ndarray:
         """
         Pad or trim audio to exact target length.
-        target_length = 154350 (odpowiada ok. 3.5s przy sample_rate=44100)
+        target_length = 154350 (corresponds to approx. 3.5s at sample_rate=44100)
         """
         audio = np.asarray(audio, dtype=np.float32).squeeze()
         if audio.ndim != 1:
