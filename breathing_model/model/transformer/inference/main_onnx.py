@@ -4,11 +4,11 @@ import numpy as np
 import torch
 import onnxruntime as ort
 
-from breathing_model.model.exhale_only_detection.utils import Config, BreathType
+from breathing_model.model.transformer.utils import Config, BreathType
 from breathing_model.model.transformer.inference.audio import AudioStream
 from breathing_model.model.transformer.inference.audio_buffer import AudioBuffer
-from breathing_model.model.exhale_only_detection.inference.counter import BreathCounter
-from breathing_model.model.exhale_only_detection.inference.visualization import RealTimePlot
+from breathing_model.model.transformer.inference.counter import BreathCounter
+from breathing_model.model.transformer.inference.visualization import RealTimePlot
 
 
 class OnnxBreathPhaseClassifier:
@@ -32,7 +32,7 @@ class OnnxBreathPhaseClassifier:
     def _pad_audio_to_length(self, audio: np.ndarray, target_length: int = 154350) -> np.ndarray:
         """
         Pad or trim audio to exact target length.
-        target_length = 154350 (about 3.5s with sample_rate=44100)
+        target_length = 154350 (corresponds to approx. 3.5s at sample_rate=44100)
         """
         audio = np.asarray(audio, dtype=np.float32).squeeze()
         if audio.ndim != 1:
@@ -65,7 +65,7 @@ class OnnxBreathPhaseClassifier:
         probs_np = probs_tensor.squeeze(0).numpy()  # [time_frames, num_classes]
 
         if probs_np.shape[0] == 0:
-            num_classes = 2
+            num_classes = probs_np.shape[1] if probs_np.ndim == 2 else 3
             return 0, np.full((num_classes,), 1.0 / num_classes, dtype=np.float32)
 
         recent_probs = probs_np[-self.last_mel_frames:]
@@ -79,7 +79,7 @@ class OnnxBreathPhaseClassifier:
 def main():
     logging.basicConfig(level=logging.INFO)
     config = Config.from_yaml('../config.yaml')
-    onnx_path = '../best_models/best_model_epoch_21.onnx'
+    onnx_path = '../best_models/best_model_epoch_31.onnx'
 
     audio = AudioStream(config.audio)
     classifier = OnnxBreathPhaseClassifier(onnx_path, config)
@@ -90,6 +90,7 @@ def main():
     try:
         while True:
             start_time = time.time()
+
             raw_audio = audio.read()
             if raw_audio is None:
                 time.sleep(config.audio.chunk_length)
@@ -103,12 +104,9 @@ def main():
             counter.update(pred_class)
             plot.update(raw_audio, pred_class)
 
-            print(
-                f"Pred: {BreathType(pred_class).get_label()} | "
-                f"Prob: {np.round(probs, 3)} | "
-                f"Counters: Exhale={counter.exhale} | "
-                f"Time: {time.time() - start_time:.3f}s"
-            )
+            print(f"Pred: {BreathType(pred_class).get_label()} | Prob: {probs.round(3)} | "
+                  f"Counters: Inhale={counter.inhale}, Exhale={counter.exhale} | "
+                  f"Time: {time.time() - start_time:.3f}s")
 
     except KeyboardInterrupt:
         print("Stopped by user")
@@ -120,3 +118,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
