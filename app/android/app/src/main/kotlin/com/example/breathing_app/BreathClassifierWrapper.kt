@@ -109,12 +109,10 @@ class BreathClassifierWrapper(private val context: Context) {
             val modelFile = File(context.cacheDir, modelName)
             val dataFile = File(context.cacheDir, dataName)
 
-            // Skopiuj model
             if (!modelFile.exists()) {
                 copyAssetToFile(modelName, modelFile)
             }
 
-            // Skopiuj plik .data
             if (!dataFile.exists()) {
                 copyAssetToFile(dataName, dataFile)
             }
@@ -125,7 +123,7 @@ class BreathClassifierWrapper(private val context: Context) {
             sessionLock.lock()
             try {
                 logInfo("🔄 Creating ONNX Runtime session from: ${modelFile.absolutePath}")
-                // Używaj ścieżki bezwzględnej zamiast bajtów
+
                 val sess = env.createSession(modelFile.absolutePath, opts)
                 logInfo("✅ ONNX model loaded successfully")
 
@@ -190,7 +188,7 @@ class BreathClassifierWrapper(private val context: Context) {
         }
     }
 
-        private fun copyAssetToFile(assetName: String, outputFile: File) {
+    private fun copyAssetToFile(assetName: String, outputFile: File) {
         val possiblePaths = arrayOf(
             "flutter_assets/assets/models/$assetName",
             "assets/models/$assetName",
