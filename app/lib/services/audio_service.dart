@@ -93,25 +93,25 @@ class AudioService extends ChangeNotifier {
   }
 
   void _setupAudioProcessing() {
-    final List<int> _chunkBuffer = [];
-    int _samplesPerInterval =
+    final List<int> chunkBuffer = [];
+    int samplesPerInterval =
         (audioProcessingInterval * 44100 / 1000).toInt(); // 13,230 samples
 
     _recordingService.audioStream.listen((audioData) {
       if (isRecording) {
-        _chunkBuffer.addAll(audioData);
+        chunkBuffer.addAll(audioData);
         _logger.info(
-          'Chunk buffer: ${_chunkBuffer.length}/$_samplesPerInterval samples',
+          'Chunk buffer: ${chunkBuffer.length}/$samplesPerInterval samples',
         );
 
         // Czekaj aż zbierze się pełny interwał (300ms)
-        if (_chunkBuffer.length >= _samplesPerInterval) {
+        if (chunkBuffer.length >= samplesPerInterval) {
           // Weź dokładnie 13,230 samples i dodaj do bufora klasyfikacji
-          final chunk = _chunkBuffer.sublist(0, _samplesPerInterval);
+          final chunk = chunkBuffer.sublist(0, samplesPerInterval);
           _audioBufferForClassification.addAll(chunk);
 
           // Usuń przetworzone samples z chunk bufora
-          _chunkBuffer.removeRange(0, _samplesPerInterval);
+          chunkBuffer.removeRange(0, samplesPerInterval);
 
           _logger.info(
             'Adding chunk to classification buffer: ${_audioBufferForClassification.length}/$bufferSize samples',

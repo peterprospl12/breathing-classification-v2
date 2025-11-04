@@ -958,7 +958,7 @@ class _HomeScreenState extends State<HomeScreen>
                               ? theme.colorScheme.primary
                               : theme.colorScheme.onSurfaceVariant,
                     ),
-                    activeColor: theme.colorScheme.primary,
+                    activeThumbColor: theme.colorScheme.primary,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20),
                     dense: true,
                   ),

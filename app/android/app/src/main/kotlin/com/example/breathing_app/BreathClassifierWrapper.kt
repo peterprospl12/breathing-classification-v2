@@ -18,6 +18,8 @@ class BreathClassifierWrapper(private val context: Context) {
     private var session: OrtSession? = null
     private var sessionExhaleOnly: OrtSession? = null
     private var currentModelType = "standard"
+    private val TARGET_LENGTH: Int = 154_350 // ~3.5s at 44.1kHz
+    private val LAST_WINDOW_FRACTION: Float = 0.2f / 3.5f // fraction of frames (~last 0.2s)
 
     private val sessionLock = ReentrantLock()
 
@@ -303,9 +305,10 @@ class BreathClassifierWrapper(private val context: Context) {
                 else -> session
             } ?: throw IllegalStateException("Session not initialized")
             val inputName = sess.inputNames.first()
-            val shape = longArrayOf(audioData.size.toLong())
+            val processedAudio = padOrTrimAudio(audioData, TARGET_LENGTH)
+            val shape = longArrayOf(processedAudio.size.toLong())
 
-            val inputBuffer = FloatBuffer.wrap(audioData)
+            val inputBuffer = FloatBuffer.wrap(processedAudio)
             val tensor = OnnxTensor.createTensor(env, inputBuffer, shape)
 
             return processModelOutput(sess, inputName, tensor)
@@ -344,26 +347,63 @@ class BreathClassifierWrapper(private val context: Context) {
             return 2 // Default to silence
         }
 
-        // Process tensor with shape [1, time_steps, num_classes]
-        return processTimeSteps(value[0] as Array<*>)
-    }
+        // Expected tensor shape: [1, time_steps, num_classes]
+        val timeSteps = value[0] as Array<*>
+        val totalFrames = timeSteps.size
+        if (totalFrames == 0) return 2
 
-    private fun processTimeSteps(timeSteps: Array<*>): Int {
-        val predictions = mutableListOf<Int>()
+        val lastFrames = (totalFrames * LAST_WINDOW_FRACTION).toInt().coerceAtLeast(1)
+        val startIdx = (totalFrames - lastFrames).coerceAtLeast(0)
 
-        for (step in timeSteps) {
-            when (step) {
-                is FloatArray -> predictions.add(findMaxIndex(step))
-                is DoubleArray -> predictions.add(findMaxIndex(step))
-                else -> logError("Unknown time step type: ${step?.javaClass}")
+        var numClasses = -1
+        var count = 0
+        var classSums: FloatArray? = null
+
+        for (i in startIdx until totalFrames) {
+            val step = timeSteps[i]
+            val logits: FloatArray = when (step) {
+                is FloatArray -> step
+                is DoubleArray -> step.map { it.toFloat() }.toFloatArray()
+                is Array<*> -> {
+                    // In some cases step might be an Array<Float> or similar
+                    try {
+                        (step as Array<Number>).map { it.toFloat() }.toFloatArray()
+                    } catch (e: Exception) {
+                        logError("Unknown time step type: ${step?.javaClass}")
+                        continue
+                    }
+                }
+                else -> {
+                    logError("Unknown time step type: ${step?.javaClass}")
+                    continue
+                }
             }
+
+            if (numClasses < 0) {
+                numClasses = logits.size
+                classSums = FloatArray(numClasses) { 0f }
+            } else if (logits.size != numClasses) {
+                logError("Inconsistent class dimension across time steps")
+                continue
+            }
+
+            val probs = softmax(logits)
+            for (c in 0 until numClasses) {
+                classSums!![c] += probs[c]
+            }
+            count++
         }
 
-        if (predictions.isEmpty()) return 2 // Default to silence
+        if (count == 0 || classSums == null || numClasses <= 0) return 2
 
-        // Find the most common class
-        val counts = predictions.groupingBy { it }.eachCount()
-        return counts.maxByOrNull { it.value }?.key ?: 2
+        // Mean over the last window
+        for (c in 0 until numClasses) {
+            classSums[c] /= count.toFloat()
+        }
+
+        val pred = findMaxIndex(classSums)
+        logInfo("Classification (softmax-mean last ${lastFrames}f): $pred")
+        return pred
     }
 
     private fun findMaxIndex(array: FloatArray): Int {
@@ -392,6 +432,44 @@ class BreathClassifierWrapper(private val context: Context) {
         }
 
         return maxIndex
+    }
+
+    private fun softmax(logits: FloatArray): FloatArray {
+        var max = Float.NEGATIVE_INFINITY
+        for (x in logits) if (x > max) max = x
+        val exps = FloatArray(logits.size)
+        var sum = 0.0
+        for (i in logits.indices) {
+            val v = kotlin.math.exp((logits[i] - max).toDouble())
+            exps[i] = v.toFloat()
+            sum += v
+        }
+        if (sum == 0.0) {
+            val uniform = 1f / logits.size
+            return FloatArray(logits.size) { uniform }
+        }
+        for (i in exps.indices) {
+            exps[i] = (exps[i] / sum).toFloat()
+        }
+        return exps
+    }
+
+    private fun padOrTrimAudio(audio: FloatArray, targetLength: Int): FloatArray {
+        return when {
+            audio.size == targetLength -> audio
+            audio.size < targetLength -> {
+                val out = FloatArray(targetLength)
+                System.arraycopy(audio, 0, out, 0, audio.size)
+                out // zero-padded tail
+            }
+            else -> {
+                // take last targetLength samples
+                val out = FloatArray(targetLength)
+                val start = audio.size - targetLength
+                System.arraycopy(audio, start, out, 0, targetLength)
+                out
+            }
+        }
     }
 
     fun isInitialized(): Boolean {

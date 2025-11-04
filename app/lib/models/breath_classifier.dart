@@ -20,9 +20,10 @@ class BreathClassifier {
 
     try {
       _currentModel = model;
+      final String nativeModelType = _mapModelTypeToNative(model);
       _isInitialized =
           await _channel.invokeMethod<bool>('initializeModel', {
-            'modelType': model.name,
+            'modelType': nativeModelType,
           }) ??
           false;
 
@@ -56,6 +57,15 @@ class BreathClassifier {
       _logger.severe('Error during classifier initialization: $e');
       _isInitialized = false;
       throw Exception('Failed to initialize breath classifier');
+    }
+  }
+
+  String _mapModelTypeToNative(ModelType model) {
+    switch (model) {
+      case ModelType.exhaleOnly:
+        return 'exhale_only';
+      case ModelType.standard:
+        return 'standard';
     }
   }
 
