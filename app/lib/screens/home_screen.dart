@@ -934,7 +934,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   SwitchListTile(
                     title: Text(
-                      'Only exhale',
+                      'Inhale and exhale',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurface,
                       ),
@@ -958,7 +958,7 @@ class _HomeScreenState extends State<HomeScreen>
                               ? theme.colorScheme.primary
                               : theme.colorScheme.onSurfaceVariant,
                     ),
-                    activeThumbColor: theme.colorScheme.primary,
+                    activeColor: theme.colorScheme.primary,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20),
                     dense: true,
                   ),
