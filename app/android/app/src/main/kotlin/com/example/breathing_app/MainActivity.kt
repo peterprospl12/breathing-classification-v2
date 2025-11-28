@@ -51,6 +51,17 @@ class MainActivity: FlutterActivity() {
             logInfo("📡 Received method call: ${call.method}")
 
             when (call.method) {
+                "initializeModel" -> {
+                    try {
+                        val modelType = call.argument<String>("modelType") ?: "standard"
+                        logInfo("Initializing model: $modelType")
+                        val success = breathClassifierWrapper.initializeModel(modelType)
+                        result.success(success)
+                    } catch (e: Exception) {
+                        logError("Error initializing model", e)
+                        result.error("INIT_ERROR", e.message, null)
+                    }
+                }
                 "classifyAudio" -> {
                     val initialized = breathClassifierWrapper.isInitialized()
                     logInfo("🔍 Classifier initialization status: $initialized")

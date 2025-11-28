@@ -16,11 +16,20 @@ class BreathClassifierWrapper(private val context: Context) {
     private val TAG = "BreathClassifierWrapper"
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private var session: OrtSession? = null
+    private var sessionExhaleOnly: OrtSession? = null
+    private var currentModelType = "standard"
+    private val TARGET_LENGTH: Int = 154_350 // ~3.5s at 44.1kHz
+    private val LAST_WINDOW_FRACTION: Float = 0.2f / 3.5f // fraction of frames (~last 0.2s)
+
     private val sessionLock = ReentrantLock()
 
     companion object {
-        const val MODEL_NAME = "breath_classifier_model_audio_input.onnx"
-        const val MODEL_DATA_NAME = "breath_classifier_model_audio_input.onnx.data"
+        const val MODEL_NAME = "best_model_epoch_31.onnx"
+        const val MODEL_NAME_EXHALE = "best_model_epoch_21.onnx"
+
+        const val MODEL_DATA_NAME = "best_model_epoch_31.onnx.data"
+        const val MODEL_DATA_NAME_EXHALE = "best_model_epoch_21.onnx.data"
+
         private val POSSIBLE_ASSET_PATHS = arrayOf(
             "flutter_assets/assets/models/$MODEL_NAME",
             "assets/models/$MODEL_NAME",
@@ -46,69 +55,26 @@ class BreathClassifierWrapper(private val context: Context) {
     }
 
     fun initialize(): Boolean {
-        logInfo("➡️ Starting classifier initialization")
+        return initializeModel("standard")
+    }
+
+    fun initializeModel(modelType: String): Boolean {
         return try {
-            logDeviceInfo()
+            logInfo("➡️ Initializing model: $modelType")
+            currentModelType = modelType
 
-            val modelFile = File(context.filesDir, MODEL_NAME)
-            val modelDataFile = File(context.filesDir, MODEL_DATA_NAME)
-
-            logInfo("📁 Main assets directory content:")
-            listAvailableAssets("")
-            logInfo("📁 Flutter_assets directory content:")
-            listAvailableAssets("flutter_assets")
-            logInfo("📁 Flutter_assets/assets directory content:")
-            listAvailableAssets("flutter_assets/assets")
-            logInfo("📁 Flutter_assets/assets/models directory content:")
-            listAvailableAssets("flutter_assets/assets/models")
-
-            if (!modelFile.exists()) {
-                logInfo("📦 Model doesn't exist locally, copying from assets...")
-                copyModelFromAssets(modelFile)
-
-                if (!modelFile.exists() || modelFile.length() == 0L) {
-                    throw Exception("Failed to properly copy the model file")
+            when (modelType) {
+                "exhale_only" -> {
+                    sessionExhaleOnly = createSessionFromBytesForModel(MODEL_NAME_EXHALE, MODEL_DATA_NAME_EXHALE)
+                    sessionExhaleOnly != null
+                }
+                else -> {
+                    session = createSessionFromBytesForModel(MODEL_NAME, MODEL_DATA_NAME)
+                    session != null
                 }
             }
-
-            if (!modelDataFile.exists()) {
-                logInfo("📦 Model data file doesn't exist locally, copying from assets...")
-                copyModelDataFromAssets(modelDataFile)
-            }
-
-            logInfo("📄 Model path: ${modelFile.absolutePath}, Size: ${modelFile.length()} bytes")
-            logInfo("📄 Model exists: ${modelFile.exists()}, Can read: ${modelFile.canRead()}")
-
-            if (modelDataFile.exists()) {
-                logInfo("📄 Model data path: ${modelDataFile.absolutePath}, Size: ${modelDataFile.length()} bytes")
-                logInfo("📄 Model data file exists: ${modelDataFile.exists()}, Can read: ${modelDataFile.canRead()}")
-            } else {
-                logInfo("⚠️ Model data file (.data) doesn't exist, continuing without it")
-            }
-
-            val filesDir = context.filesDir
-            logInfo("📁 Content of filesDir directory (${filesDir.absolutePath}):")
-            filesDir.listFiles()?.forEach { file ->
-                logInfo("   - ${file.name}: ${file.length()} bytes")
-            }
-
-            val success = createSessionFromFile(modelFile)
-
-            if (!success) {
-                logInfo("🔄 Attempting to create session directly from model bytes...")
-                createSessionFromBytes()
-            }
-
-            val initialized = session != null
-            if (initialized) {
-                logInfo("✅ Session created successfully")
-            } else {
-                logError("Failed to create ONNX session")
-            }
-
-            initialized
         } catch (e: Exception) {
-            logError("Error initializing model", e)
+            logError("Error initializing model $modelType", e)
             false
         }
     }
@@ -137,6 +103,44 @@ class BreathClassifierWrapper(private val context: Context) {
         } catch (e: Exception) {
             logError("⚠️ Failed to create session from file: ${e.message}", e)
             false
+        }
+    }
+
+    private fun createSessionFromBytesForModel(modelName: String, dataName: String): OrtSession? {
+        return try {
+            val modelFile = File(context.cacheDir, modelName)
+            val dataFile = File(context.cacheDir, dataName)
+
+            if (!modelFile.exists()) {
+                copyAssetToFile(modelName, modelFile)
+            }
+
+            if (!dataFile.exists()) {
+                copyAssetToFile(dataName, dataFile)
+            }
+
+            val opts = OrtSession.SessionOptions()
+            opts.setIntraOpNumThreads(2)
+
+            sessionLock.lock()
+            try {
+                logInfo("🔄 Creating ONNX Runtime session from: ${modelFile.absolutePath}")
+
+                val sess = env.createSession(modelFile.absolutePath, opts)
+                logInfo("✅ ONNX model loaded successfully")
+
+                sess.let { s ->
+                    logInfo("📊 Model information:")
+                    logInfo("📥 Model inputs: ${s.inputNames.joinToString(", ")}")
+                    logInfo("📤 Model outputs: ${s.outputNames.joinToString(", ")}")
+                }
+                sess
+            } finally {
+                sessionLock.unlock()
+            }
+        } catch (e: Exception) {
+            logError("Failed to create session from model bytes", e)
+            null
         }
     }
 
@@ -184,6 +188,31 @@ class BreathClassifierWrapper(private val context: Context) {
             logError("Failed to create session from model bytes", e)
             false
         }
+    }
+
+    private fun copyAssetToFile(assetName: String, outputFile: File) {
+        val possiblePaths = arrayOf(
+            "flutter_assets/assets/models/$assetName",
+            "assets/models/$assetName",
+            "models/$assetName"
+        )
+
+        for (assetPath in possiblePaths) {
+            try {
+                logInfo("🔄 Copying asset from: $assetPath to ${outputFile.absolutePath}")
+                context.assets.open(assetPath).use { input ->
+                    outputFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                logInfo("✅ Successfully copied $assetName (${outputFile.length()} bytes)")
+                return
+            } catch (e: Exception) {
+                logError("Cannot copy from $assetPath: ${e.message}")
+            }
+        }
+
+        logError("Failed to copy $assetName from any path")
     }
 
     private fun copyModelFromAssets(modelFile: File) {
@@ -271,11 +300,15 @@ class BreathClassifierWrapper(private val context: Context) {
     fun classifyAudio(audioData: FloatArray): Int {
         sessionLock.lock()
         try {
-            val sess = session ?: throw IllegalStateException("Session not initialized. Call initialize() first.")
+            val sess = when (currentModelType) {
+                "exhale_only" -> sessionExhaleOnly
+                else -> session
+            } ?: throw IllegalStateException("Session not initialized")
             val inputName = sess.inputNames.first()
-            val shape = longArrayOf(1, audioData.size.toLong())
+            val processedAudio = padOrTrimAudio(audioData, TARGET_LENGTH)
+            val shape = longArrayOf(processedAudio.size.toLong())
 
-            val inputBuffer = FloatBuffer.wrap(audioData)
+            val inputBuffer = FloatBuffer.wrap(processedAudio)
             val tensor = OnnxTensor.createTensor(env, inputBuffer, shape)
 
             return processModelOutput(sess, inputName, tensor)
@@ -314,26 +347,63 @@ class BreathClassifierWrapper(private val context: Context) {
             return 2 // Default to silence
         }
 
-        // Process tensor with shape [1, time_steps, num_classes]
-        return processTimeSteps(value[0] as Array<*>)
-    }
+        // Expected tensor shape: [1, time_steps, num_classes]
+        val timeSteps = value[0] as Array<*>
+        val totalFrames = timeSteps.size
+        if (totalFrames == 0) return 2
 
-    private fun processTimeSteps(timeSteps: Array<*>): Int {
-        val predictions = mutableListOf<Int>()
+        val lastFrames = (totalFrames * LAST_WINDOW_FRACTION).toInt().coerceAtLeast(1)
+        val startIdx = (totalFrames - lastFrames).coerceAtLeast(0)
 
-        for (step in timeSteps) {
-            when (step) {
-                is FloatArray -> predictions.add(findMaxIndex(step))
-                is DoubleArray -> predictions.add(findMaxIndex(step))
-                else -> logError("Unknown time step type: ${step?.javaClass}")
+        var numClasses = -1
+        var count = 0
+        var classSums: FloatArray? = null
+
+        for (i in startIdx until totalFrames) {
+            val step = timeSteps[i]
+            val logits: FloatArray = when (step) {
+                is FloatArray -> step
+                is DoubleArray -> step.map { it.toFloat() }.toFloatArray()
+                is Array<*> -> {
+                    // In some cases step might be an Array<Float> or similar
+                    try {
+                        (step as Array<Number>).map { it.toFloat() }.toFloatArray()
+                    } catch (e: Exception) {
+                        logError("Unknown time step type: ${step?.javaClass}")
+                        continue
+                    }
+                }
+                else -> {
+                    logError("Unknown time step type: ${step?.javaClass}")
+                    continue
+                }
             }
+
+            if (numClasses < 0) {
+                numClasses = logits.size
+                classSums = FloatArray(numClasses) { 0f }
+            } else if (logits.size != numClasses) {
+                logError("Inconsistent class dimension across time steps")
+                continue
+            }
+
+            val probs = softmax(logits)
+            for (c in 0 until numClasses) {
+                classSums!![c] += probs[c]
+            }
+            count++
         }
 
-        if (predictions.isEmpty()) return 2 // Default to silence
+        if (count == 0 || classSums == null || numClasses <= 0) return 2
 
-        // Find the most common class
-        val counts = predictions.groupingBy { it }.eachCount()
-        return counts.maxByOrNull { it.value }?.key ?: 2
+        // Mean over the last window
+        for (c in 0 until numClasses) {
+            classSums[c] /= count.toFloat()
+        }
+
+        val pred = findMaxIndex(classSums)
+        logInfo("Classification (softmax-mean last ${lastFrames}f): $pred")
+        return pred
     }
 
     private fun findMaxIndex(array: FloatArray): Int {
@@ -364,8 +434,49 @@ class BreathClassifierWrapper(private val context: Context) {
         return maxIndex
     }
 
+    private fun softmax(logits: FloatArray): FloatArray {
+        var max = Float.NEGATIVE_INFINITY
+        for (x in logits) if (x > max) max = x
+        val exps = FloatArray(logits.size)
+        var sum = 0.0
+        for (i in logits.indices) {
+            val v = kotlin.math.exp((logits[i] - max).toDouble())
+            exps[i] = v.toFloat()
+            sum += v
+        }
+        if (sum == 0.0) {
+            val uniform = 1f / logits.size
+            return FloatArray(logits.size) { uniform }
+        }
+        for (i in exps.indices) {
+            exps[i] = (exps[i] / sum).toFloat()
+        }
+        return exps
+    }
+
+    private fun padOrTrimAudio(audio: FloatArray, targetLength: Int): FloatArray {
+        return when {
+            audio.size == targetLength -> audio
+            audio.size < targetLength -> {
+                val out = FloatArray(targetLength)
+                System.arraycopy(audio, 0, out, 0, audio.size)
+                out // zero-padded tail
+            }
+            else -> {
+                // take last targetLength samples
+                val out = FloatArray(targetLength)
+                val start = audio.size - targetLength
+                System.arraycopy(audio, start, out, 0, targetLength)
+                out
+            }
+        }
+    }
+
     fun isInitialized(): Boolean {
-        return session != null
+        return when (currentModelType) {
+            "exhale_only" -> sessionExhaleOnly != null
+            else -> session != null
+        }
     }
 
     fun close() {
