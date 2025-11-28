@@ -5,50 +5,120 @@ import csv
 import torch
 import librosa
 import os
+import yaml
 from matplotlib.lines import Line2D
-from sklearn.metrics import classification_report, accuracy_score, f1_score
+from sklearn.metrics import classification_report, accuracy_score
 
-# Zakładam, że ten import działa u Ciebie poprawnie
+# --- IMPORTY LSTM ---
 from breathing_model.archive.lstm.model_classes import AudioClassifierLSTM
 
+# --- IMPORTY TRANSFORMER ---
+from breathing_model.model.transformer.utils import Config
+from breathing_model.model.transformer.inference.transform import MelSpectrogramTransform
+from breathing_model.model.transformer.inference.model_loader import BreathPhaseClassifier
+
+# Jeśli AudioBuffer jest dostępny, używamy go. Jeśli nie, wrapper obsłuży buforowanie prosto w numpy.
+try:
+    from breathing_model.model.transformer.audio_buffer import AudioBuffer
+
+    USE_CUSTOM_BUFFER = True
+except ImportError:
+    USE_CUSTOM_BUFFER = False
+
+
+# ==========================================
+# WRAPPERY MODELI
+# ==========================================
 
 class LSTMClassifierWrapper:
     def __init__(self, model_path):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
         self.model = AudioClassifierLSTM()
         self.model.load_state_dict(torch.load(model_path, map_location=self.device))
         self.model.to(self.device)
         self.model.eval()
         self.hidden = None
 
-    def reset_hidden(self):
+    def reset_state(self):
         self.hidden = None
 
     def predict(self, audio_chunk: np.ndarray, sample_rate: int = 44100) -> int:
+        # Normalizacja do float32
         if audio_chunk.dtype == np.int16:
             audio_float = audio_chunk.astype(np.float32) / 32768.0
         else:
             audio_float = audio_chunk.astype(np.float32)
 
-        mfcc = librosa.feature.mfcc(
-            y=audio_float,
-            sr=sample_rate,
-            n_mfcc=13
-        )
-
+        # Preprocessing LSTM (Librosa)
+        mfcc = librosa.feature.mfcc(y=audio_float, sr=sample_rate, n_mfcc=13)
         features = mfcc.mean(axis=1)
 
-        single_data = torch.tensor(features, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(self.device)
+        input_tensor = torch.tensor(features, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            outputs, self.hidden = self.model(single_data, self.hidden)
-
+            outputs, self.hidden = self.model(input_tensor, self.hidden)
             logits = outputs[0, 0]
             prediction_idx = torch.argmax(logits).item()
 
         return prediction_idx
 
+
+class TransformerClassifierWrapper:
+    def __init__(self, config_path, model_path):
+        # Ładowanie konfiguracji
+        self.config = Config.from_yaml(config_path)
+
+        # Inicjalizacja komponentów Transformera
+        self.mel_transform = MelSpectrogramTransform(self.config.data)
+        self.classifier = BreathPhaseClassifier(model_path, self.config.model, self.config.data)
+
+        # Bufor audio (3.5s kontekstu zgodnie z Twoim snippetem)
+        self.context_duration = 3.5
+        self.sample_rate = self.config.audio.sample_rate
+        self.buffer_size = int(self.sample_rate * self.context_duration)
+
+        if USE_CUSTOM_BUFFER:
+            self.buffer = AudioBuffer(self.sample_rate, self.context_duration)
+        else:
+            # Fallback jeśli nie uda się zaimportować klasy AudioBuffer
+            self.raw_buffer = np.zeros(self.buffer_size, dtype=np.float32)
+
+    def reset_state(self):
+        if USE_CUSTOM_BUFFER:
+            self.buffer = AudioBuffer(self.sample_rate, self.context_duration)
+        else:
+            self.raw_buffer = np.zeros(self.buffer_size, dtype=np.float32)
+
+    def predict(self, audio_chunk: np.ndarray, sample_rate: int = 44100) -> int:
+        # Normalizacja
+        if audio_chunk.dtype == np.int16:
+            audio_float = audio_chunk.astype(np.float32) / 32768.0
+        else:
+            audio_float = audio_chunk.astype(np.float32)
+
+        # Obsługa bufora (Transformer potrzebuje kontekstu, np. 3.5s)
+        if USE_CUSTOM_BUFFER:
+            self.buffer.append(audio_float)
+            buf_audio = self.buffer.get()
+        else:
+            # Przesuń bufor i dodaj nowe dane (numpy implementation)
+            self.raw_buffer = np.roll(self.raw_buffer, -len(audio_float))
+            self.raw_buffer[-len(audio_float):] = audio_float
+            buf_audio = self.raw_buffer
+
+        # Predykcja
+        # MelSpectrogramTransform oczekuje tensora lub numpy array
+        mel = self.mel_transform(buf_audio)
+
+        # BreathPhaseClassifier.predict zwraca (klasa, prawdopodobienstwa)
+        pred_class, _ = self.classifier.predict(mel)
+
+        return pred_class
+
+
+# ==========================================
+# NARZĘDZIA POMOCNICZE
+# ==========================================
 
 def read_audio_file(wav_path: str) -> tuple[np.ndarray, int]:
     with wave.open(wav_path, 'rb') as wf:
@@ -62,7 +132,7 @@ def read_labels(csv_path: str) -> list[dict[str, int | str]]:
     labels = []
     with open(csv_path, 'r') as file:
         reader = csv.reader(file)
-        next(reader)  # Skip csv header
+        next(reader)
         for row in reader:
             if len(row) < 3: continue
             class_name, start_sample, end_sample = row
@@ -75,7 +145,7 @@ def read_labels(csv_path: str) -> list[dict[str, int | str]]:
 
 
 def get_color_for_class(class_name: str | int) -> str:
-    # 0: Exhale, 1: Inhale, 2: Silence
+    # 0: Exhale (Green), 1: Inhale (Red), 2: Silence (Blue)
     if class_name == 'inhale' or class_name == 1:
         return 'red'
     elif class_name == 'exhale' or class_name == 0:
@@ -84,96 +154,88 @@ def get_color_for_class(class_name: str | int) -> str:
 
 
 def get_ground_truth_for_chunk(labels, start_frame, end_frame):
-    """
-    Określa etykietę dla danego fragmentu czasu metodą głosowania większościowego.
-    Zwraca int: 0 (Exhale), 1 (Inhale), 2 (Silence).
-    """
-    # Liczniki próbek dla każdej klasy wewnątrz okna
-    # Indeksy: 0: Exhale, 1: Inhale, 2: Silence
+    """Głosowanie większościowe dla etykiety Ground Truth."""
     counts = {0: 0, 1: 0, 2: 0}
-
-    # Domyślnie cały fragment to cisza (jeśli nie ma etykiet)
     total_len = end_frame - start_frame
     counts[2] = total_len
 
     for label in labels:
-        # Konwersja nazwy klasy na ID
         lbl_class = label['class']
-        if lbl_class == 'inhale':
-            cls_id = 1
-        elif lbl_class == 'exhale':
-            cls_id = 0
-        else:
-            cls_id = 2  # Silence lub inne tło
+        cls_id = 1 if lbl_class == 'inhale' else (0 if lbl_class == 'exhale' else 2)
 
-        # Sprawdź czy etykieta nachodzi na nasz chunk
-        l_start = label['start']
-        l_end = label['end']
-
+        l_start, l_end = label['start'], label['end']
         if l_start < end_frame and l_end > start_frame:
-            # Oblicz część wspólną
-            overlap_start = max(l_start, start_frame)
-            overlap_end = min(l_end, end_frame)
-            overlap_len = overlap_end - overlap_start
-
-            if overlap_len > 0:
-                counts[cls_id] += overlap_len
-                counts[2] -= overlap_len  # Odejmujemy od domyślnej ciszy
-
-    # Zwróć ID klasy, która ma najwięcej próbek w tym oknie
+            overlap = min(l_end, end_frame) - max(l_start, start_frame)
+            if overlap > 0:
+                counts[cls_id] += overlap
+                counts[2] -= overlap
     return max(counts, key=counts.get)
 
+
+# ==========================================
+# GENEROWANIE WYKRESÓW
+# ==========================================
 
 def generate_comparison_plots(
         wav_path: str,
         csv_path: str,
-        model_path: str,
+        lstm_model_path: str,
+        trans_config_path: str,
+        trans_model_path: str,
         output_path: str,
         plot_name: str,
         chunk_duration: float = 0.25
-) -> tuple[list[int], list[int]]:
-    """
-    Zwraca krotkę dwóch list: (y_true, y_pred) dla danego pliku.
-    """
+) -> tuple[list[int], list[int], list[int]]:
+    # Wczytanie danych
     audio_data, sample_rate = read_audio_file(wav_path)
     labels = read_labels(csv_path)
 
-    classifier = LSTMClassifierWrapper(model_path)
-    classifier.reset_hidden()
+    # Inicjalizacja obu modeli
+    lstm_wrapper = LSTMClassifierWrapper(lstm_model_path)
+    trans_wrapper = TransformerClassifierWrapper(trans_config_path, trans_model_path)
+
+    # Reset stanów (ważne dla LSTM i Bufora Transformera)
+    lstm_wrapper.reset_state()
+    trans_wrapper.reset_state()
 
     chunk_size = int(sample_rate * chunk_duration)
 
-    print(f"Read audio: {len(audio_data)} samples, {len(audio_data) / sample_rate:.2f} seconds")
-    print(f"Read {len(labels)} labels from CSV file")
+    print(f"  Audio: {len(audio_data) / sample_rate:.2f}s | Labels: {len(labels)}")
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8))
-    fig.suptitle(plot_name)
+    # Przygotowanie wykresu z 3 subplotami
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
+    fig.suptitle(plot_name, fontsize=16)
 
     time_axis = np.arange(len(audio_data)) / sample_rate
 
-    # --- Plot 1: Ground Truth ---
-    ax1.set_title('Ground Truth (CSV Labels)')
-    ax1.set_xlabel('Time [s]')
+    # --- PLOT 1: GROUND TRUTH ---
+    ax1.set_title('Ground Truth', fontweight='bold')
     ax1.set_ylabel('Amplitude')
-    ax1.plot(time_axis, audio_data, color='lightgray', alpha=0.5)
+    ax1.plot(time_axis, audio_data, color='lightgray', alpha=0.5)  # Tło
 
     for label in labels:
-        start_idx = label['start']
-        end_idx = label['end']
-        color = get_color_for_class(label['class'])
-        if start_idx < len(audio_data) and end_idx <= len(audio_data):
-            segment_time = time_axis[start_idx:end_idx]
-            segment_data = audio_data[start_idx:end_idx]
-            ax1.plot(segment_time, segment_data, color=color)
+        s, e = label['start'], label['end']
+        c = get_color_for_class(label['class'])
+        if s < len(audio_data) and e <= len(audio_data):
+            ax1.plot(time_axis[s:e], audio_data[s:e], color=c)
 
-    # --- Plot 2 & Metrics Collection ---
-    ax2.set_title('LSTM Model Prediction')
-    ax2.set_xlabel('Time [s]')
-    ax2.set_ylabel('Amplitude')
+    # --- KONFIGURACJA PLOT 2 i 3 ---
+    ax2.set_title('LSTM Model Prediction', fontweight='bold')
+    ax2.set_ylabel('Pred')
+    # Rysujemy "szary cień" sygnału dla kontekstu
+    ax2.plot(time_axis, audio_data, color='lightgray', alpha=0.3)
 
-    file_y_true = []
-    file_y_pred = []
+    ax3.set_title('Transformer Model Prediction', fontweight='bold')
+    ax3.set_ylabel('Pred')
+    ax3.set_xlabel('Time [s]')
+    ax3.plot(time_axis, audio_data, color='lightgray', alpha=0.3)
 
+    # Kontenery na wyniki dla tego pliku
+    y_true = []
+    y_pred_lstm = []
+    y_pred_trans = []
+
+    # --- PĘTLA PRZETWARZANIA ---
     for i in range(0, len(audio_data), chunk_size):
         end = min(i + chunk_size, len(audio_data))
         chunk = audio_data[i:end]
@@ -181,111 +243,124 @@ def generate_comparison_plots(
         if len(chunk) < chunk_size:
             continue
 
-        # Predykcja modelu
-        prediction = classifier.predict(chunk, sample_rate)
+        # 1. Ground Truth
+        gt = get_ground_truth_for_chunk(labels, i, end)
+        y_true.append(gt)
 
-        # Pobranie prawdziwej etykiety dla tego fragmentu
-        ground_truth = get_ground_truth_for_chunk(labels, i, end)
+        # 2. Predykcja LSTM
+        p_lstm = lstm_wrapper.predict(chunk, sample_rate)
+        y_pred_lstm.append(p_lstm)
 
-        # Zapis do list
-        file_y_pred.append(prediction)
-        file_y_true.append(ground_truth)
+        # 3. Predykcja Transformer
+        p_trans = trans_wrapper.predict(chunk, sample_rate)
+        y_pred_trans.append(p_trans)
 
-        # Rysowanie
-        color = get_color_for_class(prediction)
-        segment_time = time_axis[i:end]
-        ax2.plot(segment_time, chunk, color=color)
+        # Rysowanie na wykresach
+        t_seg = time_axis[i:end]
+
+        # LSTM Plot
+        ax2.plot(t_seg, chunk, color=get_color_for_class(p_lstm))
+
+        # Transformer Plot
+        ax3.plot(t_seg, chunk, color=get_color_for_class(p_trans))
 
     # Legenda
     custom_lines = [
-        Line2D([0], [0], color='red', lw=2),
         Line2D([0], [0], color='green', lw=2),
+        Line2D([0], [0], color='red', lw=2),
         Line2D([0], [0], color='blue', lw=2)
     ]
-    fig.legend(custom_lines, ['Inhale (1)', 'Exhale (0)', 'Silence (2)'],
-               loc='lower center', ncol=3)
+    fig.legend(custom_lines, ['Exhale (0)', 'Inhale (1)', 'Silence (2)'],
+               loc='upper right', bbox_to_anchor=(0.95, 0.95))
 
     plt.tight_layout()
-    plt.subplots_adjust(bottom=0.15)
+    plt.subplots_adjust(top=0.92)  # Miejsce na tytuł główny
     plt.savefig(output_path)
     plt.close(fig)
-    print(f"Plots saved to file: {output_path}")
+    print(f"  Saved plot: {output_path}")
 
-    return file_y_true, file_y_pred
+    return y_true, y_pred_lstm, y_pred_trans
 
+
+# ==========================================
+# MAIN
+# ==========================================
 
 if __name__ == "__main__":
+    # --- KONFIGURACJA ŚCIEŻEK ---
     raw_folder = "../data/eval/raw"
     label_folder = "../data/eval/label"
-    model_path = "../archive/lstm/model_lstm.pth"
-    output_folder = "plots_lstm"
+    output_folder = "plots_comparison"
+
+    # LSTM Paths
+    lstm_model_path = "../archive/lstm/model_lstm.pth"
+
+    # Transformer Paths (Dostosuj do swoich plików!)
+    trans_config_path = "../model/transformer/config.yaml"
+    trans_model_path = "../model/transformer/best_models/best_model_epoch_31.pth"
 
     os.makedirs(output_folder, exist_ok=True)
-
     wav_files = [f for f in os.listdir(raw_folder) if f.endswith('.wav')]
+    print(f"Found {len(wav_files)} WAV files. Processing...")
 
-    print(f"Found {len(wav_files)} WAV files")
-
-    # Globalne kontenery na wyniki ze wszystkich plików
+    # Globalne kontenery na metryki
     all_y_true = []
-    all_y_pred = []
+    all_y_lstm = []
+    all_y_trans = []
 
     target_names = ['Exhale (0)', 'Inhale (1)', 'Silence (2)']
 
     for wav_file in wav_files:
         base_name = os.path.splitext(wav_file)[0]
         csv_file = f"{base_name}.csv"
-        csv_path = os.path.join(label_folder, csv_file)
 
-        if not os.path.exists(csv_path):
-            print(f"No labels for {wav_file}, skipping")
+        paths = {
+            'wav': os.path.join(raw_folder, wav_file),
+            'csv': os.path.join(label_folder, csv_file),
+            'out': os.path.join(output_folder, f"{base_name}_compare.png")
+        }
+
+        if not os.path.exists(paths['csv']):
+            print(f"Skipping {wav_file} (no CSV found)")
             continue
 
-        wav_path = os.path.join(raw_folder, wav_file)
-        output_path = os.path.join(output_folder, f"{base_name}.png")
-
-        parts = base_name.split('_')
-        if len(parts) >= 3:
-            plot_name = f"LSTM Test: {parts[0]}, {parts[1]}, {parts[2]}"
-        else:
-            plot_name = f"LSTM Test: {base_name}"
-
+        plot_title = f"Comparison: {base_name.replace('_', ', ')}"
         print(f"Processing: {base_name}")
 
         try:
-            # Pobieramy wyniki dla pojedynczego pliku
-            f_true, f_pred = generate_comparison_plots(
-                wav_path,
-                csv_path,
-                model_path,
-                output_path,
-                plot_name,
-                chunk_duration=0.25
+            f_true, f_lstm, f_trans = generate_comparison_plots(
+                paths['wav'], paths['csv'],
+                lstm_model_path,
+                trans_config_path, trans_model_path,
+                paths['out'], plot_title
             )
 
-            # Dodajemy do globalnych list
             all_y_true.extend(f_true)
-            all_y_pred.extend(f_pred)
+            all_y_lstm.extend(f_lstm)
+            all_y_trans.extend(f_trans)
 
         except Exception as e:
-            print(f"Error processing {base_name}: {e}")
+            print(f"ERROR processing {base_name}: {e}")
+            import traceback
 
-    # --- Podsumowanie końcowe (Metrics) ---
-    print("\n" + "=" * 50)
-    print("FINAL EVALUATION REPORT (ALL FILES)")
-    print("=" * 50)
+            traceback.print_exc()
+
+    # --- RAPORT KOŃCOWY ---
+    print("\n" + "#" * 60)
+    print("FINAL COMPARISON REPORT")
+    print("#" * 60)
 
     if len(all_y_true) > 0:
-        # Obliczenie dokładności
-        acc = accuracy_score(all_y_true, all_y_pred)
-        print(f"Global Accuracy: {acc:.4f}")
+        print("\n--- MODEL LSTM RESULTS ---")
+        print(f"Global Accuracy: {accuracy_score(all_y_true, all_y_lstm):.4f}")
+        print(classification_report(all_y_true, all_y_lstm, target_names=target_names, digits=4))
 
-        # Pełny raport (Precision, Recall, F1 dla każdej klasy)
-        print("\nClassification Report:")
-        print(classification_report(all_y_true, all_y_pred, target_names=target_names, digits=4))
+        print("\n--- MODEL TRANSFORMER RESULTS ---")
+        print(f"Global Accuracy: {accuracy_score(all_y_true, all_y_trans):.4f}")
+        print(classification_report(all_y_true, all_y_trans, target_names=target_names, digits=4))
 
-        print("=" * 50)
-        print(f"Total processed chunks: {len(all_y_true)}")
-        print(f"Check output folder '{output_folder}' for visual plots.")
+        print("#" * 60)
+        print(f"Processed {len(all_y_true)} chunks total.")
+        print(f"Visualizations saved in: {output_folder}")
     else:
-        print("No data processed. Check file paths.")
+        print("No data processed.")
