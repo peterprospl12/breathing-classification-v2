@@ -6,7 +6,9 @@ import torch
 import librosa
 import os
 from matplotlib.lines import Line2D
+from sklearn.metrics import classification_report, accuracy_score, f1_score
 
+# Zakładam, że ten import działa u Ciebie poprawnie
 from breathing_model.archive.lstm.model_classes import AudioClassifierLSTM
 
 
@@ -73,11 +75,53 @@ def read_labels(csv_path: str) -> list[dict[str, int | str]]:
 
 
 def get_color_for_class(class_name: str | int) -> str:
+    # 0: Exhale, 1: Inhale, 2: Silence
     if class_name == 'inhale' or class_name == 1:
         return 'red'
     elif class_name == 'exhale' or class_name == 0:
         return 'green'
     return 'blue'
+
+
+def get_ground_truth_for_chunk(labels, start_frame, end_frame):
+    """
+    Określa etykietę dla danego fragmentu czasu metodą głosowania większościowego.
+    Zwraca int: 0 (Exhale), 1 (Inhale), 2 (Silence).
+    """
+    # Liczniki próbek dla każdej klasy wewnątrz okna
+    # Indeksy: 0: Exhale, 1: Inhale, 2: Silence
+    counts = {0: 0, 1: 0, 2: 0}
+
+    # Domyślnie cały fragment to cisza (jeśli nie ma etykiet)
+    total_len = end_frame - start_frame
+    counts[2] = total_len
+
+    for label in labels:
+        # Konwersja nazwy klasy na ID
+        lbl_class = label['class']
+        if lbl_class == 'inhale':
+            cls_id = 1
+        elif lbl_class == 'exhale':
+            cls_id = 0
+        else:
+            cls_id = 2  # Silence lub inne tło
+
+        # Sprawdź czy etykieta nachodzi na nasz chunk
+        l_start = label['start']
+        l_end = label['end']
+
+        if l_start < end_frame and l_end > start_frame:
+            # Oblicz część wspólną
+            overlap_start = max(l_start, start_frame)
+            overlap_end = min(l_end, end_frame)
+            overlap_len = overlap_end - overlap_start
+
+            if overlap_len > 0:
+                counts[cls_id] += overlap_len
+                counts[2] -= overlap_len  # Odejmujemy od domyślnej ciszy
+
+    # Zwróć ID klasy, która ma najwięcej próbek w tym oknie
+    return max(counts, key=counts.get)
 
 
 def generate_comparison_plots(
@@ -87,12 +131,14 @@ def generate_comparison_plots(
         output_path: str,
         plot_name: str,
         chunk_duration: float = 0.25
-) -> None:
+) -> tuple[list[int], list[int]]:
+    """
+    Zwraca krotkę dwóch list: (y_true, y_pred) dla danego pliku.
+    """
     audio_data, sample_rate = read_audio_file(wav_path)
     labels = read_labels(csv_path)
 
     classifier = LSTMClassifierWrapper(model_path)
-
     classifier.reset_hidden()
 
     chunk_size = int(sample_rate * chunk_duration)
@@ -105,25 +151,28 @@ def generate_comparison_plots(
 
     time_axis = np.arange(len(audio_data)) / sample_rate
 
+    # --- Plot 1: Ground Truth ---
     ax1.set_title('Ground Truth (CSV Labels)')
     ax1.set_xlabel('Time [s]')
     ax1.set_ylabel('Amplitude')
-
     ax1.plot(time_axis, audio_data, color='lightgray', alpha=0.5)
 
     for label in labels:
         start_idx = label['start']
         end_idx = label['end']
         color = get_color_for_class(label['class'])
-
         if start_idx < len(audio_data) and end_idx <= len(audio_data):
             segment_time = time_axis[start_idx:end_idx]
             segment_data = audio_data[start_idx:end_idx]
             ax1.plot(segment_time, segment_data, color=color)
 
+    # --- Plot 2 & Metrics Collection ---
     ax2.set_title('LSTM Model Prediction')
     ax2.set_xlabel('Time [s]')
     ax2.set_ylabel('Amplitude')
+
+    file_y_true = []
+    file_y_pred = []
 
     for i in range(0, len(audio_data), chunk_size):
         end = min(i + chunk_size, len(audio_data))
@@ -132,13 +181,22 @@ def generate_comparison_plots(
         if len(chunk) < chunk_size:
             continue
 
+        # Predykcja modelu
         prediction = classifier.predict(chunk, sample_rate)
 
+        # Pobranie prawdziwej etykiety dla tego fragmentu
+        ground_truth = get_ground_truth_for_chunk(labels, i, end)
+
+        # Zapis do list
+        file_y_pred.append(prediction)
+        file_y_true.append(ground_truth)
+
+        # Rysowanie
         color = get_color_for_class(prediction)
         segment_time = time_axis[i:end]
-
         ax2.plot(segment_time, chunk, color=color)
 
+    # Legenda
     custom_lines = [
         Line2D([0], [0], color='red', lw=2),
         Line2D([0], [0], color='green', lw=2),
@@ -153,6 +211,8 @@ def generate_comparison_plots(
     plt.close(fig)
     print(f"Plots saved to file: {output_path}")
 
+    return file_y_true, file_y_pred
+
 
 if __name__ == "__main__":
     raw_folder = "../data/eval/raw"
@@ -165,6 +225,12 @@ if __name__ == "__main__":
     wav_files = [f for f in os.listdir(raw_folder) if f.endswith('.wav')]
 
     print(f"Found {len(wav_files)} WAV files")
+
+    # Globalne kontenery na wyniki ze wszystkich plików
+    all_y_true = []
+    all_y_pred = []
+
+    target_names = ['Exhale (0)', 'Inhale (1)', 'Silence (2)']
 
     for wav_file in wav_files:
         base_name = os.path.splitext(wav_file)[0]
@@ -187,7 +253,8 @@ if __name__ == "__main__":
         print(f"Processing: {base_name}")
 
         try:
-            generate_comparison_plots(
+            # Pobieramy wyniki dla pojedynczego pliku
+            f_true, f_pred = generate_comparison_plots(
                 wav_path,
                 csv_path,
                 model_path,
@@ -195,7 +262,30 @@ if __name__ == "__main__":
                 plot_name,
                 chunk_duration=0.25
             )
+
+            # Dodajemy do globalnych list
+            all_y_true.extend(f_true)
+            all_y_pred.extend(f_pred)
+
         except Exception as e:
             print(f"Error processing {base_name}: {e}")
 
-    print(f"Done. Check {output_folder}")
+    # --- Podsumowanie końcowe (Metrics) ---
+    print("\n" + "=" * 50)
+    print("FINAL EVALUATION REPORT (ALL FILES)")
+    print("=" * 50)
+
+    if len(all_y_true) > 0:
+        # Obliczenie dokładności
+        acc = accuracy_score(all_y_true, all_y_pred)
+        print(f"Global Accuracy: {acc:.4f}")
+
+        # Pełny raport (Precision, Recall, F1 dla każdej klasy)
+        print("\nClassification Report:")
+        print(classification_report(all_y_true, all_y_pred, target_names=target_names, digits=4))
+
+        print("=" * 50)
+        print(f"Total processed chunks: {len(all_y_true)}")
+        print(f"Check output folder '{output_folder}' for visual plots.")
+    else:
+        print("No data processed. Check file paths.")
