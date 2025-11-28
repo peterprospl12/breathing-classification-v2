@@ -5,7 +5,6 @@ import csv
 import torch
 import librosa
 import os
-import yaml
 from matplotlib.lines import Line2D
 from sklearn.metrics import classification_report, accuracy_score
 
@@ -13,17 +12,11 @@ from sklearn.metrics import classification_report, accuracy_score
 from breathing_model.archive.lstm.model_classes import AudioClassifierLSTM
 
 # --- IMPORTY TRANSFORMER ---
+# Upewnij się, że Python widzi te ścieżki (może być potrzebne dodanie katalogu głównego do PYTHONPATH)
 from breathing_model.model.transformer.utils import Config
 from breathing_model.model.transformer.inference.transform import MelSpectrogramTransform
 from breathing_model.model.transformer.inference.model_loader import BreathPhaseClassifier
-
-# Jeśli AudioBuffer jest dostępny, używamy go. Jeśli nie, wrapper obsłuży buforowanie prosto w numpy.
-try:
-    from breathing_model.model.transformer.audio_buffer import AudioBuffer
-
-    USE_CUSTOM_BUFFER = True
-except ImportError:
-    USE_CUSTOM_BUFFER = False
+from breathing_model.model.transformer.inference.audio_buffer import AudioBuffer  # To jest kluczowe!
 
 
 # ==========================================
@@ -40,16 +33,17 @@ class LSTMClassifierWrapper:
         self.hidden = None
 
     def reset_state(self):
+        """LSTM wymaga resetu stanu ukrytego (hidden state) dla nowego pliku"""
         self.hidden = None
 
     def predict(self, audio_chunk: np.ndarray, sample_rate: int = 44100) -> int:
-        # Normalizacja do float32
+        # Normalizacja int16 -> float32 [-1, 1]
         if audio_chunk.dtype == np.int16:
             audio_float = audio_chunk.astype(np.float32) / 32768.0
         else:
             audio_float = audio_chunk.astype(np.float32)
 
-        # Preprocessing LSTM (Librosa)
+        # Preprocessing specyficzny dla LSTM (Librosa, 13 MFCC)
         mfcc = librosa.feature.mfcc(y=audio_float, sr=sample_rate, n_mfcc=13)
         features = mfcc.mean(axis=1)
 
@@ -65,53 +59,47 @@ class LSTMClassifierWrapper:
 
 class TransformerClassifierWrapper:
     def __init__(self, config_path, model_path):
-        # Ładowanie konfiguracji
+        # 1. Ładowanie konfiguracji
         self.config = Config.from_yaml(config_path)
 
-        # Inicjalizacja komponentów Transformera
+        # 2. Inicjalizacja komponentów (Identycznie jak w main.py)
         self.mel_transform = MelSpectrogramTransform(self.config.data)
         self.classifier = BreathPhaseClassifier(model_path, self.config.model, self.config.data)
 
-        # Bufor audio (3.5s kontekstu zgodnie z Twoim snippetem)
-        self.context_duration = 3.5
+        # Parametry bufora
         self.sample_rate = self.config.audio.sample_rate
-        self.buffer_size = int(self.sample_rate * self.context_duration)
+        # W main.py buffer jest inicjalizowany hardcodowaną wartością 3.5s
+        self.context_duration = 3.5
 
-        if USE_CUSTOM_BUFFER:
-            self.buffer = AudioBuffer(self.sample_rate, self.context_duration)
-        else:
-            # Fallback jeśli nie uda się zaimportować klasy AudioBuffer
-            self.raw_buffer = np.zeros(self.buffer_size, dtype=np.float32)
+        # 3. Inicjalizacja bufora
+        self.buffer = AudioBuffer(self.sample_rate, self.context_duration)
 
     def reset_state(self):
-        if USE_CUSTOM_BUFFER:
-            self.buffer = AudioBuffer(self.sample_rate, self.context_duration)
-        else:
-            self.raw_buffer = np.zeros(self.buffer_size, dtype=np.float32)
+        """Transformer wymaga wyczyszczenia bufora (wypełnienia zerami) dla nowego pliku"""
+        # Tworzymy nowy, czysty bufor (zazwyczaj AudioBuffer inituje się zerami)
+        self.buffer = AudioBuffer(self.sample_rate, self.context_duration)
 
     def predict(self, audio_chunk: np.ndarray, sample_rate: int = 44100) -> int:
-        # Normalizacja
+        # Normalizacja int16 -> float32 [-1, 1]
+        # To jest krytyczne, bo AudioBuffer i MelTransform pracują na floatach
         if audio_chunk.dtype == np.int16:
             audio_float = audio_chunk.astype(np.float32) / 32768.0
         else:
             audio_float = audio_chunk.astype(np.float32)
 
-        # Obsługa bufora (Transformer potrzebuje kontekstu, np. 3.5s)
-        if USE_CUSTOM_BUFFER:
-            self.buffer.append(audio_float)
-            buf_audio = self.buffer.get()
-        else:
-            # Przesuń bufor i dodaj nowe dane (numpy implementation)
-            self.raw_buffer = np.roll(self.raw_buffer, -len(audio_float))
-            self.raw_buffer[-len(audio_float):] = audio_float
-            buf_audio = self.raw_buffer
+        # LOGIKA IDENTYCZNA JAK W main.py:
 
-        # Predykcja
-        # MelSpectrogramTransform oczekuje tensora lub numpy array
+        # 1. Dodaj nowy chunk do bufora
+        self.buffer.append(audio_float)
+
+        # 2. Pobierz pełny kontekst (3.5s) z bufora
+        buf_audio = self.buffer.get()
+
+        # 3. Oblicz spektrogram
         mel = self.mel_transform(buf_audio)
 
-        # BreathPhaseClassifier.predict zwraca (klasa, prawdopodobienstwa)
-        pred_class, _ = self.classifier.predict(mel)
+        # 4. Predykcja
+        pred_class, probs = self.classifier.predict(mel)
 
         return pred_class
 
@@ -132,7 +120,7 @@ def read_labels(csv_path: str) -> list[dict[str, int | str]]:
     labels = []
     with open(csv_path, 'r') as file:
         reader = csv.reader(file)
-        next(reader)
+        next(reader)  # Skip header
         for row in reader:
             if len(row) < 3: continue
             class_name, start_sample, end_sample = row
@@ -173,7 +161,7 @@ def get_ground_truth_for_chunk(labels, start_frame, end_frame):
 
 
 # ==========================================
-# GENEROWANIE WYKRESÓW
+# GENEROWANIE WYKRESÓW I METRYK
 # ==========================================
 
 def generate_comparison_plots(
@@ -186,15 +174,16 @@ def generate_comparison_plots(
         plot_name: str,
         chunk_duration: float = 0.25
 ) -> tuple[list[int], list[int], list[int]]:
-    # Wczytanie danych
+    # 1. Wczytanie danych
     audio_data, sample_rate = read_audio_file(wav_path)
     labels = read_labels(csv_path)
 
-    # Inicjalizacja obu modeli
+    # 2. Inicjalizacja modeli
     lstm_wrapper = LSTMClassifierWrapper(lstm_model_path)
     trans_wrapper = TransformerClassifierWrapper(trans_config_path, trans_model_path)
 
-    # Reset stanów (ważne dla LSTM i Bufora Transformera)
+    # 3. CRITICAL: Reset stanów przed nowym plikiem
+    # To zapewnia, że bufory są czyste (same zera) na start, tak jak przy uruchomieniu main.py
     lstm_wrapper.reset_state()
     trans_wrapper.reset_state()
 
@@ -202,7 +191,7 @@ def generate_comparison_plots(
 
     print(f"  Audio: {len(audio_data) / sample_rate:.2f}s | Labels: {len(labels)}")
 
-    # Przygotowanie wykresu z 3 subplotami
+    # 4. Przygotowanie wykresu
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
     fig.suptitle(plot_name, fontsize=16)
 
@@ -211,7 +200,7 @@ def generate_comparison_plots(
     # --- PLOT 1: GROUND TRUTH ---
     ax1.set_title('Ground Truth', fontweight='bold')
     ax1.set_ylabel('Amplitude')
-    ax1.plot(time_axis, audio_data, color='lightgray', alpha=0.5)  # Tło
+    ax1.plot(time_axis, audio_data, color='lightgray', alpha=0.5)
 
     for label in labels:
         s, e = label['start'], label['end']
@@ -222,7 +211,6 @@ def generate_comparison_plots(
     # --- KONFIGURACJA PLOT 2 i 3 ---
     ax2.set_title('LSTM Model Prediction', fontweight='bold')
     ax2.set_ylabel('Pred')
-    # Rysujemy "szary cień" sygnału dla kontekstu
     ax2.plot(time_axis, audio_data, color='lightgray', alpha=0.3)
 
     ax3.set_title('Transformer Model Prediction', fontweight='bold')
@@ -230,38 +218,35 @@ def generate_comparison_plots(
     ax3.set_xlabel('Time [s]')
     ax3.plot(time_axis, audio_data, color='lightgray', alpha=0.3)
 
-    # Kontenery na wyniki dla tego pliku
     y_true = []
     y_pred_lstm = []
     y_pred_trans = []
 
-    # --- PĘTLA PRZETWARZANIA ---
+    # --- GŁÓWNA PĘTLA ---
     for i in range(0, len(audio_data), chunk_size):
         end = min(i + chunk_size, len(audio_data))
         chunk = audio_data[i:end]
 
+        # Pomijamy końcówkę pliku jeśli jest mniejsza niż chunk_size
+        # (w realtime po prostu czeka się na dane, tu nie mamy na co czekać)
         if len(chunk) < chunk_size:
             continue
 
-        # 1. Ground Truth
+        # Ground Truth
         gt = get_ground_truth_for_chunk(labels, i, end)
         y_true.append(gt)
 
-        # 2. Predykcja LSTM
+        # Predykcja LSTM
         p_lstm = lstm_wrapper.predict(chunk, sample_rate)
         y_pred_lstm.append(p_lstm)
 
-        # 3. Predykcja Transformer
+        # Predykcja Transformer
         p_trans = trans_wrapper.predict(chunk, sample_rate)
         y_pred_trans.append(p_trans)
 
-        # Rysowanie na wykresach
+        # Rysowanie odcinków
         t_seg = time_axis[i:end]
-
-        # LSTM Plot
         ax2.plot(t_seg, chunk, color=get_color_for_class(p_lstm))
-
-        # Transformer Plot
         ax3.plot(t_seg, chunk, color=get_color_for_class(p_trans))
 
     # Legenda
@@ -274,7 +259,7 @@ def generate_comparison_plots(
                loc='upper right', bbox_to_anchor=(0.95, 0.95))
 
     plt.tight_layout()
-    plt.subplots_adjust(top=0.92)  # Miejsce na tytuł główny
+    plt.subplots_adjust(top=0.92)
     plt.savefig(output_path)
     plt.close(fig)
     print(f"  Saved plot: {output_path}")
@@ -287,15 +272,15 @@ def generate_comparison_plots(
 # ==========================================
 
 if __name__ == "__main__":
-    # --- KONFIGURACJA ŚCIEŻEK ---
+    # --- ŚCIEŻKI DO DANYCH ---
     raw_folder = "../data/eval/raw"
     label_folder = "../data/eval/label"
     output_folder = "plots_comparison"
 
-    # LSTM Paths
+    # --- ŚCIEŻKI DO MODELI ---
+    # Ustaw poprawne ścieżki względem miejsca uruchomienia skryptu!
     lstm_model_path = "../archive/lstm/model_lstm.pth"
 
-    # Transformer Paths (Dostosuj do swoich plików!)
     trans_config_path = "../model/transformer/config.yaml"
     trans_model_path = "../model/transformer/best_models/best_model_epoch_31.pth"
 
@@ -303,7 +288,6 @@ if __name__ == "__main__":
     wav_files = [f for f in os.listdir(raw_folder) if f.endswith('.wav')]
     print(f"Found {len(wav_files)} WAV files. Processing...")
 
-    # Globalne kontenery na metryki
     all_y_true = []
     all_y_lstm = []
     all_y_trans = []
