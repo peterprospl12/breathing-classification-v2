@@ -445,3 +445,5 @@ app.*.symbols
 
 !app/lib
 !app/lib/**
+
+flutter
