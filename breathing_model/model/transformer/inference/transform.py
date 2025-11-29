@@ -11,7 +11,8 @@ class MelSpectrogramTransform:
             sample_rate=config.sample_rate,
             n_fft=config.n_fft,
             hop_length=config.hop_length,
-            n_mels=config.n_mels
+            n_mels=config.n_mels,
+            power=2.0
         )
         self.db_transform = torchaudio.transforms.AmplitudeToDB(stype='power')
 
