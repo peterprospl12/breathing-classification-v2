@@ -1,0 +1,52 @@
+data:
+  data_dir: "../../data/train/raw"
+  label_dir: "../../data/train/label"
+  sample_rate: 44100
+  n_mels: 128
+  hop_length: 512
+  n_fft: 2048
+
+augment:
+  enabled: true
+  p_noise: 0.3
+  p_volume: 0.2
+  p_shift: 0.2
+  volume_range: [0.3, 1.0]
+  noise_factor_range: [0.00001, 0.001]
+  max_shift_seconds: 0.3
+  seed: 123456
+
+audio:
+  channels: 1
+  chunk_length: 0.2
+  device_index: 2
+  sample_rate: 44100
+
+train:
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  num_epochs: 50
+  patience: 8
+  save_dir: "checkpoints"
+
+scheduler:
+  type: "steplr"
+  max_lr: 0.001
+  pct_start: 0.3
+  anneal_strategy: "cos"
+  div_factor: 25
+  final_div_factor: 10000
+  step_size: 10
+  gamma: 0.5
+
+model:
+  num_classes: 3
+  n_mels: 128
+  context_frames: 5
+  hidden_dim: 256
+  dropout: 0.3
+
+plot:
+  history_seconds: 5
+  update_interval: 0.3
