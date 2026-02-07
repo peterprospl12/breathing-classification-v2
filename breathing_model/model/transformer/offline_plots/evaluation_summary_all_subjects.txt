@@ -1,0 +1,406 @@
+================================================================================
+  ZBIORCZE PORÓWNANIE EWALUACJI MODELU CNN-TRANSFORMER
+  Wszystkie osoby testowe: Kinga, Ela, Adam, Piotr, Iwo, Tomasz
+  Model: best_model_epoch_31.pth
+  Tryb: symulacja strumieniowa offline (chunk-level, buffer 3.5s)
+  Data: 2026-02-07
+================================================================================
+
+
+1. PRZEGLĄD OGÓLNY
+================================================================================
+
+  Osoby testowe:  6
+  Łączna liczba plików:  44
+  Łączna liczba chunków: 12681
+
+  Podział:
+    Kinga   — 16 plików, 4524 chunki (35.7%)
+    Piotr   —  7 plików, 2107 chunków (16.6%)
+    Tomasz  —  6 plików, 1545 chunków (12.2%)
+    Ela     —  5 plików, 1500 chunków (11.8%)
+    Adam    —  5 plików, 1500 chunków (11.8%)
+    Iwo     —  5 plików, 1505 chunków (11.9%)
+
+  Uwagi dotyczące danych:
+  - Adam: tylko 12 chunków silence (0.8%), zaniża F1 macro.
+  - Tomasz: 2 pliki "bad" (40+301 chunków), celowo trudne warunki.
+  - Iwo: widoczna poprawa chronologiczna (efekt adaptacji).
+  - Kinga: 1 plik "bad" (301 chunków), outlier w zbiorze.
+
+
+2. METRYKI OGÓLNE — PORÓWNANIE WSZYSTKICH OSÓB
+================================================================================
+
+  Metryka           Kinga    Ela     Adam    Piotr    Iwo    Tomasz
+  ──────────────────────────────────────────────────────────────────
+  N plików             16       5       5       7       5       6
+  N chunków          4524    1500    1500    2107    1505    1545
+
+  Accuracy          0.829   0.847   0.811   0.768   0.785   0.720
+  Acc CI low        0.817   0.830   0.793   0.750   0.764   0.696
+  Acc CI up         0.839   0.865   0.831   0.786   0.805   0.743
+
+  Kappa             0.742   0.767   0.669   0.643   0.663   0.580
+  Kappa CI low      0.725   0.741   0.640   0.615   0.632   0.545
+  Kappa CI up       0.757   0.793   0.700   0.670   0.694   0.613
+
+  MCC               0.749   0.780   0.687   0.650   0.671   0.590
+
+  F1 macro          0.824   0.830   0.614*  0.763   0.744   0.714
+  F1m CI low        0.812   0.811   0.593   0.745   0.721   0.690
+  F1m CI up         0.835   0.849   0.639   0.782   0.767   0.737
+
+  F1 weighted       0.832   0.856   0.858   0.766   0.796   0.717
+
+  Log-loss          0.709   0.595   0.816   0.705   0.824   0.893
+
+  * F1 macro Adama jest zaniżone — 12 chunków silence (precision=0.06).
+    Weighted F1=0.858 jest bardziej miarodajny.
+
+  Ranking wg accuracy:   Ela > Kinga > Adam > Iwo > Piotr > Tomasz
+  Ranking wg kappa:      Ela > Kinga > Adam > Iwo > Piotr > Tomasz
+  Ranking wg log-loss:   Ela < Piotr < Kinga < Adam < Iwo < Tomasz
+
+
+3. METRYKI PER KLASA — WSZYSTKIE OSOBY
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │              EXHALE                                                        │
+  │ Osoba    Precision  Recall    F1     Support    AUC                        │
+  ├─────────────────────────────────────────────────────────────────────────────┤
+  │ Kinga       0.920   0.779   0.843     1816    0.925                        │
+  │ Ela         0.966   0.766   0.854      624    0.960                        │
+  │ Adam        0.944   0.769   0.847      762    0.916                        │
+  │ Piotr       0.706   0.901   0.791      758    0.943                        │
+  │ Iwo         0.914   0.745   0.821      709    0.882                        │
+  │ Tomasz      0.736   0.879   0.801      543    0.937                        │
+  ├─────────────────────────────────────────────────────────────────────────────┤
+  │ Średnia     0.864   0.806   0.826                0.927                     │
+  │ Std         0.107   0.064   0.024                0.027                     │
+  └─────────────────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │              INHALE                                                        │
+  │ Osoba    Precision  Recall    F1     Support    AUC                        │
+  ├─────────────────────────────────────────────────────────────────────────────┤
+  │ Kinga       0.888   0.828   0.857     1688    0.955                        │
+  │ Ela         0.945   0.877   0.909      624    0.978                        │
+  │ Adam        0.912   0.853   0.881      726    0.960                        │
+  │ Piotr       0.818   0.710   0.760      851    0.905                        │
+  │ Iwo         0.858   0.867   0.862      571    0.958                        │
+  │ Tomasz      0.611   0.711   0.657      481    0.861                        │
+  ├─────────────────────────────────────────────────────────────────────────────┤
+  │ Średnia     0.839   0.808   0.821                0.936                     │
+  │ Std         0.119   0.074   0.092                0.042                     │
+  └─────────────────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │              SILENCE                                                       │
+  │ Osoba    Precision  Recall    F1     Support    AUC                        │
+  ├─────────────────────────────────────────────────────────────────────────────┤
+  │ Kinga       0.663   0.919   0.770     1020    0.954                        │
+  │ Ela         0.577   0.976   0.726      252    0.977                        │
+  │ Adam        0.060   1.000   0.113       12    0.977                        │
+  │ Piotr       0.828   0.667   0.739      498    0.961                        │
+  │ Iwo         0.451   0.702   0.550      225    0.884                        │
+  │ Tomasz      0.872   0.564   0.685      521    0.923                        │
+  ├─────────────────────────────────────────────────────────────────────────────┤
+  │ Średnia**   0.678   0.770   0.694                0.940                     │
+  │ Std**       0.171   0.153   0.087                0.035                     │
+  └─────────────────────────────────────────────────────────────────────────────┘
+  ** Średnia/Std obliczone z wyłączeniem Adama (12 próbek — niereprezentatywne).
+
+  Obserwacje per klasa:
+  - EXHALE: Dzieli się na 2 grupy — wysoka precyzja/niższy recall (Kinga,
+    Ela, Adam, Iwo: prec>0.91) vs niższa precyzja/wysoki recall (Piotr,
+    Tomasz: prec~0.71-0.74, recall>0.88). AUC stabilne >0.88.
+  - INHALE: Najsłabszy u Tomasza (F1=0.657) i Piotra (F1=0.760). Najlepszy
+    u Eli (F1=0.909). Największa zmienność międzyosobowa (std F1=0.092).
+  - SILENCE: Najbardziej zmienna klasa. Dwa wzorce:
+    (a) wysoki recall, niska precyzja = model nadklasyfikuje silence
+        (Kinga, Ela, Adam, Iwo)
+    (b) niska recall, wysoka precyzja = model jest konserwatywny
+        (Piotr, Tomasz)
+
+
+4. ROC-AUC — PEŁNA TABELA
+================================================================================
+
+  Klasa       Kinga   Ela    Adam   Piotr   Iwo   Tomasz  │ Średnia   Std
+  ─────────────────────────────────────────────────────────┼───────────────
+  exhale      0.925  0.960  0.916  0.943  0.882  0.937   │  0.927  0.027
+  inhale      0.955  0.978  0.960  0.905  0.958  0.861   │  0.936  0.042
+  silence     0.954  0.977  0.977  0.961  0.884  0.923   │  0.946  0.035
+  ─────────────────────────────────────────────────────────┼───────────────
+  Śr. osoba   0.945  0.971  0.951  0.936  0.908  0.907   │  0.936  0.024
+
+  Globalna średnia AUC: 0.936
+
+  AUC > 0.90 dla 16 z 18 par (klasa × osoba). Dwie pary <0.90:
+  - exhale u Iwo (0.882) i inhale u Tomasza (0.861).
+  Wyniki potwierdzają bardzo dobrą zdolność dyskryminacyjną modelu
+  niezależnie od osoby, nawet tam gdzie F1 jest niższe.
+
+
+5. MACIERZE POMYŁEK — WSZYSTKIE OSOBY
+================================================================================
+
+  KINGA (4524):                         ELA (1500):
+  pred→  exh    inh    sil              pred→  exh    inh    sil
+  exh   1414    112    290              exh     478     31    115
+  inh    104   1398    186              inh      12    547     65
+  sil     19     64    937              sil       5      1    246
+
+  ADAM (1500):                          PIOTR (2107):
+  pred→  exh    inh    sil              pred→  exh    inh    sil
+  exh    586     60    116              exh     683     45     30
+  inh     35    619     72              inh     208    604     39
+  sil      0      0     12              sil      77     89    332
+
+  IWO (1505):                           TOMASZ (1545):
+  pred→  exh    inh    sil              pred→  exh    inh    sil
+  exh    528     28    153              exh     477     54     12
+  inh     37    495     39              inh     108    342     31
+  sil     13     54    158              sil      63    164    294
+
+  ZAGREGOWANA (12681 chunków):
+                  exhale    inhale   silence
+    exhale          4166       330       720
+    inhale           504      4005       432
+    silence          164       372      1979
+    ──────────────────────────────────────────
+    Σ predykcji    4834      4707      3131    (rzeczywiste: 5216, 4941, 2524*)
+    * Bez Adama silence=2512, Adam dodaje 12.
+
+  Accuracy zagregowana: (4166+4005+1979) / 12681 = 0.800
+
+
+6. ANALIZA TYPÓW BŁĘDÓW — PORÓWNANIE
+================================================================================
+
+  Typ błędu            Kinga    Ela   Adam  Piotr   Iwo  Tomasz    SUMA   %err
+  ────────────────────────────────────────────────────────────────────────────
+  exhale → inhale        112     31     60     45     28     54      330  13.0%
+  exhale → silence       290    115    116     30    153     12      716  28.2%
+  inhale → exhale        104     12     35    208     37    108      504  19.9%
+  inhale → silence       186     65     72     39     39     31      432  17.0%
+  silence → exhale        19      5      0     77     13     63      177   7.0%
+  silence → inhale        64      1      0     89     54    164      372  14.7%
+  ────────────────────────────────────────────────────────────────────────────
+  SUMA                   775    229    283    488    324    432     2531 100.0%
+  Error rate           17.1%  15.3%  18.9%  23.2%  21.5%  28.0%   20.0%
+
+  3 najczęstsze typy błędów (71.5% wszystkich pomyłek):
+  1. exhale → silence  (716, 28.2%) — wydech klasyfikowany jako cisza
+  2. inhale → exhale   (504, 19.9%) — wdech klasyfikowany jako wydech
+  3. inhale → silence  (432, 17.0%) — wdech klasyfikowany jako cisza
+
+  Krytyczny wniosek: Pomyłki exhale ↔ inhale (bezpośrednie zamiany faz
+  oddechowych) stanowią łącznie 32.9% błędów (330+504=834). Pozostałe
+  67.1% to pomyłki z udziałem klasy silence — mniej krytyczne dla
+  estymacji tempa oddychania.
+
+
+7. ZMIENNOŚĆ MIĘDZY NAGRANIAMI — PORÓWNANIE
+================================================================================
+
+  ACCURACY:
+  Osoba       Mean     Std     Min     Max    Median   N files
+  ─────────────────────────────────────────────────────────────
+  Kinga      0.826   0.105   0.475   0.917    0.857      16
+  Ela        0.847   0.050   0.807   0.917    0.820       5
+  Adam       0.811   0.037   0.773   0.863    0.800       5
+  Piotr      0.768   0.045   0.708   0.841    0.781       7
+  Iwo        0.785   0.097   0.655   0.897    0.761       5
+  Tomasz     0.660   0.222   0.300   0.857    0.772       6
+
+  F1 MACRO:
+  Osoba       Mean     Std     Min     Max    Median   N files
+  ─────────────────────────────────────────────────────────────
+  Kinga      0.815   0.102   0.498   0.916    0.854      16
+  Ela        0.824   0.062   0.769   0.914    0.797       5
+  Adam       0.595   0.039   0.570   0.663    0.579       5
+  Piotr      0.753   0.047   0.708   0.827    0.731       7
+  Iwo        0.734   0.118   0.614   0.890    0.721       5
+  Tomasz     0.628   0.271   0.154   0.861    0.753       6
+
+  KAPPA:
+  Osoba       Mean     Std     Min     Max    Median   N files
+  ─────────────────────────────────────────────────────────────
+  Kinga      0.730   0.161   0.210   0.875    0.784      16
+  Ela        0.765   0.078   0.700   0.874    0.717       5
+  Adam       0.670   0.042   0.639   0.738    0.649       5
+  Piotr      0.637   0.061   0.563   0.729    0.648       7
+  Iwo        0.663   0.150   0.468   0.842    0.624       5
+  Tomasz     0.494   0.320   0.000   0.777    0.658       6
+
+  Ranking stabilności (wg std accuracy):
+    Adam (0.037) > Piotr (0.045) > Ela (0.050) > Iwo (0.097) >
+    Kinga (0.105) > Tomasz (0.222)
+
+
+8. ANALIZA OUTLIERÓW
+================================================================================
+
+  Pliki z accuracy < 0.70 (poniżej progu akceptowalności):
+
+  Plik                                  Acc    F1m    κ     Chunks  Uwagi
+  ────────────────────────────────────────────────────────────────────────
+  Tomasz_nose_bad_...15-39-03          0.300  0.154  0.000    40   Plik "bad", za krótki
+  Tomasz_nose_bad_both_...00-16-02     0.468  0.455  0.182   301   Plik "bad"
+  Kinga_nose_bad_...17-31-13           0.475  0.498  0.210   301   Plik "bad"
+  Iwo_nose_medium_...20-41-19          0.655  0.614  0.468   301   Pierwsze nagranie
+
+  Wszystkie pliki <0.70 to:
+  - Nagrania celowo oznaczone jako "bad" (3 pliki), LUB
+  - Pierwsze nagranie osoby w sesji (1 plik — efekt adaptacji).
+  Na danych "medium/good" najniższa accuracy to 0.707 (Piotr).
+
+
+9. PORÓWNANIE GRUP
+================================================================================
+
+  Metryka              Grupa 1           Grupa 2           Wszystkie
+                    (Kinga,Ela,Adam)  (Piotr,Iwo,Tomasz)   (6 osób)
+  ─────────────────────────────────────────────────────────────────────
+  N chunków              7524              5157             12681
+  N plików                 26                18                44
+
+  Accuracy ważona       0.830             0.757              0.800
+  F1 weighted           0.845             0.758              0.808
+  F1 macro**            0.826             0.740              0.789
+  Kappa ważony          0.733             0.628              0.690
+  MCC ważony            0.740             0.636              0.697
+  AUC (śr.)             0.956             0.917              0.936
+
+  ** F1 macro bez Adama: Grupa 1 = 0.827
+
+  Różnica accuracy między grupami: Δ = 0.073 (7.3 p.p.)
+  Możliwe przyczyny:
+  - Grupa 2 zawiera pliki "bad" (Tomasz), które obniżają średnią.
+  - Grupa 2 ma więcej pomyłek exhale↔inhale (wdechy mylone z wydechami).
+  - Nagrania Grupy 2 pochodzą z 2025-06 (starsze), a Grupy 1 głównie
+    z 2026-01/02 — różnice w jakości nagrywania.
+
+
+10. TOP I BOTTOM — RANKING GLOBALNY PLIKÓW
+================================================================================
+
+  TOP 10 najlepszych plików (accuracy):
+   #  Plik                                    Acc    F1m    κ     Osoba
+  ─────────────────────────────────────────────────────────────────────
+   1  Kinga_M_...19-40-26                    0.917  0.916  0.875  Kinga
+   2  Ela_Cz_...20-44-42                     0.917  0.914  0.874  Ela
+   3  Kinga_M_...19-34-25                    0.903  0.903  0.855  Kinga
+   4  Iwo_...21-56-21                        0.897  0.890  0.842  Iwo
+   5  Kinga_M_...19-33-24                    0.897  0.885  0.841  Kinga
+   6  Kinga_M_...19-38-25                    0.887  0.887  0.830  Kinga
+   7  Ela_Cz_...20-45-42                     0.883  0.861  0.820  Ela
+   8  Kinga_M_...19-39-25                    0.873  0.869  0.809  Kinga
+   9  Iwo_...21-52-46                        0.864  0.814  0.781  Iwo
+  10  Adam_...19-55-35                       0.863  0.588  0.738  Adam
+
+  BOTTOM 10 najgorszych plików (accuracy):
+   #  Plik                                    Acc    F1m    κ     Osoba
+  ─────────────────────────────────────────────────────────────────────
+   1  Tomasz_nose_bad_...15-39-03             0.300  0.154  0.000  Tomasz
+   2  Tomasz_nose_bad_both_...00-16-02        0.468  0.455  0.182  Tomasz
+   3  Kinga_nose_bad_...17-31-13              0.475  0.498  0.210  Kinga
+   4  Iwo_...20-41-19                         0.655  0.614  0.468  Iwo
+   5  Piotr_...23-04-10                       0.708  0.708  0.563  Piotr
+   6  Piotr_...23-01-01                       0.734  0.713  0.577  Piotr
+   7  Piotr_...23-06-28                       0.738  0.721  0.593  Piotr
+   8  Iwo_...21-01-47                         0.748  0.721  0.624  Iwo
+   9  Iwo_...20-45-55                         0.761  0.632  0.598  Iwo
+  10  Kinga_nose_medium_...17-24-38           0.764  0.743  0.647  Kinga
+
+
+11. STATYSTYKI ZBIORCZE — PODSUMOWANIE DO PUBLIKACJI
+================================================================================
+
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │  CNN-TRANSFORMER — EWALUACJA NA 6 OSOBACH TESTOWYCH                    │
+  │  (streaming simulation, chunk-level, buffer 3.5s)                      │
+  ├──────────────────────────────────────────────────────────────────────────┤
+  │                                                                        │
+  │  Accuracy  (N=12681):  0.800                                           │
+  │    Per-subject range:  0.720 — 0.847                                   │
+  │    Per-subject mean:   0.793  (std = 0.048)                            │
+  │                                                                        │
+  │  Cohen's Kappa:        0.690                                           │
+  │    Per-subject range:  0.580 — 0.767                                   │
+  │    Per-subject mean:   0.660  (std = 0.063)                            │
+  │                                                                        │
+  │  F1 macro*:            0.789                                           │
+  │    Per-subject range:  0.714 — 0.830                                   │
+  │    Per-subject mean*:  0.762  (std = 0.045)                            │
+  │                                                                        │
+  │  F1 weighted:          0.808                                           │
+  │    Per-subject range:  0.717 — 0.858                                   │
+  │    Per-subject mean:   0.795  (std = 0.054)                            │
+  │                                                                        │
+  │  ROC-AUC (macro):      0.936                                           │
+  │    Per-subject range:  0.907 — 0.971                                   │
+  │    Per-class:  exhale=0.927, inhale=0.936, silence=0.946               │
+  │                                                                        │
+  │  Per-class F1:                                                         │
+  │    exhale:   0.826  (std = 0.024)                                      │
+  │    inhale:   0.821  (std = 0.092)                                      │
+  │    silence*: 0.694  (std = 0.087)                                      │
+  │                                                                        │
+  │  * F1 macro i silence F1 obliczone z wyłączeniem Adama (12 próbek).    │
+  │    Z Adamem: F1 macro per-subject mean = 0.737 (std = 0.077).         │
+  │                                                                        │
+  │  N=6 subjects, 44 recordings, 12681 chunks.                            │
+  │  All subjects unseen during training.                                  │
+  └──────────────────────────────────────────────────────────────────────────┘
+
+
+12. KLUCZOWE WNIOSKI
+================================================================================
+
+  1. GENERALIZACJA MIĘDZYOSOBOWA: Model utrzymuje accuracy ≥0.72 na danych
+     od 6 osób nieobecnych w zbiorze treningowym. Na danych "medium/good"
+     (bez plików celowo oznaczonych jako "bad") accuracy wynosi 0.71-0.92,
+     z medianą ~0.80.
+
+  2. HIERARCHIA KLAS: Model najlepiej klasyfikuje exhale (F1=0.826) i inhale
+     (F1=0.821), a najsłabiej silence (F1=0.694). Kluczowe dla aplikacji:
+     pomyłki exhale↔inhale stanowią tylko 33% błędów — mniej krytyczne
+     pomyłki z silence dominują (67%).
+
+  3. ZMIENNOŚĆ OSOBNICZA: Accuracy per-subject waha się od 0.720 (Tomasz)
+     do 0.847 (Ela), dając rozrzut 12.7 p.p. Główne źródło zmienności to:
+     - jakość nagrania (pliki "bad" drastycznie obniżają wyniki)
+     - indywidualne cechy oddychania (wzorce pomyłek są osobnicze)
+     - efekt adaptacji (pierwsze nagrania często gorsze)
+
+  4. STABILNOŚĆ WEWNĄTRZOSOBOWA: Najstabilniejsi: Adam (std=0.037),
+     Piotr (0.045), Ela (0.050). Najmniej stabilni: Tomasz (0.222, z powodu
+     plików "bad"), Kinga (0.105, 1 plik "bad"), Iwo (0.097, efekt adaptacji).
+
+  5. ROC-AUC: Globalne AUC=0.936 potwierdza, że model ma bardzo dobrą
+     zdolność dyskryminacyjną. Nawet u najsłabszych osób (Tomasz, Iwo)
+     AUC>0.86 dla wszystkich klas, co sugeruje potencjał poprawy
+     F1 przez optymalizację progów decyzyjnych.
+
+  6. WZORCE SILENCE: Istnieją dwa wyraźne wzorce zachowania modelu:
+     (a) liberalny — wysoki recall, niska precyzja (Kinga, Ela, Adam, Iwo)
+     (b) konserwatywny — niska recall, wysoka precyzja (Piotr, Tomasz)
+     Sugeruje to, że cechy spektralne ciszy różnią się między osobami.
+
+  7. WPŁYW WARUNKÓW: Nagrania z 2026 (nowsze) osiągają średnio wyższe
+     accuracy niż nagrania z 2025. Nagrania "good" > "medium" > "bad".
+     Jakość mikrofonu i technika oddychania mają istotny wpływ.
+
+  8. REKOMENDACJE:
+     - Rozważyć osobno-specyficzną kalibrację progów (personalizacja).
+     - Dodać próbki silence o różnej charakterystyce do zbioru treningowego.
+     - Zbadać wpływ jakości nagrania na wyniki (SNR, gain, odległość mikrofonu).
+     - Pliki "bad" powinny być raportowane osobno jako test odporności.
+
+================================================================================
+  Koniec raportu
+================================================================================
