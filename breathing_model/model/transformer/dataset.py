@@ -11,7 +11,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 import torchaudio
 
-from utils import BreathType  
+from breathing_model.model.transformer.utils import BreathType
 
 
 class BreathDataset(Dataset):
