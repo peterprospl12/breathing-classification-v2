@@ -1,0 +1,2 @@
+Epoch 22 / 50 - Train Loss: 0.451226 | Train Acc: 0.8274
+Epoch 22 / 50 - Val   Loss: 0.418144 | Val   Acc: 0.8436
