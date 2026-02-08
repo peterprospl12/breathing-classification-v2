@@ -121,7 +121,7 @@ class PositionalEncoding(nn.Module):
     Implementation of positional encoding according to "Attention is All You Need".
     """
 
-    def __init__(self, d_model, dropout=0.1, max_len=5000):
+    def __init__(self, d_model, dropout=0.1, max_len=1000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
