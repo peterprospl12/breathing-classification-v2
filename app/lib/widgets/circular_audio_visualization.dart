@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:breathing_app/enums/enums.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/audio_service.dart';

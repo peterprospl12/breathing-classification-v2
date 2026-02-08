@@ -2,10 +2,8 @@ import 'package:breathing_app/utils/logger.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:typed_data';
-
+import 'package:breathing_app/enums/enums.dart';
 import 'package:logging/logging.dart';
-
-enum BreathPhase { exhale, inhale, silence }
 
 class BreathClassifier {
   static const MethodChannel _channel = MethodChannel('breathing_classifier');
@@ -15,17 +13,23 @@ class BreathClassifier {
   final Logger _logger = LoggerService.getLogger('BreathClassifier');
 
   static const int sampleRate = 44100;
+  ModelType _currentModel = ModelType.standard;
 
-  Future<void> initialize() async {
-    if (_isInitialized) return;
+  Future<void> initialize({ModelType model = ModelType.standard}) async {
+    if (_isInitialized && _currentModel == model) return;
 
     try {
+      _currentModel = model;
+      final String nativeModelType = _mapModelTypeToNative(model);
       _isInitialized =
-          await _channel.invokeMethod<bool>('isInitialized') ?? false;
+          await _channel.invokeMethod<bool>('initializeModel', {
+            'modelType': nativeModelType,
+          }) ??
+          false;
 
       if (_isInitialized) {
         _logger.info(
-          'Breath classifier successfully initialized (confirmed by native code)',
+          'Breath classifier successfully initialized with model: $model',
         );
       } else {
         _logger.warning(
@@ -39,7 +43,7 @@ class BreathClassifier {
           );
 
           await Future.delayed(const Duration(seconds: 2));
-          await initialize();
+          await initialize(model: model);
         } else {
           _logger.severe(
             'Maximum number of classifier initialization attempts exceeded.',
@@ -54,6 +58,25 @@ class BreathClassifier {
       _isInitialized = false;
       throw Exception('Failed to initialize breath classifier');
     }
+  }
+
+  String _mapModelTypeToNative(ModelType model) {
+    switch (model) {
+      case ModelType.exhaleOnly:
+        return 'exhale_only';
+      case ModelType.standard:
+        return 'standard';
+    }
+  }
+
+  Future<void> switchModel(ModelType modelType) async {
+    if (_currentModel == modelType) return;
+
+    _logger.info('Switching to model: $modelType');
+    _isInitialized = false;
+    _initAttempts = 0;
+
+    await initialize(model: modelType);
   }
 
   Future<bool> checkInitialized() async {

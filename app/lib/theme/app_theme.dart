@@ -53,7 +53,6 @@ class AppTheme {
   static ThemeData get lightTheme {
     final baseTheme = ThemeData.light();
     return baseTheme.copyWith(
-      useMaterial3: true,
       colorScheme: const ColorScheme.light(
         brightness: Brightness.light,
         primary: _primaryBlue,
@@ -62,11 +61,9 @@ class AppTheme {
         onSecondary: _lightOnSecondary,
         error: _errorRed,
         onError: _lightOnError,
-        background: _lightBackground,
-        onBackground: _lightOnBackground,
         surface: _lightSurface,
         onSurface: _lightOnSurface,
-        surfaceVariant: _lightSurfaceVariant,
+        surfaceContainerHighest: _lightSurfaceVariant,
         onSurfaceVariant: _lightOnSurfaceVariant,
         outline: _lightOutline,
         // Add other colors if needed: shadow, inverseSurface, etc.
@@ -85,7 +82,7 @@ class AppTheme {
           fontFamily: fontFamily, // Applied here
         ),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 0, // Minimalist - no shadow
         color: _lightSurface,
         shape: RoundedRectangleBorder(
@@ -123,7 +120,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
-      dialogTheme: DialogTheme(
+      dialogTheme: DialogThemeData(
         backgroundColor: _lightSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         titleTextStyle: baseTheme.textTheme.titleLarge?.copyWith(
@@ -157,7 +154,6 @@ class AppTheme {
   static ThemeData get darkTheme {
     final baseTheme = ThemeData.dark();
     return baseTheme.copyWith(
-      useMaterial3: true,
       colorScheme: const ColorScheme.dark(
         brightness: Brightness.dark,
         primary: _primaryBlue,
@@ -166,11 +162,9 @@ class AppTheme {
         onSecondary: _darkOnSecondary,
         error: _errorRed,
         onError: _darkOnError,
-        background: _darkBackground,
-        onBackground: _darkOnBackground,
         surface: _darkSurface,
         onSurface: _darkOnSurface,
-        surfaceVariant: _darkSurfaceVariant,
+        surfaceContainerHighest: _darkSurfaceVariant,
         onSurfaceVariant: _darkOnSurfaceVariant,
         outline: _darkOutline,
         // Add other colors if needed
@@ -189,12 +183,12 @@ class AppTheme {
           fontFamily: fontFamily,
         ),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 0,
         color: _darkSurface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: _darkOutline, width: 1),
+          side: const BorderSide(color: _darkOutline, width: 1),
         ),
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       ),
@@ -224,7 +218,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
-      dialogTheme: DialogTheme(
+      dialogTheme: DialogThemeData(
         backgroundColor: _darkSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         titleTextStyle: baseTheme.textTheme.titleLarge?.copyWith(
@@ -241,7 +235,7 @@ class AppTheme {
         selectedTileColor: _primaryBlue.withValues(alpha: 0.2),
         dense: true,
       ),
-      dividerTheme: DividerThemeData(
+      dividerTheme: const DividerThemeData(
         color: _darkOutline,
         thickness: 1,
         space: 1,

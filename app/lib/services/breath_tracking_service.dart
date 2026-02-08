@@ -1,5 +1,6 @@
 import 'dart:async';
-import '../models/breath_classifier.dart';
+import 'package:breathing_app/enums/enums.dart';
+
 import 'package:logging/logging.dart';
 import 'package:breathing_app/utils/logger.dart';
 

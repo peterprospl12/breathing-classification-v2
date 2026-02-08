@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:breathing_app/enums/enums.dart';
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 import '../models/breath_classifier.dart';
@@ -15,6 +16,9 @@ class AudioService extends ChangeNotifier {
   final BreathClassifier _classifier;
 
   Timer? _audioProcessingTimer;
+
+  bool _onlyExhaleMode = false;
+  bool get onlyExhaleMode => _onlyExhaleMode;
 
   AudioRecordingService get recordingService => _recordingService;
   BreathTrackingService get breathTrackingService => _breathTrackingService;
@@ -37,7 +41,7 @@ class AudioService extends ChangeNotifier {
 
   static const int audioProcessingInterval = 300; // ms
 
-  static const int bufferSize = 13230;
+  static const int bufferSize = 154350;
 
   final List<int> _audioBufferForClassification = [];
   bool _isProcessing = false;
@@ -57,7 +61,7 @@ class AudioService extends ChangeNotifier {
 
   Future<void> _initialize() async {
     try {
-      await _classifier.initialize();
+      await _classifier.initialize(model: ModelType.standard);
       _logger.info('Breath classifier successfully initialized');
     } catch (e) {
       _logger.severe('Error during classifier initialization: $e');
@@ -70,24 +74,71 @@ class AudioService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setOnlyExhaleMode(bool enabled) async {
+    _onlyExhaleMode = enabled;
+    _logger.info(
+      'Switching to mode: ${enabled ? ModelType.exhaleOnly.name : ModelType.standard.name}',
+    );
+
+    try {
+      await _classifier.switchModel(
+        enabled ? ModelType.exhaleOnly : ModelType.standard,
+      );
+      notifyListeners();
+    } catch (e) {
+      _logger.severe('Error switching model: $e');
+      _onlyExhaleMode = !enabled;
+      notifyListeners();
+    }
+  }
+
   void _setupAudioProcessing() {
+    final List<int> chunkBuffer = [];
+    int samplesPerInterval =
+        (audioProcessingInterval * 44100 / 1000).toInt(); // 13,230 samples
+
     _recordingService.audioStream.listen((audioData) {
       if (isRecording) {
-        _audioBufferForClassification.addAll(audioData);
+        chunkBuffer.addAll(audioData);
+        _logger.info(
+          'Chunk buffer: ${chunkBuffer.length}/$samplesPerInterval samples',
+        );
 
-        if (_audioBufferForClassification.length >= bufferSize &&
-            !_isProcessing) {
-          _isProcessing = true;
+        // Czekaj aż zbierze się pełny interwał (300ms)
+        if (chunkBuffer.length >= samplesPerInterval) {
+          // Weź dokładnie 13,230 samples i dodaj do bufora klasyfikacji
+          final chunk = chunkBuffer.sublist(0, samplesPerInterval);
+          _audioBufferForClassification.addAll(chunk);
 
-          final samplesToProcess = _audioBufferForClassification.sublist(
-            _audioBufferForClassification.length - bufferSize,
+          // Usuń przetworzone samples z chunk bufora
+          chunkBuffer.removeRange(0, samplesPerInterval);
+
+          _logger.info(
+            'Adding chunk to classification buffer: ${_audioBufferForClassification.length}/$bufferSize samples',
           );
 
-          _audioBufferForClassification.clear();
+          // Sliding window: jeśli bufor przekroczy maksymalny rozmiar
+          if (_audioBufferForClassification.length > bufferSize) {
+            final excessSize =
+                _audioBufferForClassification.length - bufferSize;
+            _audioBufferForClassification.removeRange(0, excessSize);
+            _logger.info('Sliding window: removed $excessSize old samples');
+          }
 
-          _processAudioData(samplesToProcess).then((_) {
-            _isProcessing = false;
-          });
+          // Gdy bufor jest pełny, klasyfikuj
+          if (_audioBufferForClassification.length == bufferSize &&
+              !_isProcessing) {
+            _isProcessing = true;
+            _logger.info('Buffer full! Starting classification...');
+
+            final samplesToProcess = List<int>.from(
+              _audioBufferForClassification,
+            );
+
+            _processAudioData(samplesToProcess).then((_) {
+              _isProcessing = false;
+            });
+          }
         }
       }
     });
