@@ -30,68 +30,163 @@ class PositionalEncoding(nn.Module):
         return self.dropout(encoded_input)
 
 
+class ConvPositionalEncoding(nn.Module):
+    """
+    Convolutional positional encoding using depthwise separable convolution.
+    Provides relative position information — better than sinusoidal for
+    variable-length sequences and audio tasks.
+    """
+    def __init__(self, d_model: int, kernel_size: int = 31):
+        super().__init__()
+        self.conv = nn.Conv1d(
+            d_model, d_model,
+            kernel_size=kernel_size,
+            padding=kernel_size // 2,
+            groups=d_model,  # depthwise
+        )
+        nn.init.normal_(self.conv.weight, 0, 0.01)
+        nn.init.zeros_(self.conv.bias)
+        self.norm = nn.LayerNorm(d_model)
+
+    def forward(self, x: Tensor) -> Tensor:
+        # x: [B, T, d_model]
+        residual = x
+        x = x.permute(0, 2, 1)  # [B, d_model, T]
+        x = self.conv(x)
+        x = x.permute(0, 2, 1)  # [B, T, d_model]
+        return self.norm(residual + x)
+
+
+class SEBlock(nn.Module):
+    """Squeeze-and-Excitation: channel attention for 2D feature maps."""
+    def __init__(self, channels: int, reduction: int = 8):
+        super().__init__()
+        mid = max(channels // reduction, 4)
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channels, mid, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(mid, channels, bias=False),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        b, c, _, _ = x.size()
+        w = self.pool(x).view(b, c)
+        w = self.fc(w).view(b, c, 1, 1)
+        return x * w
+
+
+class ConvBlock(nn.Module):
+    """
+    Residual CNN block with optional Squeeze-and-Excitation attention.
+    Pools only along the frequency axis to preserve temporal resolution.
+    Uses two convolutions per block for richer feature extraction.
+    """
+    def __init__(self, in_channels: int, out_channels: int,
+                 pool_freq: bool = True, use_se: bool = True):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.act = nn.GELU()
+
+        self.pool = nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1)) if pool_freq else nn.Identity()
+        self.se = SEBlock(out_channels) if use_se else nn.Identity()
+
+        # Skip connection: project channels if dimensions change
+        if in_channels != out_channels:
+            self.skip_proj = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
+                nn.BatchNorm2d(out_channels),
+            )
+        else:
+            self.skip_proj = nn.Identity()
+        self.skip_pool = nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1)) if pool_freq else nn.Identity()
+
+    def forward(self, x: Tensor) -> Tensor:
+        skip = self.skip_pool(self.skip_proj(x))
+
+        out = self.act(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out = self.se(out)
+        out = self.pool(out)
+
+        return self.act(out + skip)
+
+
 class BreathPhaseTransformerSeq(nn.Module):
     """
-    Transformer model that classifies each spectrogram frame into two classes:
+    Improved Transformer for per-frame breathing phase classification:
     0 = exhale, 1 = inhale, 2 = silence.
 
-    Forward accepts src_key_padding_mask with shape [batch_size, time_frames] (bool),
-    where True indicates a padded frame that should be ignored by attention.
+    Architecture improvements over baseline:
+    - Deeper CNN frontend (4 blocks) with residual connections and SE attention
+    - Pre-norm Transformer (norm_first=True) for stable training
+    - GELU activation in Transformer feedforward layers
+    - Properly sized dim_feedforward (4× d_model instead of default 2048)
+    - Convolutional positional encoding for better position generalization
+    - Post-projection LayerNorm for feature normalization
+    - Richer classification head with hidden layer
     """
     def __init__(self,
                  n_mels: int = 128,
-                 d_model: int = 192,
+                 d_model: int = 256,
                  nhead: int = 8,
                  num_layers: int = 6,
-                 num_classes: int = 3):
+                 num_classes: int = 3,
+                 dim_feedforward: int = 1024,
+                 dropout: float = 0.15):
         super().__init__()
 
-        self.conv_layers = self._build_cnn_layers()
+        # --- CNN Frontend (4 blocks, frequency-only pooling) ---
+        self.conv_layers = nn.Sequential(
+            ConvBlock(1, 32, pool_freq=True, use_se=False),
+            ConvBlock(32, 64, pool_freq=True, use_se=True),
+            ConvBlock(64, 128, pool_freq=True, use_se=True),
+            ConvBlock(128, 256, pool_freq=True, use_se=True),
+        )
 
-        self.out_freq = n_mels // 8  # after three pooling operations (vertical only)
-        self.cnn_feature_dim = 128 * self.out_freq
+        # After 4× freq pooling: n_mels // 16
+        self.out_freq = n_mels // 16
+        self.cnn_feature_dim = 256 * self.out_freq
 
-        self.feature_projection = nn.Linear(self.cnn_feature_dim, d_model)
-
-        # Transformer
-        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model,
-                                                   nhead=nhead,
-                                                   dropout=0.1,
-                                                   batch_first=True)
-
-        self.pos_encoder = PositionalEncoding(d_model=d_model, dropout=0.1)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=num_layers)
-
-        # Classification head
-        self.dropout = nn.Dropout(0.3)
-        self.head = nn.Sequential(
+        # --- Feature Projection with normalization ---
+        self.feature_projection = nn.Sequential(
+            nn.Linear(self.cnn_feature_dim, d_model),
             nn.LayerNorm(d_model),
-            nn.Linear(d_model, num_classes)
+            nn.GELU(),
+            nn.Dropout(dropout),
         )
 
-    def _build_cnn_layers(self):
-        conv1 = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(3, 3), stride=1, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1))
+        # --- Convolutional Positional Encoding ---
+        self.pos_encoder = ConvPositionalEncoding(d_model=d_model, kernel_size=31)
+
+        # --- Pre-Norm Transformer Encoder ---
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            activation='gelu',
+            batch_first=True,
+            norm_first=True,  # Pre-LN: more stable training
+        )
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer=encoder_layer,
+            num_layers=num_layers,
+            norm=nn.LayerNorm(d_model),  # final normalization
         )
 
-        conv2 = nn.Sequential(
-            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=1, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1))
+        # --- Classification Head ---
+        self.head = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, num_classes),
         )
-
-        conv3 = nn.Sequential(
-            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 3), stride=1, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1))
-        )
-
-        return nn.Sequential(conv1, conv2, conv3)
 
     def forward(self,
                 spectrogram_batch: Tensor,
@@ -99,36 +194,31 @@ class BreathPhaseTransformerSeq(nn.Module):
         """
         Args:
             spectrogram_batch: [batch_size, channels=1, n_mels, time_frames]
-            src_key_padding_mask: Optional[Tensor] with shape [batch_size, time_frames], dtype=bool,
-                                  where True indicates a padded frame (should be ignored).
+            src_key_padding_mask: Optional[Tensor] [batch_size, time_frames] (bool),
+                                  where True = padded frame to ignore.
         Returns:
             logits: [batch_size, time_frames, num_classes]
         """
-
-        # 1) CNN features -> shape [batch_size, channels=128, freq_bins, time_frames]
+        # 1) CNN feature extraction -> [B, 256, out_freq, T]
         cnn_features = self.conv_layers(spectrogram_batch)
 
-        # 2) Permute to time-major: [batch_size, time_frames, channels, freq_bins]
-        time_major_features = cnn_features.permute(0, 3, 1, 2)
-        batch_size, time_frames, channels, freq_bins = time_major_features.size()
+        # 2) Reshape to time-major and flatten freq+channel
+        time_major = cnn_features.permute(0, 3, 1, 2)  # [B, T, 256, out_freq]
+        B, T, C, F = time_major.size()
+        flat = time_major.contiguous().view(B, T, C * F)  # [B, T, cnn_feature_dim]
 
-        # 3) Flatten channel and freq dims -> [batch_size, time_frames, channels * freq_bins]
-        flattened_features = time_major_features.contiguous().view(batch_size,
-                                                                   time_frames,
-                                                                   channels * freq_bins)
+        # 3) Project to d_model
+        projected = self.feature_projection(flat)  # [B, T, d_model]
 
-        # 4) Project to transformer d_model -> [batch_size, time_frames, d_model]
-        projected_features = self.feature_projection(flattened_features)
+        # 4) Convolutional positional encoding
+        encoded = self.pos_encoder(projected)  # [B, T, d_model]
 
-        # 5) Add positional encoding
-        encoded_features = self.pos_encoder(projected_features)
+        # 5) Transformer encoder
+        transformer_out = self.transformer_encoder(
+            encoded, src_key_padding_mask=src_key_padding_mask
+        )  # [B, T, d_model]
 
-        # 6) Transformer encoder, pass src_key_padding_mask to ignore padded frames in attention
-        transformer_output = self.transformer_encoder(encoded_features,
-                                                      src_key_padding_mask=src_key_padding_mask)
-
-        # 7) Classification head -> logits per time frame
-        dropout_output = self.dropout(transformer_output)
-        logits = self.head(dropout_output)  # [batch_size, time_frames, num_classes]
+        # 6) Per-frame classification
+        logits = self.head(transformer_out)  # [B, T, num_classes]
 
         return logits

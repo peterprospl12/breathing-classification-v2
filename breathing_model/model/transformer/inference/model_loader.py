@@ -28,7 +28,9 @@ class BreathPhaseClassifier:
             d_model=config.d_model,
             nhead=config.nhead,
             num_layers=config.num_layers,
-            num_classes=config.num_classes
+            num_classes=config.num_classes,
+            dim_feedforward=getattr(config, 'dim_feedforward', 1024),
+            dropout=getattr(config, 'dropout', 0.15),
         ).to(self.device)
 
         checkpoint = torch.load(model_path, map_location=self.device)
