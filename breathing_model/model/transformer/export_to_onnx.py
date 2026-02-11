@@ -32,7 +32,9 @@ def export_breath_classifier_to_onnx(model_path, onnx_path, audio_length=154350)
         d_model=config.model.d_model,
         nhead=config.model.nhead,
         num_layers=config.model.num_layers,
-        num_classes=config.model.num_classes
+        num_classes=config.model.num_classes,
+        dim_feedforward=getattr(config.model, 'dim_feedforward', 1024),
+        dropout=getattr(config.model, 'dropout', 0.15),
     )
 
     checkpoint = torch.load(model_path, map_location=torch.device('cpu'), weights_only=True)

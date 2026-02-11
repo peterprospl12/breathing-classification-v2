@@ -55,6 +55,8 @@ class ModelConfig:
     d_model: int
     nhead: int
     num_layers: int
+    dim_feedforward: int = 1024
+    dropout: float = 0.15
 
 
 @dataclass

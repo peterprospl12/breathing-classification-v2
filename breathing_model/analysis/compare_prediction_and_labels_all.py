@@ -21,6 +21,7 @@ import torchaudio
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from datetime import datetime
+from scipy.ndimage import median_filter
 
 from sklearn.metrics import (
     accuracy_score, confusion_matrix, cohen_kappa_score,
@@ -42,9 +43,9 @@ from breathing_model.model.feed_forward.model import BreathPhaseFeedForward
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-WAV_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'data', 'eval', 'raw'))
-LABEL_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'data', 'eval', 'label'))
-OUTPUT_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, 'evaluation_output4'))
+WAV_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'data', 'eval3', 'raw'))
+LABEL_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'data', 'eval3', 'label'))
+OUTPUT_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, 'evaluation_output_swa_model_nasze_dane'))
 PLOTS_DIR = os.path.normpath(os.path.join(OUTPUT_DIR, 'plots'))
 METRICS_FILE = os.path.normpath(os.path.join(OUTPUT_DIR, 'evaluation_metrics.txt'))
 
@@ -55,6 +56,8 @@ BOOTSTRAP_SEED = 42
 
 WINDOW_TRANS = 0.20    # Aggregation window (seconds) for metrics and plot coloring
 WINDOW_INFERENCE = 10  # Inference chunk size (seconds) for chunked model execution
+INFERENCE_OVERLAP = 0.5  # Overlap ratio between inference chunks (0.0 = no overlap, 0.5 = 50%)
+MEDIAN_FILTER_SIZE = 5   # Median filter kernel size for temporal smoothing of predictions (0 = disabled)
 
 MODELS_CONFIG = {
     'CNN': {
@@ -67,7 +70,7 @@ MODELS_CONFIG = {
     },
     'Transformer': {
         'config_path': os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'model', 'transformer', 'config.yaml')),
-        'model_path': os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'model', 'transformer', 'best_models', 'best_model_epoch_31.pth')),
+        'model_path': os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'model', 'transformer', 'checkpoints2', 'swa_model.pth')),
     },
 }
 
@@ -160,6 +163,8 @@ def load_model(model_name: str, config: dict, model_path: str, device: torch.dev
             nhead=model_cfg['nhead'],
             num_layers=model_cfg['num_layers'],
             num_classes=model_cfg['num_classes'],
+            dim_feedforward=model_cfg.get('dim_feedforward', 1024),
+            dropout=model_cfg.get('dropout', 0.15),
         )
     else:
         raise ValueError(f"Unknown model: {model_name}")
@@ -493,26 +498,39 @@ def run():
             n_samples = len(audio)
             csv_labels = parse_label_csv(csv_path)
 
-            # --- Chunked inference for each model (like _two_transformers) ---
+            # --- Chunked inference with overlap for each model ---
             model_raw_preds = {}
             model_raw_probs = {}
 
+            overlap_frames = int(frames_per_inference * INFERENCE_OVERLAP)
+            stride_frames = max(frames_per_inference - overlap_frames, 1)
+
             for model_name, model in models.items():
-                file_logits_list = []
-                for start in range(0, total_length, frames_per_inference):
+                # Accumulate logits with overlap averaging
+                logits_sum = torch.zeros((1, total_length, NUM_CLASSES), device=device)
+                logits_count = torch.zeros((1, total_length, 1), device=device)
+
+                for start in range(0, total_length, stride_frames):
                     end = min(start + frames_per_inference, total_length)
                     chunk = spectrogram[..., start:end]
                     chunk_len = end - start
                     chunk_mask = torch.zeros((1, chunk_len), dtype=torch.bool).to(device)
                     output = model(chunk, src_key_padding_mask=chunk_mask)
-                    file_logits_list.append(output)
+                    logits_sum[:, start:end, :] += output
+                    logits_count[:, start:end, :] += 1
 
-                full_logits = torch.cat(file_logits_list, dim=1)  # [1, T, C]
+                # Average overlapping regions
+                logits_count = logits_count.clamp(min=1)
+                full_logits = logits_sum / logits_count  # [1, T, C]
                 full_probs = torch.softmax(full_logits, dim=-1)   # [1, T, C]
 
                 # Extract valid (non-padded) predictions
                 raw_preds = torch.argmax(full_logits, dim=-1)[valid_mask].cpu().numpy()
                 raw_probs = full_probs[0][valid_mask[0]].cpu().numpy()  # [T_valid, C]
+
+                # Apply temporal median filter to smooth predictions
+                if MEDIAN_FILTER_SIZE > 1 and len(raw_preds) > MEDIAN_FILTER_SIZE:
+                    raw_preds = median_filter(raw_preds, size=MEDIAN_FILTER_SIZE).astype(raw_preds.dtype)
 
                 model_raw_preds[model_name] = raw_preds
                 model_raw_probs[model_name] = raw_probs
