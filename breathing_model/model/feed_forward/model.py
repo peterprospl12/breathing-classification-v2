@@ -9,9 +9,8 @@ class BreathPhaseFeedForward(nn.Module):
     """
     Simple feed-forward (MLP) model for per-frame breathing phase classification.
 
-    Uses a small temporal context window around each frame to provide
-    some neighboring information. Each frame (with context) is classified
-    independently through fully-connected layers.
+    Each frame is classified independently through fully-connected layers
+    using only its own mel-frequency features (no temporal context).
 
     Input:  [batch_size, 1, n_mels, time_frames]  (mel-spectrogram)
     Output: [batch_size, time_frames, num_classes]
@@ -19,18 +18,14 @@ class BreathPhaseFeedForward(nn.Module):
 
     def __init__(self,
                  n_mels: int = 128,
-                 context_frames: int = 5,
                  hidden_dim: int = 256,
                  num_classes: int = 3,
                  dropout: float = 0.3):
         super().__init__()
         self.n_mels = n_mels
-        self.context_frames = context_frames
-        self.window_size = 2 * context_frames + 1  # total frames per window
-        input_dim = n_mels * self.window_size
 
         self.mlp = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
+            nn.Linear(n_mels, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
@@ -66,23 +61,8 @@ class BreathPhaseFeedForward(nn.Module):
         # Permute to [B, T, n_mels]
         x = x.permute(0, 2, 1)
 
-        # Pad temporally so we can gather context windows for every frame
-        # Pad context_frames on each side
-        # x shape: [B, T, n_mels] -> pad along T dimension
-        x_padded = torch.nn.functional.pad(x, (0, 0, self.context_frames, self.context_frames), mode='constant', value=0.0)
-        # x_padded: [B, T + 2*context_frames, n_mels]
-
-        # Build context windows using unfold
-        # unfold(dim, size, step) on dim=1
-        windows = x_padded.unfold(1, self.window_size, 1)
-        # windows: [B, T, n_mels, window_size]
-
-        # Flatten the last two dims to get feature vector per frame
-        windows = windows.contiguous().view(batch_size, time_frames, -1)
-        # windows: [B, T, n_mels * window_size]
-
-        # Reshape for BatchNorm1d: [B*T, features]
-        flat = windows.view(batch_size * time_frames, -1)
+        # Reshape for BatchNorm1d: [B*T, n_mels]
+        flat = x.reshape(batch_size * time_frames, n_mels)
 
         # MLP forward
         logits_flat = self.mlp(flat)  # [B*T, num_classes]

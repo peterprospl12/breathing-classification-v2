@@ -203,7 +203,6 @@ def main():
 
     model = BreathPhaseFeedForward(
         n_mels=config['model']['n_mels'],
-        context_frames=config['model']['context_frames'],
         hidden_dim=config['model']['hidden_dim'],
         num_classes=config['model']['num_classes'],
         dropout=config['model']['dropout'],

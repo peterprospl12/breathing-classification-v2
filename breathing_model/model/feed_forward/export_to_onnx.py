@@ -30,7 +30,6 @@ def export_breath_classifier_to_onnx(model_path, onnx_path, config_path='./confi
 
     model = BreathPhaseFeedForward(
         n_mels=model_cfg['n_mels'],
-        context_frames=model_cfg['context_frames'],
         hidden_dim=model_cfg['hidden_dim'],
         num_classes=model_cfg['num_classes'],
         dropout=model_cfg['dropout'],

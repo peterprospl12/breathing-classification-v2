@@ -43,7 +43,6 @@ scheduler:
 model:
   num_classes: 3
   n_mels: 128
-  context_frames: 5
   hidden_dim: 256
   dropout: 0.3
 
