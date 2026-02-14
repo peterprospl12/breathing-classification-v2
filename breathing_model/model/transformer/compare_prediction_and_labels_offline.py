@@ -8,21 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.lines import Line2D
 from collections import deque
-from typing import Optional
-
-from sklearn.metrics import (
-    classification_report,
-    confusion_matrix,
-    accuracy_score,
-    precision_recall_fscore_support,
-    cohen_kappa_score,
-    roc_curve,
-    auc,
-    matthews_corrcoef,
-    log_loss,
-)
-from sklearn.preprocessing import label_binarize
-from scipy import stats
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 
 from breathing_model.model.transformer.utils import Config, BreathType
 from breathing_model.model.transformer.inference.transform import MelSpectrogramTransform
@@ -41,6 +27,7 @@ PRINT_PROBS = False
 # Regex pattern to filter filenames (e.g., r'Kinga|Adam' to match files with Kinga or Adam in name).
 # Set to None to disable filtering and process all files.
 FILENAME_REGEX_FILTER = r'Piotr'  # e.g., r'Kinga|Adam|Maria'
+
 
 def load_audio(wav_path: str, target_sr: int) -> np.ndarray:
     """Load WAV file, convert to mono float32 numpy array at target_sr."""
@@ -86,25 +73,24 @@ def label_to_breath_type(label: str) -> BreathType:
 def get_color(bt: BreathType) -> str:
     return bt.get_color()
 
-def get_gt_label_for_chunk(chunk_start: int, chunk_end: int,
-                          gt_segments: list[dict], n_samples: int) -> int:
-    """
-    Determine ground-truth label for a prediction chunk by majority vote
-    over the sample-level ground-truth annotations.
-    """
-    counts = np.zeros(3, dtype=int)  # exhale=0, inhale=1, silence=2
-    chunk_len = chunk_end - chunk_start
-    covered = 0
-    for seg in gt_segments:
-        overlap_start = max(chunk_start, seg['start'])
-        overlap_end = min(chunk_end, seg['end'])
+
+def get_gt_for_chunk(labels: list[dict], start: int, end: int) -> int:
+    """Głosowanie większościowe dla chunka."""
+    counts = {int(BreathType.EXHALE): 0, int(BreathType.INHALE): 0, int(BreathType.SILENCE): 0}
+    counts[int(BreathType.SILENCE)] = end - start
+
+    for lab in labels:
+        l_type = label_to_breath_type(lab['class'])
+        cls_id = int(l_type)
+        overlap_start = max(lab['start'], start)
+        overlap_end = min(lab['end'], end)
+
         if overlap_end > overlap_start:
-            n = overlap_end - overlap_start
-            counts[int(seg['cls'])] += n
-            covered += n
-    # Samples not covered by any annotation are silence
-    counts[int(BreathType.SILENCE)] += (chunk_len - covered)
-    return int(np.argmax(counts))
+            length = overlap_end - overlap_start
+            counts[cls_id] += length
+            counts[int(BreathType.SILENCE)] -= length
+
+    return max(counts, key=counts.get)
 
 
 def process_file(wav_path: str,
@@ -113,15 +99,7 @@ def process_file(wav_path: str,
                  mel_transform: MelSpectrogramTransform,
                  config: Config,
                  buffer_seconds: float,
-                 output_dir: str) -> Optional[dict]:
-    """
-    Process a single file: generate comparison plot AND return
-    chunk-level predictions + ground truth for evaluation.
-
-    Returns dict with keys:
-        'filename', 'y_true', 'y_pred', 'y_probs', 'n_chunks'
-    or None on error.
-    """
+                 output_dir: str) -> tuple[list[int], list[int]]:
     base_name = os.path.splitext(os.path.basename(wav_path))[0]
 
     audio = load_audio(wav_path, config.data.sample_rate)
@@ -141,9 +119,16 @@ def process_file(wav_path: str,
 
     predicted_segments: list[dict] = []
 
+    file_y_true = []
+    file_y_pred = []
+
     for start in range(0, n_samples, chunk_size):
         end = min(start + chunk_size, n_samples)
         chunk = audio[start:end]
+
+        if chunk.size < chunk_size:
+            continue
+
         if chunk.size == 0 or chunk.size < MIN_CHUNK_SAMPLES_SKIP:
             continue
 
@@ -155,6 +140,10 @@ def process_file(wav_path: str,
         mel = mel_transform(buf_np)
         pred_cls, probs = classifier.predict(mel)
         predicted_segments.append({'start': start, 'end': end, 'pred': pred_cls, 'probs': probs})
+
+        true_cls = get_gt_for_chunk(labels, start, end)
+        file_y_true.append(true_cls)
+        file_y_pred.append(int(pred_cls))
 
         if PRINT_PROBS:
             print(f"Chunk {start}:{end} -> pred={BreathType(pred_cls).name} probs={probs.round(3)}")
@@ -217,387 +206,8 @@ def process_file(wav_path: str,
     plt.close(fig)
     print(f"Saved plot: {out_path}")
 
-    return {
-        'filename': base_name,
-        'y_true': np.array(y_true_chunks, dtype=int),
-        'y_pred': np.array(y_pred_chunks, dtype=int),
-        'y_probs': np.array(y_probs_chunks, dtype=np.float64),
-        'n_chunks': len(y_true_chunks),
-    }
+    return file_y_true, file_y_pred
 
-# ========================================================================================
-#  EVALUATION STATISTICS  — suitable for scientific publication
-# ========================================================================================
-
-CLASS_NAMES = {0: 'exhale', 1: 'inhale', 2: 'silence'}
-NUM_CLASSES = 3
-BOOTSTRAP_N = 2000          # number of bootstrap resamples for confidence intervals
-BOOTSTRAP_CI = 0.95         # confidence level
-BOOTSTRAP_SEED = 42
-
-
-def bootstrap_metric(y_true: np.ndarray, y_pred: np.ndarray,
-                     metric_fn, n_iterations: int = BOOTSTRAP_N,
-                     ci: float = BOOTSTRAP_CI,
-                     seed: int = BOOTSTRAP_SEED) -> dict:
-    """
-    Non-parametric bootstrap estimation of a scalar metric.
-    Returns {'mean', 'std', 'ci_lower', 'ci_upper', 'ci_level'}.
-    """
-    rng = np.random.RandomState(seed)
-    n = len(y_true)
-    scores = []
-    for _ in range(n_iterations):
-        idx = rng.randint(0, n, size=n)
-        try:
-            s = metric_fn(y_true[idx], y_pred[idx])
-        except Exception:
-            continue
-        scores.append(s)
-    scores = np.array(scores)
-    alpha = 1.0 - ci
-    lo = np.percentile(scores, 100 * alpha / 2)
-    hi = np.percentile(scores, 100 * (1 - alpha / 2))
-    return {
-        'mean': float(np.mean(scores)),
-        'std': float(np.std(scores, ddof=1)),
-        'ci_lower': float(lo),
-        'ci_upper': float(hi),
-        'ci_level': ci,
-    }
-
-
-def compute_overall_metrics(y_true: np.ndarray, y_pred: np.ndarray,
-                            y_probs: np.ndarray) -> dict:
-    """Compute all aggregate metrics on the full evaluation set."""
-    results = {}
-
-    # --- Basic metrics ---
-    results['accuracy'] = float(accuracy_score(y_true, y_pred))
-    results['cohen_kappa'] = float(cohen_kappa_score(y_true, y_pred))
-    results['matthews_corrcoef'] = float(matthews_corrcoef(y_true, y_pred))
-
-    # --- Per-class precision, recall, F1 ---
-    prec, rec, f1, sup = precision_recall_fscore_support(
-        y_true, y_pred, labels=[0, 1, 2], zero_division=0)
-    for i in range(NUM_CLASSES):
-        name = CLASS_NAMES[i]
-        results[f'precision_{name}'] = float(prec[i])
-        results[f'recall_{name}'] = float(rec[i])
-        results[f'f1_{name}'] = float(f1[i])
-        results[f'support_{name}'] = int(sup[i])
-
-    # --- Macro / weighted averages ---
-    prec_m, rec_m, f1_m, _ = precision_recall_fscore_support(
-        y_true, y_pred, average='macro', zero_division=0)
-    prec_w, rec_w, f1_w, _ = precision_recall_fscore_support(
-        y_true, y_pred, average='weighted', zero_division=0)
-    results['precision_macro'] = float(prec_m)
-    results['recall_macro'] = float(rec_m)
-    results['f1_macro'] = float(f1_m)
-    results['precision_weighted'] = float(prec_w)
-    results['recall_weighted'] = float(rec_w)
-    results['f1_weighted'] = float(f1_w)
-
-    # --- Log-loss (cross-entropy on predicted probabilities) ---
-    try:
-        results['log_loss'] = float(log_loss(y_true, y_probs, labels=[0, 1, 2]))
-    except Exception:
-        results['log_loss'] = None
-
-    # --- ROC-AUC per class (One-vs-Rest) ---
-    y_true_bin = label_binarize(y_true, classes=[0, 1, 2])
-    for i in range(NUM_CLASSES):
-        try:
-            fpr, tpr, _ = roc_curve(y_true_bin[:, i], y_probs[:, i])
-            results[f'roc_auc_{CLASS_NAMES[i]}'] = float(auc(fpr, tpr))
-        except Exception:
-            results[f'roc_auc_{CLASS_NAMES[i]}'] = None
-
-    # --- Bootstrap confidence intervals for key metrics ---
-    print("  Computing bootstrap confidence intervals ...")
-    for metric_name, metric_fn in [
-        ('accuracy', accuracy_score),
-        ('cohen_kappa', cohen_kappa_score),
-        ('f1_macro', lambda yt, yp: float(precision_recall_fscore_support(
-            yt, yp, average='macro', zero_division=0)[2])),
-    ]:
-        bs = bootstrap_metric(y_true, y_pred, metric_fn)
-        results[f'{metric_name}_bs_mean'] = bs['mean']
-        results[f'{metric_name}_bs_std'] = bs['std']
-        results[f'{metric_name}_ci95_lower'] = bs['ci_lower']
-        results[f'{metric_name}_ci95_upper'] = bs['ci_upper']
-
-    # --- Confusion matrix (raw counts) ---
-    cm = confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
-    results['confusion_matrix'] = cm.tolist()
-
-    return results
-
-
-def compute_per_file_metrics(file_results: list[dict]) -> dict:
-    """
-    Compute per-file accuracy/F1 and then report mean, std, variance,
-    min, max across files — shows inter-recording variability.
-    """
-    per_file_acc = []
-    per_file_f1_macro = []
-    per_file_kappa = []
-    per_file_records = []
-
-    for fr in file_results:
-        yt, yp = fr['y_true'], fr['y_pred']
-        if len(yt) < 2:
-            continue
-        acc = accuracy_score(yt, yp)
-        _, _, f1, _ = precision_recall_fscore_support(yt, yp, average='macro', zero_division=0)
-        try:
-            kappa = cohen_kappa_score(yt, yp)
-        except Exception:
-            kappa = np.nan
-        per_file_acc.append(acc)
-        per_file_f1_macro.append(f1)
-        per_file_kappa.append(kappa)
-        per_file_records.append({
-            'filename': fr['filename'],
-            'n_chunks': fr['n_chunks'],
-            'accuracy': round(acc, 4),
-            'f1_macro': round(float(f1), 4),
-            'kappa': round(float(kappa), 4) if not np.isnan(kappa) else None,
-        })
-
-    per_file_acc = np.array(per_file_acc)
-    per_file_f1_macro = np.array(per_file_f1_macro)
-    per_file_kappa = np.array(per_file_kappa)
-
-    def summarise(arr, name):
-        valid = arr[~np.isnan(arr)]
-        if len(valid) == 0:
-            return {}
-        return {
-            f'{name}_mean': float(np.mean(valid)),
-            f'{name}_std': float(np.std(valid, ddof=1)) if len(valid) > 1 else 0.0,
-            f'{name}_var': float(np.var(valid, ddof=1)) if len(valid) > 1 else 0.0,
-            f'{name}_min': float(np.min(valid)),
-            f'{name}_max': float(np.max(valid)),
-            f'{name}_median': float(np.median(valid)),
-        }
-
-    summary = {}
-    summary.update(summarise(per_file_acc, 'file_accuracy'))
-    summary.update(summarise(per_file_f1_macro, 'file_f1_macro'))
-    summary.update(summarise(per_file_kappa, 'file_kappa'))
-    summary['per_file_details'] = per_file_records
-    summary['n_files'] = len(per_file_records)
-
-    return summary
-
-
-def plot_confusion_matrix_eval(y_true: np.ndarray, y_pred: np.ndarray,
-                               output_path: str) -> None:
-    """Save a publication-quality normalised + raw confusion matrix."""
-    cm = confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
-    cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
-    cm_norm = np.nan_to_num(cm_norm)
-
-    labels_list = [CLASS_NAMES[i] for i in range(NUM_CLASSES)]
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5))
-
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                xticklabels=labels_list, yticklabels=labels_list, ax=ax1)
-    ax1.set_xlabel('Predicted')
-    ax1.set_ylabel('True')
-    ax1.set_title('Confusion Matrix (counts)')
-
-    sns.heatmap(cm_norm, annot=True, fmt='.2%', cmap='Blues',
-                xticklabels=labels_list, yticklabels=labels_list, ax=ax2)
-    ax2.set_xlabel('Predicted')
-    ax2.set_ylabel('True')
-    ax2.set_title('Confusion Matrix (row-normalised)')
-
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close(fig)
-    print(f"Saved confusion matrix: {output_path}")
-
-
-def plot_roc_curves(y_true: np.ndarray, y_probs: np.ndarray,
-                    output_path: str) -> None:
-    """Plot One-vs-Rest ROC curves for each class."""
-    y_true_bin = label_binarize(y_true, classes=[0, 1, 2])
-    class_colors = {'exhale': 'green', 'inhale': 'red', 'silence': 'blue'}
-
-    fig, ax = plt.subplots(figsize=(8, 7))
-    for i in range(NUM_CLASSES):
-        name = CLASS_NAMES[i]
-        try:
-            fpr, tpr, _ = roc_curve(y_true_bin[:, i], y_probs[:, i])
-            roc_auc_val = auc(fpr, tpr)
-            ax.plot(fpr, tpr, color=class_colors[name], lw=2,
-                    label=f'{name} (AUC = {roc_auc_val:.3f})')
-        except Exception:
-            pass
-
-    ax.plot([0, 1], [0, 1], 'k--', lw=1, alpha=0.5)
-    ax.set_xlim([0.0, 1.0])
-    ax.set_ylim([0.0, 1.05])
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_title('ROC Curves (One-vs-Rest)')
-    ax.legend(loc='lower right')
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close(fig)
-    print(f"Saved ROC curves: {output_path}")
-
-
-def plot_per_file_metrics(per_file_details: list[dict], output_path: str) -> None:
-    """Bar chart of per-file accuracy and F1-macro with mean±std reference."""
-    if not per_file_details:
-        return
-    names = [d['filename'] for d in per_file_details]
-    accs = [d['accuracy'] for d in per_file_details]
-    f1s = [d['f1_macro'] for d in per_file_details]
-
-    x = np.arange(len(names))
-    width = 0.35
-
-    fig, ax = plt.subplots(figsize=(max(8, len(names) * 0.8), 5))
-    ax.bar(x - width / 2, accs, width, label='Accuracy', color='steelblue')
-    ax.bar(x + width / 2, f1s, width, label='F1-macro', color='coral')
-
-    mean_acc = np.mean(accs)
-    mean_f1 = np.mean(f1s)
-    ax.axhline(mean_acc, color='steelblue', ls='--', lw=1, alpha=0.7)
-    ax.axhline(mean_f1, color='coral', ls='--', lw=1, alpha=0.7)
-
-    ax.set_ylabel('Score')
-    ax.set_title('Per-file evaluation metrics')
-    ax.set_xticks(x)
-    ax.set_xticklabels(names, rotation=45, ha='right', fontsize=7)
-    ax.set_ylim(0, 1.05)
-    ax.legend()
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close(fig)
-    print(f"Saved per-file metrics chart: {output_path}")
-
-
-def print_evaluation_report(overall: dict, per_file: dict) -> str:
-    """Build, print, and return a full evaluation report as text."""
-    lines = []
-    def p(text=''):
-        lines.append(text)
-
-    sep = '=' * 72
-    p(f"\n{sep}")
-    p("  EVALUATION REPORT  (chunk-level, streaming simulation)")
-    p(sep)
-
-    p(f"\n{'Metric':<35} {'Value':>12}")
-    p('-' * 50)
-    p(f"{'Accuracy':<35} {overall['accuracy']:>12.4f}")
-    p(f"{'  95% CI':<35} [{overall.get('accuracy_ci95_lower', 0):.4f}, "
-      f"{overall.get('accuracy_ci95_upper', 0):.4f}]")
-    p(f"{'  Bootstrap std':<35} {overall.get('accuracy_bs_std', 0):>12.4f}")
-    p(f"{'Cohen\'s Kappa':<35} {overall['cohen_kappa']:>12.4f}")
-    p(f"{'  95% CI':<35} [{overall.get('cohen_kappa_ci95_lower', 0):.4f}, "
-      f"{overall.get('cohen_kappa_ci95_upper', 0):.4f}]")
-    p(f"{'Matthews Corr. Coeff. (MCC)':<35} {overall['matthews_corrcoef']:>12.4f}")
-    p(f"{'Log-loss':<35} {overall.get('log_loss', 'N/A'):>12}")
-
-    p(f"\n{'--- Macro-averaged ---':}")
-    p(f"{'Precision (macro)':<35} {overall['precision_macro']:>12.4f}")
-    p(f"{'Recall    (macro)':<35} {overall['recall_macro']:>12.4f}")
-    p(f"{'F1-score  (macro)':<35} {overall['f1_macro']:>12.4f}")
-    p(f"{'  95% CI':<35} [{overall.get('f1_macro_ci95_lower', 0):.4f}, "
-      f"{overall.get('f1_macro_ci95_upper', 0):.4f}]")
-
-    p(f"\n{'--- Weighted-averaged ---':}")
-    p(f"{'Precision (weighted)':<35} {overall['precision_weighted']:>12.4f}")
-    p(f"{'Recall    (weighted)':<35} {overall['recall_weighted']:>12.4f}")
-    p(f"{'F1-score  (weighted)':<35} {overall['f1_weighted']:>12.4f}")
-
-    p(f"\n{'--- Per-class ---':}")
-    p(f"{'Class':<12} {'Prec':>8} {'Rec':>8} {'F1':>8} {'Support':>8} {'AUC':>8}")
-    p('-' * 56)
-    for i in range(NUM_CLASSES):
-        name = CLASS_NAMES[i]
-        auc_val = overall.get(f'roc_auc_{name}', None)
-        auc_str = f"{auc_val:.4f}" if auc_val is not None else 'N/A'
-        p(f"{name:<12} {overall[f'precision_{name}']:>8.4f} "
-          f"{overall[f'recall_{name}']:>8.4f} "
-          f"{overall[f'f1_{name}']:>8.4f} "
-          f"{overall[f'support_{name}']:>8d} "
-          f"{auc_str:>8}")
-
-    p(f"\n{'--- Confusion Matrix ---':}")
-    cm = np.array(overall['confusion_matrix'])
-    labels_list = [CLASS_NAMES[i] for i in range(NUM_CLASSES)]
-    header = f"{'':>12}" + ''.join(f"{l:>10}" for l in labels_list)
-    p(header)
-    for i, row in enumerate(cm):
-        row_str = ''.join(f"{v:>10d}" for v in row)
-        p(f"{labels_list[i]:>12}{row_str}")
-
-    # Per-file variability
-    p(f"\n{'--- Inter-recording variability ---':}")
-    p(f"{'Files evaluated':<35} {per_file.get('n_files', 0):>12}")
-    for metric in ['file_accuracy', 'file_f1_macro', 'file_kappa']:
-        if f'{metric}_mean' not in per_file:
-            continue
-        label = metric.replace('file_', '').replace('_', ' ').title()
-        p(f"{label + ' mean':<35} {per_file[f'{metric}_mean']:>12.4f}")
-        p(f"{label + ' std':<35} {per_file[f'{metric}_std']:>12.4f}")
-        p(f"{label + ' variance':<35} {per_file[f'{metric}_var']:>12.6f}")
-        p(f"{label + ' min / max':<35} {per_file[f'{metric}_min']:.4f} / {per_file[f'{metric}_max']:.4f}")
-        p(f"{label + ' median':<35} {per_file[f'{metric}_median']:>12.4f}")
-
-    # Per-file detail table
-    details = per_file.get('per_file_details', [])
-    if details:
-        p(f"\n{'--- Per-file detail ---':}")
-        p(f"{'Filename':<30} {'Chunks':>8} {'Acc':>8} {'F1-m':>8} {'Kappa':>8}")
-        p('-' * 66)
-        for d in details:
-            kappa_str = f"{d['kappa']:.4f}" if d['kappa'] is not None else 'N/A'
-            p(f"{d['filename']:<30} {d['n_chunks']:>8} {d['accuracy']:>8.4f} "
-              f"{d['f1_macro']:>8.4f} {kappa_str:>8}")
-
-    p(sep)
-
-    report_text = '\n'.join(lines)
-    print(report_text)
-    return report_text
-
-
-def save_results_json(overall: dict, per_file: dict, output_path: str) -> None:
-    """Persist all results as a JSON file for downstream tooling / LaTeX generation."""
-    payload = {
-        'overall_metrics': {k: v for k, v in overall.items()},
-        'per_file_metrics': per_file,
-    }
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False, default=str)
-    print(f"Saved results JSON: {output_path}")
-
-
-def save_per_file_csv(per_file_details: list[dict], output_path: str) -> None:
-    """Save per-file metrics as CSV for easy import into spreadsheets / LaTeX."""
-    if not per_file_details:
-        return
-    fieldnames = ['filename', 'n_chunks', 'accuracy', 'f1_macro', 'kappa']
-    with open(output_path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv_module.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(per_file_details)
-    print(f"Saved per-file CSV: {output_path}")
-
-
-# ========================================================================================
-#  MAIN
-# ========================================================================================
 
 def run():
     config = Config.from_yaml(CONFIG_PATH)
@@ -620,8 +230,8 @@ def run():
 
     print(f"Found {len(wav_files)} wav files in {wav_dir}")
 
-    # --- Process each file and collect results ---
-    file_results: list[dict] = []
+    all_y_true = []
+    all_y_pred = []
 
     for i, wav_name in enumerate(wav_files, start=1):
         base = os.path.splitext(wav_name)[0]
@@ -630,14 +240,44 @@ def run():
         if not os.path.exists(csv_path):
             print(f"[Skip] Missing label file for {wav_name}: {csv_path}")
             continue
-        print(f"[{i}/{len(wav_files)}] Processing {wav_name}")
+
+        print(f"[{i}/{len(wav_files)}] Processing {wav_name}...", end=" ")
         try:
-            result = process_file(wav_path, csv_path, classifier, mel_transform,
-                                  config, BUFFER_SECONDS, OUTPUT_DIR)
-            if result is not None and result['n_chunks'] > 0:
-                file_results.append(result)
+            file_true, file_pred = process_file(wav_path, csv_path, classifier, mel_transform, config, BUFFER_SECONDS,
+                                                OUTPUT_DIR)
+
+            # --- DODANO: Wypisanie Accuracy dla pliku ---
+            if len(file_true) > 0:
+                file_acc = accuracy_score(file_true, file_pred)
+                print(f"File Acc: {file_acc:.2%}")
+            else:
+                print("No chunks processed.")
+            # --------------------------------------------
+
+            all_y_true.extend(file_true)
+            all_y_pred.extend(file_pred)
         except Exception as e:
             print(f"Error processing {wav_name}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    print("\n" + "=" * 60)
+    print("FINAL EVALUATION STATISTICS")
+    print("=" * 60)
+
+    if len(all_y_true) > 0:
+        target_names = ['Exhale (0)', 'Inhale (1)', 'Silence (2)']
+
+        acc = accuracy_score(all_y_true, all_y_pred)
+        print(f"Total Chunks: {len(all_y_true)}")
+        print(f"Global Accuracy: {acc:.4f} ({acc * 100:.2f}%)")
+        print("-" * 60)
+        print(classification_report(all_y_true, all_y_pred, target_names=target_names, digits=4))
+
+        print("Confusion Matrix:")
+        print(confusion_matrix(all_y_true, all_y_pred))
+    else:
+        print("No data processed.")
 
     if not file_results:
         print("No evaluation results collected. Exiting.")
@@ -705,4 +345,3 @@ def run():
 
 if __name__ == '__main__':
     run()
-
