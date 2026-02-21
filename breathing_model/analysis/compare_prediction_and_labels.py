@@ -112,12 +112,12 @@ def save_confusion_matrix(y_true, y_pred, classes, title, filename, output_folde
 
 
 if __name__ == "__main__":
-    TEST_RAW_FOLDER = "../data/eval/raw"
-    TEST_LABEL_FOLDER = "../data/eval/label"
+    TEST_RAW_FOLDER = "../data/eval2/raw"
+    TEST_LABEL_FOLDER = "../data/eval2/label"
     CONFIG_PATH = "../model/transformer/config.yaml"
     TRANSFORMER_MODEL_PATH = "../model/transformer/best_models/best_model_epoch_31.pth"
     LSTM_MODEL_PATH = "../archive/lstm/model_lstm.pth"
-    OUTPUT_FOLDER = "plots_comparison_final"
+    OUTPUT_FOLDER = "plots_comparison_ppl_from_train"
 
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
