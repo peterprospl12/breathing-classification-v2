@@ -1,8 +1,8 @@
 """
 Multi-model evaluation script for breathing phase classification.
 
-Compares CNN, Feed-Forward, and Transformer models on evaluation data.
-Computes comprehensive metrics and generates comparison plots.
+Compares CNN, Feed-Forward, 3-class Transformer, and 2-class Transformer
+on evaluation data. Computes comprehensive metrics and generates comparison plots.
 
 Metrics computed:
 - Global: Accuracy, Cohen's Kappa, MCC, Log Loss
@@ -34,6 +34,7 @@ from torch.utils.data import DataLoader
 from breathing_model.model.transformer.utils import BreathType, load_yaml
 from breathing_model.model.transformer.dataset import BreathDataset, collate_fn
 from breathing_model.model.transformer.model import BreathPhaseTransformerSeq
+from breathing_model.model.exhale_only_detection.model import BreathPhaseTransformerSeq as BreathPhaseTransformerSeq2Class
 from breathing_model.model.cnn.model import BreathPhaseCNN
 from breathing_model.model.feed_forward.model import BreathPhaseFeedForward
 
@@ -43,8 +44,8 @@ from breathing_model.model.feed_forward.model import BreathPhaseFeedForward
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-WAV_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'data', 'eval2', 'raw'))
-LABEL_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'data', 'eval2', 'label'))
+WAV_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'data', 'eval_unseen_people', 'raw'))
+LABEL_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'data', 'eval_unseen_people', 'label'))
 OUTPUT_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, 'evaluation_output_people_from_training'))
 PLOTS_DIR = os.path.normpath(os.path.join(OUTPUT_DIR, 'plots'))
 METRICS_FILE = os.path.normpath(os.path.join(OUTPUT_DIR, 'evaluation_metrics.txt'))
@@ -63,19 +64,28 @@ MODELS_CONFIG = {
     'CNN': {
         'config_path': os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'model', 'cnn', 'config.yaml')),
         'model_path': os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'model', 'cnn', 'checkpoints', 'best_model_epoch_39.pth')),
+        'class_names': ['Exhale (0)', 'Inhale (1)', 'Silence (2)'],
+        'gt_mode': 'three_class',
     },
     'Feed-Forward': {
         'config_path': os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'model', 'feed_forward', 'config.yaml')),
         'model_path': os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'model', 'feed_forward', 'checkpoints', 'best_model_epoch_33.pth')),
+        'class_names': ['Exhale (0)', 'Inhale (1)', 'Silence (2)'],
+        'gt_mode': 'three_class',
     },
     'Transformer': {
         'config_path': os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'model', 'transformer', 'config.yaml')),
         'model_path': os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'model', 'transformer', 'best_models', 'best_model_epoch_31.pth')),
+        'class_names': ['Exhale (0)', 'Inhale (1)', 'Silence (2)'],
+        'gt_mode': 'three_class',
+    },
+    'Transformer-2Class': {
+        'config_path': os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'model', 'exhale_only_detection', 'config.yaml')),
+        'model_path': os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'model', 'exhale_only_detection', 'best_models', 'best_model_epoch_21.pth')),
+        'class_names': ['Exhale (0)', 'Other (1)'],
+        'gt_mode': 'two_class',
     },
 }
-
-NUM_CLASSES = 3
-CLASS_NAMES = ['Exhale (0)', 'Inhale (1)', 'Silence (2)']
 
 
 # ============================================================
@@ -135,6 +145,23 @@ def get_ground_truth_for_chunk(labels: list[dict], start: int, end: int) -> int:
     return max(counts, key=counts.get)
 
 
+def get_ground_truth_for_chunk_two_class(labels: list[dict], start: int, end: int) -> int:
+    """Majority voting for binary GT over a sample range (exhale vs other)."""
+    counts = {0: 0, 1: 0}
+    counts[1] = end - start  # Default other (inhale + silence)
+
+    for lab in labels:
+        cls_id = 0 if lab['class'] == 'exhale' else 1
+        overlap_start = max(lab['start'], start)
+        overlap_end = min(lab['end'], end)
+        overlap = overlap_end - overlap_start
+        if overlap > 0:
+            counts[cls_id] += overlap
+            counts[1] -= overlap
+
+    return max(counts, key=counts.get)
+
+
 # ============================================================
 # MODEL LOADING
 # ============================================================
@@ -157,6 +184,14 @@ def load_model(model_name: str, config: dict, model_path: str, device: torch.dev
         )
     elif model_name == 'Transformer':
         model = BreathPhaseTransformerSeq(
+            n_mels=model_cfg['n_mels'],
+            d_model=model_cfg['d_model'],
+            nhead=model_cfg['nhead'],
+            num_layers=model_cfg['num_layers'],
+            num_classes=model_cfg['num_classes'],
+        )
+    elif model_name == 'Transformer-2Class':
+        model = BreathPhaseTransformerSeq2Class(
             n_mels=model_cfg['n_mels'],
             d_model=model_cfg['d_model'],
             nhead=model_cfg['nhead'],
@@ -204,12 +239,14 @@ def compute_bootstrap_ci(y_true, y_pred, metric_fn, n_bootstrap=1000, seed=42, c
     return scores.mean(), scores.std(), lower, upper
 
 
-def compute_all_metrics(y_true, y_pred, y_probs, per_file_results: list[dict]) -> dict:
+def compute_all_metrics(y_true, y_pred, y_probs, per_file_results: list[dict], class_names: list[str]) -> dict:
     metrics = {}
 
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
     y_probs = np.array(y_probs)
+    labels = list(range(len(class_names)))
+    metrics['class_names'] = class_names
 
     # --- Global metrics ---
     metrics['accuracy'] = accuracy_score(y_true, y_pred)
@@ -218,16 +255,16 @@ def compute_all_metrics(y_true, y_pred, y_probs, per_file_results: list[dict]) -
     metrics['total_frames'] = len(y_true)
 
     try:
-        metrics['log_loss'] = log_loss(y_true, y_probs, labels=[0, 1, 2])
+        metrics['log_loss'] = log_loss(y_true, y_probs, labels=labels)
     except Exception:
         metrics['log_loss'] = float('nan')
 
     # --- Per-class metrics ---
     precision, recall, f1, support = precision_recall_fscore_support(
-        y_true, y_pred, labels=[0, 1, 2], zero_division=0
+        y_true, y_pred, labels=labels, zero_division=0
     )
     metrics['per_class'] = {}
-    for i, name in enumerate(CLASS_NAMES):
+    for i, name in enumerate(class_names):
         metrics['per_class'][name] = {
             'precision': precision[i],
             'recall': recall[i],
@@ -236,7 +273,7 @@ def compute_all_metrics(y_true, y_pred, y_probs, per_file_results: list[dict]) -
         }
 
     # ROC AUC per class (One-vs-Rest)
-    for i, name in enumerate(CLASS_NAMES):
+    for i, name in enumerate(class_names):
         try:
             y_true_binary = (y_true == i).astype(int)
             metrics['per_class'][name]['roc_auc'] = roc_auc_score(y_true_binary, y_probs[:, i])
@@ -269,7 +306,7 @@ def compute_all_metrics(y_true, y_pred, y_probs, per_file_results: list[dict]) -
         metrics['bootstrap'][name] = {'mean': mean, 'std': std, 'ci_lower': lower, 'ci_upper': upper}
 
     # --- Confusion matrix ---
-    metrics['confusion_matrix'] = confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
+    metrics['confusion_matrix'] = confusion_matrix(y_true, y_pred, labels=labels)
 
     # --- Per-file statistics ---
     file_accuracies = []
@@ -349,6 +386,7 @@ def format_metrics_report(all_model_metrics: dict[str, dict]) -> str:
         lines.append("-" * 60)
         lines.append("PER-CLASS METRICS")
         lines.append("-" * 60)
+        class_names = metrics['class_names']
         header = f"  {'Class':<15} {'Precision':>10} {'Recall':>10} {'F1-Score':>10} {'Support':>10} {'ROC AUC':>10}"
         lines.append(header)
         lines.append("  " + "-" * 65)
@@ -389,11 +427,12 @@ def format_metrics_report(all_model_metrics: dict[str, dict]) -> str:
         lines.append("CONFUSION MATRIX")
         lines.append("-" * 60)
         cm = metrics['confusion_matrix']
-        lines.append(f"  {'':>15} {'Pred Exhale':>12} {'Pred Inhale':>12} {'Pred Silence':>13}")
-        lines.append("  " + "-" * 52)
-        row_names = ['True Exhale', 'True Inhale', 'True Silence']
-        for i, rn in enumerate(row_names):
-            lines.append(f"  {rn:>15} {cm[i, 0]:>12d} {cm[i, 1]:>12d} {cm[i, 2]:>13d}")
+        lines.append(f"  Labels: {', '.join(class_names)}")
+        pred_header = "  " + " " * 16 + " ".join([f"Pred {cn.split('(')[0].strip():>10}" for cn in class_names])
+        lines.append(pred_header)
+        for i, rn in enumerate(class_names):
+            row_values = " ".join([f"{val:>15d}" for val in cm[i]])
+            lines.append(f"  True {rn:<10} {row_values}")
 
         # Per-file statistics
         lines.append("")
@@ -460,9 +499,11 @@ def run():
 
     # Load all models
     models = {}
+    model_num_classes = {}
     for model_name, model_info in MODELS_CONFIG.items():
         print(f"Loading {model_name} model from {model_info['model_path']}...")
         models[model_name] = load_model(model_name, configs[model_name], model_info['model_path'], device)
+        model_num_classes[model_name] = int(configs[model_name]['model']['num_classes'])
         print(f"  {model_name} loaded successfully.")
 
     num_files = min(LIMIT_WAV, len(test_dataset)) if LIMIT_WAV else len(test_dataset)
@@ -503,8 +544,9 @@ def run():
             stride_frames = max(frames_per_inference - overlap_frames, 1)
 
             for model_name, model in models.items():
+                num_classes = model_num_classes[model_name]
                 # Accumulate logits with overlap averaging
-                logits_sum = torch.zeros((1, total_length, NUM_CLASSES), device=device)
+                logits_sum = torch.zeros((1, total_length, num_classes), device=device)
                 logits_count = torch.zeros((1, total_length, 1), device=device)
 
                 for start in range(0, total_length, stride_frames):
@@ -536,6 +578,8 @@ def run():
             for model_name in models:
                 raw_preds = model_raw_preds[model_name]
                 raw_probs = model_raw_probs[model_name]
+                num_classes = model_num_classes[model_name]
+                gt_mode = MODELS_CONFIG[model_name].get('gt_mode', 'three_class')
 
                 file_y_true = []
                 file_y_pred = []
@@ -546,7 +590,10 @@ def run():
                     if (end_sample - j) < samples_trans:
                         continue
 
-                    gt = get_ground_truth_for_chunk(csv_labels, j, end_sample)
+                    if gt_mode == 'two_class':
+                        gt = get_ground_truth_for_chunk_two_class(csv_labels, j, end_sample)
+                    else:
+                        gt = get_ground_truth_for_chunk(csv_labels, j, end_sample)
 
                     start_frame = int(j / hop_length)
                     end_frame = int(end_sample / hop_length)
@@ -554,11 +601,11 @@ def run():
                     chunk_probs = raw_probs[start_frame:end_frame]
 
                     if len(chunk_preds) > 0:
-                        pred = int(np.bincount(chunk_preds, minlength=NUM_CLASSES).argmax())
+                        pred = int(np.bincount(chunk_preds, minlength=num_classes).argmax())
                         avg_probs = chunk_probs.mean(axis=0)
                     else:
-                        pred = 2  # silence
-                        avg_probs = np.array([0.0, 0.0, 1.0])
+                        pred = 1 if num_classes == 2 else 2
+                        avg_probs = np.array([0.0, 1.0]) if num_classes == 2 else np.array([0.0, 0.0, 1.0])
 
                     file_y_true.append(gt)
                     file_y_pred.append(pred)
@@ -585,7 +632,8 @@ def run():
             time_axis = np.arange(n_samples) / sample_rate
             model_names = list(models.keys())
 
-            fig, axes = plt.subplots(4, 1, figsize=(18, 14), sharex=True)
+            n_rows = 1 + len(model_names)
+            fig, axes = plt.subplots(n_rows, 1, figsize=(18, 3 * n_rows + 2), sharex=True)
             fig.suptitle(f"Model Comparison: {base_name}", fontsize=14, fontweight='bold')
 
             # 1) Ground truth
@@ -602,6 +650,7 @@ def run():
                 ax.set_title(f'{model_name} Predictions')
                 ax.set_ylabel('Amplitude')
                 preds = model_raw_preds[model_name]
+                num_classes = model_num_classes[model_name]
 
                 for j in range(0, n_samples, samples_trans):
                     end_sample = min(j + samples_trans, n_samples)
@@ -613,18 +662,21 @@ def run():
                     chunk_preds = preds[start_frame:end_frame]
 
                     if len(chunk_preds) > 0:
-                        p = int(np.bincount(chunk_preds, minlength=NUM_CLASSES).argmax())
+                        p = int(np.bincount(chunk_preds, minlength=num_classes).argmax())
                     else:
-                        p = 2
+                        p = 1 if num_classes == 2 else 2
 
-                    try:
-                        btype = BreathType(p)
-                    except ValueError:
-                        btype = BreathType.SILENCE
+                    if num_classes == 2:
+                        color = 'green' if p == 0 else 'blue'
+                    else:
+                        try:
+                            color = BreathType(p).get_color()
+                        except ValueError:
+                            color = BreathType.SILENCE.get_color()
 
                     ax.plot(time_axis[j:end_sample],
                             audio[j:end_sample],
-                            color=btype.get_color())
+                            color=color)
 
             axes[-1].set_xlabel('Time [s]')
 
@@ -652,7 +704,8 @@ def run():
             continue
         print(f"  Computing metrics for {model_name}...")
         all_model_metrics[model_name] = compute_all_metrics(
-            res['y_true'], res['y_pred'], res['y_probs'], res['per_file']
+            res['y_true'], res['y_pred'], res['y_probs'], res['per_file'],
+            MODELS_CONFIG[model_name]['class_names']
         )
 
     # Write metrics report to file
