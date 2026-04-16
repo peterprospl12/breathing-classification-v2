@@ -241,11 +241,54 @@ def empty_count_stats() -> dict:
         "exhale_pred": 0,
         "inhale_gt": 0,
         "inhale_pred": 0,
+        "bpm_error_list": [],
         "file_rows": [],
     }
 
 
-def update_counts(stats: dict, file_name: str, gt_seq: list[int], pred_seq: list[int], is_three_class: bool) -> None:
+def compute_bpm(exhale_count: int, duration_sec: float) -> float:
+    if duration_sec <= 0:
+        return float("nan")
+    return (float(exhale_count) / duration_sec) * 60.0
+
+
+def compute_bpm_error_stats(bpm_errors: list[float]) -> dict:
+    arr = np.array([x for x in bpm_errors if np.isfinite(x)], dtype=np.float64)
+    if arr.size == 0:
+        return {
+            "count": 0,
+            "mae": float("nan"),
+            "rmse": float("nan"),
+            "bias": float("nan"),
+            "median_abs": float("nan"),
+            "min": float("nan"),
+            "max": float("nan"),
+            "within_1": float("nan"),
+            "within_2": float("nan"),
+        }
+
+    abs_arr = np.abs(arr)
+    return {
+        "count": int(arr.size),
+        "mae": float(abs_arr.mean()),
+        "rmse": float(np.sqrt(np.mean(arr ** 2))),
+        "bias": float(arr.mean()),
+        "median_abs": float(np.median(abs_arr)),
+        "min": float(arr.min()),
+        "max": float(arr.max()),
+        "within_1": float((abs_arr <= 1.0).mean() * 100.0),
+        "within_2": float((abs_arr <= 2.0).mean() * 100.0),
+    }
+
+
+def update_counts(
+    stats: dict,
+    file_name: str,
+    gt_seq: list[int],
+    pred_seq: list[int],
+    is_three_class: bool,
+    duration_sec: float,
+) -> None:
     exhale_gt = count_runs_for_class(gt_seq, class_id=0, min_len=MIN_RUN_LEN)
     exhale_pred = count_runs_for_class(pred_seq, class_id=0, min_len=MIN_RUN_LEN)
 
@@ -258,6 +301,11 @@ def update_counts(stats: dict, file_name: str, gt_seq: list[int], pred_seq: list
     stats["inhale_gt"] += inhale_gt
     stats["inhale_pred"] += inhale_pred
 
+    bpm_gt = compute_bpm(exhale_gt, duration_sec)
+    bpm_pred = compute_bpm(exhale_pred, duration_sec)
+    bpm_err = bpm_pred - bpm_gt if np.isfinite(bpm_gt) and np.isfinite(bpm_pred) else float("nan")
+    stats["bpm_error_list"].append(bpm_err)
+
     stats["file_rows"].append(
         {
             "file": file_name,
@@ -265,6 +313,9 @@ def update_counts(stats: dict, file_name: str, gt_seq: list[int], pred_seq: list
             "exhale_pred": exhale_pred,
             "inhale_gt": inhale_gt,
             "inhale_pred": inhale_pred,
+            "bpm_gt": bpm_gt,
+            "bpm_pred": bpm_pred,
+            "bpm_err": bpm_err,
         }
     )
 
@@ -288,6 +339,17 @@ def add_count_summary(lines: list[str], title: str, stats: dict, include_inhale:
     lines.append(f"  Missed:         {ex_missed}")
     lines.append(f"  False extra:    {ex_false}")
 
+    bpm_stats = compute_bpm_error_stats(stats["bpm_error_list"])
+    lines.append("BPM (exhale-based) error stats [Pred - GT]:")
+    lines.append(f"  Samples:        {bpm_stats['count']}")
+    lines.append(f"  MAE:            {bpm_stats['mae']:.3f}")
+    lines.append(f"  RMSE:           {bpm_stats['rmse']:.3f}")
+    lines.append(f"  Bias:           {bpm_stats['bias']:.3f}")
+    lines.append(f"  Median |err|:   {bpm_stats['median_abs']:.3f}")
+    lines.append(f"  Error min/max:  {bpm_stats['min']:.3f} / {bpm_stats['max']:.3f}")
+    lines.append(f"  |err| <= 1 BPM: {bpm_stats['within_1']:.1f}%")
+    lines.append(f"  |err| <= 2 BPM: {bpm_stats['within_2']:.1f}%")
+
     if include_inhale:
         in_gt = stats["inhale_gt"]
         in_pr = stats["inhale_pred"]
@@ -303,12 +365,15 @@ def add_count_summary(lines: list[str], title: str, stats: dict, include_inhale:
         lines.append(f"  False extra:    {in_false}")
 
     lines.append("Per-file counts:")
-    header = "  file | ex_gt ex_pr"
+    header = "  file | ex_gt ex_pr | bpm_gt bpm_pr bpm_err"
     if include_inhale:
         header += " | in_gt in_pr"
     lines.append(header)
     for row in stats["file_rows"]:
-        line = f"  {row['file']} | {row['exhale_gt']:>5} {row['exhale_pred']:>5}"
+        line = (
+            f"  {row['file']} | {row['exhale_gt']:>5} {row['exhale_pred']:>5} | "
+            f"{row['bpm_gt']:>6.2f} {row['bpm_pred']:>6.2f} {row['bpm_err']:>7.2f}"
+        )
         if include_inhale:
             line += f" | {row['inhale_gt']:>5} {row['inhale_pred']:>5}"
         lines.append(line)
@@ -404,6 +469,7 @@ def main() -> None:
             valid_mask = ~padding_mask.to(device)
             valid_frames = int(valid_mask.sum().item())
             n_samples = valid_frames * hop_length
+            duration_sec = n_samples / float(sample_rate)
             csv_labels = parse_label_csv(csv_path)
 
             raw_preds_three = infer_raw_predictions(
@@ -445,8 +511,22 @@ def main() -> None:
             pred_three = smooth_short_runs(pred_three, MIN_RUN_LEN)
             pred_two = smooth_short_runs(pred_two, MIN_RUN_LEN)
 
-            update_counts(stats_three, wav_filename, gt_three, pred_three, is_three_class=True)
-            update_counts(stats_two, wav_filename, gt_two, pred_two, is_three_class=False)
+            update_counts(
+                stats_three,
+                wav_filename,
+                gt_three,
+                pred_three,
+                is_three_class=True,
+                duration_sec=duration_sec,
+            )
+            update_counts(
+                stats_two,
+                wav_filename,
+                gt_two,
+                pred_two,
+                is_three_class=False,
+                duration_sec=duration_sec,
+            )
 
     lines: list[str] = []
     lines.append("=" * 90)
