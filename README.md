@@ -26,7 +26,8 @@ breathing-classification-v2/
 │   ├── data/                 # Data processing and generation
 │   │   ├── generators/       # Training data generation tools
 │   │   ├── train/           # Training datasets
-│   │   └── eval/            # Evaluation datasets
+│   │   ├── eval_seen_people/   # Evaluation datasets (subjects seen during training)
+│   │   └── eval_unseen_people/ # Evaluation datasets (completely unseen subjects)
 │   ├── archive/             # Legacy model implementations
 │   │   ├── lstm/            # LSTM-based models
 │   │   ├── spectrum/        # Frequency-domain models
