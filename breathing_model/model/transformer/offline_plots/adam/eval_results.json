@@ -1,0 +1,116 @@
+{
+  "overall_metrics": {
+    "accuracy": 0.8113333333333334,
+    "cohen_kappa": 0.6687330854879339,
+    "matthews_corrcoef": 0.6867441168737931,
+    "precision_exhale": 0.9436392914653784,
+    "recall_exhale": 0.7690288713910761,
+    "f1_exhale": 0.8474331164135936,
+    "support_exhale": 762,
+    "precision_inhale": 0.9116347569955817,
+    "recall_inhale": 0.8526170798898072,
+    "f1_inhale": 0.8811387900355871,
+    "support_inhale": 726,
+    "precision_silence": 0.06,
+    "recall_silence": 1.0,
+    "f1_silence": 0.11320754716981132,
+    "support_silence": 12,
+    "precision_macro": 0.63842468282032,
+    "recall_macro": 0.8738819837602945,
+    "f1_macro": 0.613926484539664,
+    "precision_weighted": 0.9210799824502739,
+    "recall_weighted": 0.8113333333333334,
+    "f1_weighted": 0.8578728578926882,
+    "log_loss": 0.8158934978617671,
+    "roc_auc_exhale": 0.9162203301823044,
+    "roc_auc_inhale": 0.9595603675941943,
+    "roc_auc_silence": 0.9765344982078852,
+    "accuracy_bs_mean": 0.8116393333333333,
+    "accuracy_bs_std": 0.009801913785993275,
+    "accuracy_ci95_lower": 0.79265,
+    "accuracy_ci95_upper": 0.8306666666666667,
+    "cohen_kappa_bs_mean": 0.6691742490602212,
+    "cohen_kappa_bs_std": 0.015529809163507319,
+    "cohen_kappa_ci95_lower": 0.6396726387913343,
+    "cohen_kappa_ci95_upper": 0.7000928599150966,
+    "f1_macro_bs_mean": 0.6141041337289344,
+    "f1_macro_bs_std": 0.011957185715393136,
+    "f1_macro_ci95_lower": 0.5927862714144239,
+    "f1_macro_ci95_upper": 0.6386330503168486,
+    "confusion_matrix": [
+      [
+        586,
+        60,
+        116
+      ],
+      [
+        35,
+        619,
+        72
+      ],
+      [
+        0,
+        0,
+        12
+      ]
+    ]
+  },
+  "per_file_metrics": {
+    "file_accuracy_mean": 0.8113333333333334,
+    "file_accuracy_std": 0.03663635110409089,
+    "file_accuracy_var": 0.0013422222222222219,
+    "file_accuracy_min": 0.7733333333333333,
+    "file_accuracy_max": 0.8633333333333333,
+    "file_accuracy_median": 0.8,
+    "file_f1_macro_mean": 0.5947145807696372,
+    "file_f1_macro_std": 0.039052484840827094,
+    "file_f1_macro_var": 0.0015250965722430297,
+    "file_f1_macro_min": 0.5696612298067848,
+    "file_f1_macro_max": 0.6634183540960058,
+    "file_f1_macro_median": 0.5792291898443365,
+    "file_kappa_mean": 0.6701840183910523,
+    "file_kappa_std": 0.04168073306161949,
+    "file_kappa_var": 0.0017372835085539802,
+    "file_kappa_min": 0.6389636131955261,
+    "file_kappa_max": 0.738141871753385,
+    "file_kappa_median": 0.648999648999649,
+    "per_file_details": [
+      {
+        "filename": "Adam_nose_medium_2026-01-29_19-52-35",
+        "n_chunks": 300,
+        "accuracy": 0.7733,
+        "f1_macro": 0.6634,
+        "kappa": 0.639
+      },
+      {
+        "filename": "Adam_nose_medium_2026-01-29_19-53-35",
+        "n_chunks": 300,
+        "accuracy": 0.7867,
+        "f1_macro": 0.5792,
+        "kappa": 0.6426
+      },
+      {
+        "filename": "Adam_nose_medium_2026-01-29_19-54-35",
+        "n_chunks": 300,
+        "accuracy": 0.8,
+        "f1_macro": 0.573,
+        "kappa": 0.649
+      },
+      {
+        "filename": "Adam_nose_medium_2026-01-29_19-55-35",
+        "n_chunks": 300,
+        "accuracy": 0.8633,
+        "f1_macro": 0.5883,
+        "kappa": 0.7381
+      },
+      {
+        "filename": "Adam_nose_medium_2026-01-29_19-56-35",
+        "n_chunks": 300,
+        "accuracy": 0.8333,
+        "f1_macro": 0.5697,
+        "kappa": 0.6822
+      }
+    ],
+    "n_files": 5
+  }
+}

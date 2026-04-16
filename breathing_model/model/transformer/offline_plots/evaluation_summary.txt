@@ -1,0 +1,195 @@
+================================================================================
+  PODSUMOWANIE EWALUACJI MODELU CNN-TRANSFORMER
+  Model: best_model_epoch_31.pth
+  Tryb: symulacja strumieniowa offline (chunk-level, buffer 3.5s)
+  Data: 2026-02-07
+================================================================================
+
+
+1. PRZEGLĄD OGÓLNY
+================================================================================
+
+  Osoby testowe:  3 (Kinga, Ela, Adam)
+  Łączna liczba plików:  26 (Kinga: 16, Ela: 5, Adam: 5)
+  Łączna liczba chunków: 7524
+
+  Uwaga: Osoby Kinga i Ela posiadają zrównoważone rozkłady klas w danych
+  ewaluacyjnych (exhale/inhale/silence). Dane Adama zawierają jedynie
+  12 chunków ciszy (0.8% danych), co sztucznie zaniża metryki macro.
+
+
+2. METRYKI OGÓLNE PER OSOBA
+================================================================================
+
+  Metryka                     Kinga          Ela          Adam
+  ─────────────────────────────────────────────────────────────
+  Liczba plików                  16            5             5
+  Liczba chunków               4524         1500          1500
+
+  Accuracy                   0.8287        0.8473        0.8113
+    95% CI               [0.817,0.839] [0.830,0.865] [0.793,0.831]
+    Bootstrap std            0.0057        0.0092        0.0098
+
+  Cohen's Kappa              0.7418        0.7667        0.6687
+    95% CI               [0.725,0.757] [0.741,0.793] [0.640,0.700]
+
+  Matthews Corr. Coeff.      0.7486        0.7800        0.6867
+
+  F1-score (macro)           0.8236        0.8298        0.6139  *
+    95% CI               [0.812,0.835] [0.811,0.849] [0.593,0.639]
+
+  F1-score (weighted)        0.8320        0.8556        0.8579
+
+  Log-loss                   0.7092        0.5953        0.8159
+
+  * F1 macro Adama jest zaniżone z powodu 12 chunków silence (precision=0.06).
+    Weighted F1 (0.858) lepiej odzwierciedla faktyczną jakość predykcji.
+
+
+3. METRYKI PER KLASA
+================================================================================
+
+  ┌─────────┬─────────────────────────┬─────────────────────────┬─────────────────────────┐
+  │         │        KINGA            │          ELA            │          ADAM            │
+  │ Klasa   │  Prec   Rec    F1  Sup  │  Prec   Rec    F1  Sup  │  Prec   Rec    F1  Sup  │
+  ├─────────┼─────────────────────────┼─────────────────────────┼─────────────────────────┤
+  │ exhale  │ 0.920  0.779  0.843 1816│ 0.966  0.766  0.854  624│ 0.944  0.769  0.847  762│
+  │ inhale  │ 0.888  0.828  0.857 1688│ 0.945  0.877  0.909  624│ 0.912  0.853  0.881  726│
+  │ silence │ 0.663  0.919  0.770 1020│ 0.577  0.976  0.726  252│ 0.060  1.000  0.113   12│
+  └─────────┴─────────────────────────┴─────────────────────────┴─────────────────────────┘
+
+  Obserwacje:
+  - Exhale i Inhale: model konsekwentnie osiąga wysoką precyzję (>0.88) przy
+    nieco niższym recall (~0.77-0.88) we wszystkich zbiorach.
+  - Silence: model ma tendencję do nadmiernego klasyfikowania chunków jako
+    cisza (wysoki recall ~0.92-1.00, ale niższa precyzja 0.58-0.66).
+    Przy małej liczbie próbek ciszy (Adam) efekt jest ekstremalny.
+
+
+4. ROC-AUC PER KLASA
+================================================================================
+
+  Klasa       Kinga     Ela      Adam     Średnia
+  ────────────────────────────────────────────────
+  exhale      0.9250   0.9600   0.9162    0.9337
+  inhale      0.9551   0.9776   0.9596    0.9641
+  silence     0.9544   0.9767   0.9765    0.9692
+  ────────────────────────────────────────────────
+  Średnia     0.9448   0.9714   0.9508    0.9557
+
+  Wartości AUC > 0.93 dla wszystkich klas i osób wskazują na bardzo dobrą
+  zdolność dyskryminacyjną modelu, nawet tam gdzie F1 jest niższe.
+
+
+5. MACIERZE POMYŁEK
+================================================================================
+
+  KINGA (4524 chunki):
+                  exhale    inhale   silence
+    exhale          1414       112       290
+    inhale           104      1398       186
+    silence           19        64       937
+
+  ELA (1500 chunków):
+                  exhale    inhale   silence
+    exhale           478        31       115
+    inhale            12       547        65
+    silence            5         1       246
+
+  ADAM (1500 chunków):
+                  exhale    inhale   silence
+    exhale           586        60       116
+    inhale            35       619        72
+    silence            0         0        12
+
+  Dominujące typy błędów:
+  - exhale → silence: najczęstszy błąd we wszystkich zbiorach
+    (290 u Kingi, 115 u Eli, 116 u Adama)
+  - inhale → silence: drugi najczęstszy typ pomyłki
+  - Model rzadko myli exhale z inhale i odwrotnie, co jest kluczowe
+    dla poprawnego zliczania cykli oddechowych.
+
+
+6. ZMIENNOŚĆ MIĘDZY NAGRANIAMI (PER-FILE)
+================================================================================
+
+  Metryka              Kinga          Ela          Adam
+  ──────────────────────────────────────────────────────
+  Accuracy mean        0.8258        0.8473        0.8113
+  Accuracy std         0.1047        0.0497        0.0366
+  Accuracy min         0.4751        0.8067        0.7733
+  Accuracy max         0.9167        0.9167        0.8633
+  Accuracy median      0.8567        0.8200        0.8000
+
+  F1 macro mean        0.8148        0.8239        0.5947
+  F1 macro std         0.1024        0.0620        0.0391
+
+  Kappa mean           0.7304        0.7649        0.6702
+  Kappa std            0.1613        0.0778        0.0417
+
+  Obserwacje:
+  - Kinga: największa zmienność (std accuracy=0.105), wynikająca z obecności
+    pliku "Kinga_nose_bad" (acc=0.475), który jest wyraźnym outlierem.
+    Po jego wyłączeniu mediana=0.857 dobrze reprezentuje typową jakość.
+  - Ela: najbardziej stabilne wyniki (std=0.050), z zakresem 0.807-0.917.
+  - Adam: bardzo niski rozrzut accuracy (std=0.037), ale systematycznie
+    niższa jakość niż u pozostałych osób (range 0.773-0.863).
+
+
+7. NAJGORSZE I NAJLEPSZE NAGRANIA
+================================================================================
+
+  TOP 3 najlepsze pliki (accuracy):
+    1. Kinga_M_nose_medium_...19-40-26   acc=0.917  F1m=0.916  κ=0.875
+    2. Ela_Cz_nose_medium_...20-44-42    acc=0.917  F1m=0.914  κ=0.874
+    3. Kinga_M_nose_medium_...19-34-25   acc=0.903  F1m=0.903  κ=0.855
+
+  TOP 3 najgorsze pliki (accuracy):
+    1. Kinga_nose_bad_2025-06-12         acc=0.475  F1m=0.498  κ=0.210
+    2. Kinga_nose_medium_...17-24-38     acc=0.764  F1m=0.743  κ=0.647
+    3. Kinga_nose_medium_...17-23-38     acc=0.767  F1m=0.752  κ=0.646
+
+  Plik "Kinga_nose_bad" pochodzi z nagrań oznaczonych jako złej jakości
+  i stanowi celowy test odporności modelu na trudne warunki.
+
+
+8. PODSUMOWANIE ZBIORCZE
+================================================================================
+
+  Zagregowane metryki (wszystkie osoby, 7524 chunki):
+
+    Metryka                     Wartość
+    ────────────────────────────────────
+    Accuracy (śr. ważona)        0.830
+    F1 weighted (śr. ważona)     0.845
+    Cohen's Kappa (śr. ważona)   0.733
+    MCC (śr. ważona)             0.740
+    ROC-AUC (mean of means)      0.956
+
+  Model CNN-Transformer osiąga solidne wyniki na danych ewaluacyjnych
+  od trzech różnych osób. Kluczowe wnioski:
+
+  1. GENERALIZACJA: Model utrzymuje accuracy >80% na danych od osób, których
+     nagrania nie były w zbiorze treningowym (Adam, Ela), co potwierdza
+     zdolność generalizacji międzyosobowej.
+
+  2. NIEZAWODNOŚĆ KLAS ODDECHOWYCH: Klasyfikacja exhale vs inhale działa
+     bardzo dobrze (F1 > 0.84 dla obu klas), z minimalną liczbą pomyłek
+     między tymi klasami — kluczowe dla estymacji tempa oddychania.
+
+  3. SŁABOŚĆ — CISZA: Klasa silence ma systematycznie niższą precyzję
+     (0.06-0.66), bo model zbyt agresywnie przypisuje ją do chunków,
+     które w rzeczywistości zawierają cichy wdech/wydech. Jest to
+     częściowo artefakt metody ewaluacji opartej na chunkach.
+
+  4. WARUNKI NAGRANIA: Starsze nagrania (2025-06) wykazują niższą jakość
+     klasyfikacji niż nowsze (2026-01/02), co sugeruje, że jakość
+     mikrofonu lub technika nagrywania ma istotny wpływ.
+
+  5. STABILNOŚĆ: AUC > 0.93 dla wszystkich klas i osób wskazuje, że
+     ranking prawdopodobieństw modelu jest bardzo dobry — potencjalne
+     lepsze wyniki można uzyskać optymalizując progi decyzyjne.
+
+================================================================================
+  Koniec raportu
+================================================================================

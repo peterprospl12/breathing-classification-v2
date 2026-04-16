@@ -1,7 +1,11 @@
 import os
+import re
+import json
+import csv as csv_module
 import numpy as np
 import torchaudio
 import matplotlib.pyplot as plt
+import seaborn as sns
 from matplotlib.lines import Line2D
 from collections import deque
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
@@ -14,12 +18,15 @@ CONFIG_PATH = 'config.yaml'
 MODEL_PATH = 'best_models/best_model_epoch_31.pth'
 WAV_DIR_OVERRIDE = '../../data/eval/raw'
 LABEL_DIR_OVERRIDE = '../../data/eval/label'
-OUTPUT_DIR = 'offline_plots'
+OUTPUT_DIR = 'offline_plots/piotr'
 BUFFER_SECONDS = 3.5
 LIMIT_WAV = None
 MIN_CHUNK_SAMPLES_SKIP = 0
 NORMALIZE_AUDIO_FOR_PLOT = False
 PRINT_PROBS = False
+# Regex pattern to filter filenames (e.g., r'Kinga|Adam' to match files with Kinga or Adam in name).
+# Set to None to disable filtering and process all files.
+FILENAME_REGEX_FILTER = r'Piotr'  # e.g., r'Kinga|Adam|Maria'
 
 
 def load_audio(wav_path: str, target_sr: int) -> np.ndarray:
@@ -149,6 +156,17 @@ def process_file(wav_path: str,
             continue
         gt_segments.append({'start': s, 'end': e, 'cls': label_to_breath_type(lab['class'])})
 
+    # --- Build chunk-level y_true / y_pred / y_probs arrays ---
+    y_true_chunks = []
+    y_pred_chunks = []
+    y_probs_chunks = []
+    for seg in predicted_segments:
+        gt_label = get_gt_label_for_chunk(seg['start'], seg['end'], gt_segments, n_samples)
+        y_true_chunks.append(gt_label)
+        y_pred_chunks.append(seg['pred'])
+        y_probs_chunks.append(seg['probs'])
+
+    # --- Plot (unchanged) ---
     time_axis = np.arange(n_samples) / sr
 
     fig, (ax_gt, ax_pred) = plt.subplots(2, 1, figsize=(15, 9), sharex=True)
@@ -200,6 +218,13 @@ def run():
     classifier = BreathPhaseClassifier(MODEL_PATH, config.model, config.data)
 
     wav_files = sorted([f for f in os.listdir(wav_dir) if f.lower().endswith('.wav')])
+
+    # Filter files by regex pattern if specified
+    if FILENAME_REGEX_FILTER:
+        pattern = re.compile(FILENAME_REGEX_FILTER, re.IGNORECASE)
+        wav_files = [f for f in wav_files if pattern.search(f)]
+        print(f"Filtered by regex '{FILENAME_REGEX_FILTER}': {len(wav_files)} matching files")
+
     if LIMIT_WAV:
         wav_files = wav_files[:LIMIT_WAV]
 
@@ -253,6 +278,67 @@ def run():
         print(confusion_matrix(all_y_true, all_y_pred))
     else:
         print("No data processed.")
+
+    if not file_results:
+        print("No evaluation results collected. Exiting.")
+        return
+
+    # --- Aggregate predictions across all files ---
+    all_y_true = np.concatenate([r['y_true'] for r in file_results])
+    all_y_pred = np.concatenate([r['y_pred'] for r in file_results])
+    all_y_probs = np.concatenate([r['y_probs'] for r in file_results])
+
+    print(f"\nTotal evaluation chunks: {len(all_y_true)}")
+
+    # --- Compute metrics ---
+    print("Computing overall metrics ...")
+    overall_metrics = compute_overall_metrics(all_y_true, all_y_pred, all_y_probs)
+
+    print("Computing per-file metrics ...")
+    per_file_metrics = compute_per_file_metrics(file_results)
+
+    # --- Print report ---
+    report_text = print_evaluation_report(overall_metrics, per_file_metrics)
+
+    # --- Generate evaluation plots ---
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    plot_confusion_matrix_eval(
+        all_y_true, all_y_pred,
+        os.path.join(OUTPUT_DIR, 'eval_confusion_matrix.png'))
+
+    plot_roc_curves(
+        all_y_true, all_y_probs,
+        os.path.join(OUTPUT_DIR, 'eval_roc_curves.png'))
+
+    plot_per_file_metrics(
+        per_file_metrics.get('per_file_details', []),
+        os.path.join(OUTPUT_DIR, 'eval_per_file_metrics.png'))
+
+    # --- Save machine-readable results ---
+    save_results_json(
+        overall_metrics, per_file_metrics,
+        os.path.join(OUTPUT_DIR, 'eval_results.json'))
+
+    save_per_file_csv(
+        per_file_metrics.get('per_file_details', []),
+        os.path.join(OUTPUT_DIR, 'eval_per_file.csv'))
+
+    # --- Full sklearn classification report ---
+    sklearn_header = "\n" + "=" * 72 + "\n  FULL CLASSIFICATION REPORT (sklearn)\n" + "=" * 72
+    sklearn_report = classification_report(
+        all_y_true, all_y_pred,
+        target_names=[CLASS_NAMES[i] for i in range(NUM_CLASSES)],
+        digits=4, zero_division=0)
+    print(sklearn_header)
+    print(sklearn_report)
+
+    # --- Save complete text report to file ---
+    full_report = report_text + "\n" + sklearn_header + "\n" + sklearn_report
+    report_path = os.path.join(OUTPUT_DIR, 'eval_report.txt')
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write(full_report)
+    print(f"Saved full text report: {report_path}")
 
     print("Done.")
 

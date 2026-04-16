@@ -1,0 +1,79 @@
+
+========================================================================
+  EVALUATION REPORT  (chunk-level, streaming simulation)
+========================================================================
+
+Metric                                     Value
+--------------------------------------------------
+Accuracy                                  0.8473
+  95% CI                            [0.8300, 0.8647]
+  Bootstrap std                           0.0092
+Cohen's Kappa                             0.7667
+  95% CI                            [0.7411, 0.7930]
+Matthews Corr. Coeff. (MCC)               0.7800
+Log-loss                            0.5952934123155992
+
+--- Macro-averaged ---
+Precision (macro)                         0.8293
+Recall    (macro)                         0.8729
+F1-score  (macro)                         0.8298
+  95% CI                            [0.8107, 0.8493]
+
+--- Weighted-averaged ---
+Precision (weighted)                      0.8917
+Recall    (weighted)                      0.8473
+F1-score  (weighted)                      0.8556
+
+--- Per-class ---
+Class            Prec      Rec       F1  Support      AUC
+--------------------------------------------------------
+exhale         0.9657   0.7660   0.8543      624   0.9600
+inhale         0.9447   0.8766   0.9094      624   0.9776
+silence        0.5775   0.9762   0.7257      252   0.9767
+
+--- Confusion Matrix ---
+                exhale    inhale   silence
+      exhale       478        31       115
+      inhale        12       547        65
+     silence         5         1       246
+
+--- Inter-recording variability ---
+Files evaluated                                5
+Accuracy mean                             0.8473
+Accuracy std                              0.0497
+Accuracy variance                       0.002474
+Accuracy min / max                  0.8067 / 0.9167
+Accuracy median                           0.8200
+F1 Macro mean                             0.8239
+F1 Macro std                              0.0620
+F1 Macro variance                       0.003844
+F1 Macro min / max                  0.7693 / 0.9143
+F1 Macro median                           0.7965
+Kappa mean                                0.7649
+Kappa std                                 0.0778
+Kappa variance                          0.006048
+Kappa min / max                     0.7001 / 0.8743
+Kappa median                              0.7171
+
+--- Per-file detail ---
+Filename                         Chunks      Acc     F1-m    Kappa
+------------------------------------------------------------------
+Ela_Cz_nose_medium_2026-01-29_20-43-42      300   0.8067   0.7965   0.7128
+Ela_Cz_nose_medium_2026-01-29_20-44-42      300   0.9167   0.9143   0.8743
+Ela_Cz_nose_medium_2026-01-29_20-45-42      300   0.8833   0.8610   0.8199
+Ela_Cz_nose_medium_2026-01-29_20-46-42      300   0.8200   0.7693   0.7171
+Ela_Cz_nose_medium_2026-01-29_20-47-42      300   0.8100   0.7781   0.7001
+========================================================================
+
+========================================================================
+  FULL CLASSIFICATION REPORT (sklearn)
+========================================================================
+              precision    recall  f1-score   support
+
+      exhale     0.9657    0.7660    0.8543       624
+      inhale     0.9447    0.8766    0.9094       624
+     silence     0.5775    0.9762    0.7257       252
+
+    accuracy                         0.8473      1500
+   macro avg     0.8293    0.8729    0.8298      1500
+weighted avg     0.8917    0.8473    0.8556      1500

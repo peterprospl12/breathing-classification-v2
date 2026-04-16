@@ -1,0 +1,7 @@
+filename,n_chunks,accuracy,f1_macro,kappa
+Tomasz_nose_bad_2025-07-28_15-39-03,40,0.3,0.1538,0.0
+Tomasz_nose_bad_both_2025-06-11_00-16-02,301,0.4684,0.4552,0.1819
+Tomasz_nose_good_rapid_2025-06-10_23-51-11,301,0.7708,0.7649,0.6593
+Tomasz_nose_good_regular_2025-06-10_23-42-11,301,0.8571,0.8606,0.7768
+Tomasz_nose_medium_rapid_2025-06-11_00-00-25,301,0.7874,0.7887,0.6855
+Tomasz_nose_medium_regular_2025-06-10_23-56-07,301,0.7741,0.7414,0.6575

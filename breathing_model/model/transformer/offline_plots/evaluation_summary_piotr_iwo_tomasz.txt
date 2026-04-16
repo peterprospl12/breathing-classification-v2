@@ -1,0 +1,222 @@
+================================================================================
+  PODSUMOWANIE EWALUACJI MODELU CNN-TRANSFORMER
+  Osoby testowe: Piotr, Iwo, Tomasz
+  Model: best_model_epoch_31.pth
+  Tryb: symulacja strumieniowa offline (chunk-level, buffer 3.5s)
+  Data: 2026-02-07
+================================================================================
+
+
+1. PRZEGLĄD OGÓLNY
+================================================================================
+
+  Osoby testowe:  3 (Piotr, Iwo, Tomasz)
+  Łączna liczba plików:  18 (Piotr: 7, Iwo: 5, Tomasz: 6)
+  Łączna liczba chunków: 5157
+
+  Uwaga: Dane Tomasza zawierają dwa pliki oznaczone jako "bad" (złej jakości),
+  w tym jeden krótki plik (40 chunków) z accuracy=0.30 i kappa=0.00,
+  co istotnie zawyża odchylenie standardowe per-file. Iwo posiada jedynie
+  nagrania z medium breathing, z widoczną poprawą jakości w późniejszych
+  nagraniach. Piotr ma najbardziej stabilne wyniki w tej grupie.
+
+
+2. METRYKI OGÓLNE PER OSOBA
+================================================================================
+
+  Metryka                     Piotr         Iwo         Tomasz
+  ─────────────────────────────────────────────────────────────
+  Liczba plików                   7            5             6
+  Liczba chunków               2107         1505          1545
+
+  Accuracy                   0.7684        0.7847        0.7204
+    95% CI               [0.750,0.786] [0.764,0.805] [0.696,0.743]
+    Bootstrap std            0.0092        0.0105        0.0119
+
+  Cohen's Kappa              0.6427        0.6630        0.5803
+    95% CI               [0.615,0.670] [0.632,0.694] [0.545,0.613]
+
+  Matthews Corr. Coeff.      0.6503        0.6710        0.5898
+
+  F1-score (macro)           0.7634        0.7441        0.7145
+    95% CI               [0.745,0.782] [0.721,0.767] [0.690,0.737]
+
+  F1-score (weighted)        0.7663        0.7959        0.7172
+
+  Log-loss                   0.7051        0.8244        0.8930
+
+  Obserwacje:
+  - Tomasz ma najniższe wyniki w tej grupie (accuracy=0.720, kappa=0.580),
+    częściowo z powodu plików "bad" ale także niższej jakości na inhale.
+  - Iwo osiąga najwyższą accuracy (0.785) ale z dużą zmiennością per-file.
+  - Piotr jest pośredni (accuracy=0.768) ale z najniższą zmiennością.
+
+
+3. METRYKI PER KLASA
+================================================================================
+
+  ┌─────────┬─────────────────────────┬─────────────────────────┬─────────────────────────┐
+  │         │        PIOTR            │          IWO            │        TOMASZ           │
+  │ Klasa   │  Prec   Rec    F1  Sup  │  Prec   Rec    F1  Sup  │  Prec   Rec    F1  Sup  │
+  ├─────────┼─────────────────────────┼─────────────────────────┼─────────────────────────┤
+  │ exhale  │ 0.706  0.901  0.791  758│ 0.914  0.745  0.821  709│ 0.736  0.879  0.801  543│
+  │ inhale  │ 0.818  0.710  0.760  851│ 0.858  0.867  0.862  571│ 0.611  0.711  0.657  481│
+  │ silence │ 0.828  0.667  0.739  498│ 0.451  0.702  0.550  225│ 0.872  0.564  0.685  521│
+  └─────────┴─────────────────────────┴─────────────────────────┴─────────────────────────┘
+
+  Obserwacje:
+  - EXHALE: U Piotra i Tomasza model ma niższą precyzję (~0.71-0.74) ale
+    wysoki recall (~0.88-0.90) — model nadmiernie klasyfikuje chunki jako
+    exhale. U Iwo jest odwrotnie: wysoka precyzja (0.914), niższy recall (0.745).
+  - INHALE: Iwo osiąga najlepszy F1 dla inhale (0.862). Tomasz ma wyraźnie
+    najsłabszą klasyfikację inhale (F1=0.657, prec=0.611).
+  - SILENCE: Bardzo niejednorodne wyniki. Piotr i Tomasz mają wysoką precyzję
+    (0.83-0.87) ale niski recall (0.56-0.67). Iwo odwrotnie — niską precyzję
+    (0.451) ale wysoki recall (0.702). Wzorzec identyczny jak u Kingi/Eli.
+  - Tomasz jest jedyną osobą z F1<0.70 dla klasy inhale — model słabiej
+    rozpoznaje jego wdechy.
+
+
+4. ROC-AUC PER KLASA
+================================================================================
+
+  Klasa       Piotr     Iwo      Tomasz   Średnia
+  ────────────────────────────────────────────────
+  exhale      0.9430   0.8816   0.9368    0.9205
+  inhale      0.9049   0.9580   0.8613    0.9081
+  silence     0.9607   0.8837   0.9230    0.9225
+  ────────────────────────────────────────────────
+  Średnia     0.9362   0.9078   0.9070    0.9170
+
+  Wartości AUC > 0.86 dla wszystkich klas i osób. W porównaniu z grupą
+  Kinga/Ela/Adam (średnia AUC=0.956) ta grupa osiąga niższe AUC (0.917),
+  ale nadal powyżej progu 0.90 wskazującego na dobrą dyskryminację.
+  Najniższe AUC: exhale u Iwo (0.882) i inhale u Tomasza (0.861).
+
+
+5. MACIERZE POMYŁEK
+================================================================================
+
+  PIOTR (2107 chunków):
+                  exhale    inhale   silence
+    exhale           683        45        30
+    inhale           208       604        39
+    silence           77        89       332
+
+  IWO (1505 chunków):
+                  exhale    inhale   silence
+    exhale           528        28       153
+    inhale            37       495        39
+    silence           13        54       158
+
+  TOMASZ (1545 chunków):
+                  exhale    inhale   silence
+    exhale           477        54        12
+    inhale           108       342        31
+    silence           63       164       294
+
+  Dominujące typy błędów:
+  - PIOTR: inhale → exhale (208 błędów) — najliczniejszy typ pomyłki
+    w całej ewaluacji. Model myli wdechy Piotra z wydechami.
+  - IWO: exhale → silence (153 błędów) — ten sam wzorzec co u Kingi/Eli.
+    Model nadmiernie klasyfikuje wydech jako ciszę.
+  - TOMASZ: silence → inhale (164 błędów) — model myli ciszę z wdechem.
+    Sugeruje to, że cisza Tomasza ma cechy spektralne podobne do wdechu.
+  - Cecha wspólna: exhale ↔ inhale pomyłki są relatywnie rzadkie u Iwo,
+    ale częste u Piotra (208+45=253) i Tomasza (54+108=162).
+
+
+6. ZMIENNOŚĆ MIĘDZY NAGRANIAMI (PER-FILE)
+================================================================================
+
+  Metryka              Piotr         Iwo         Tomasz
+  ──────────────────────────────────────────────────────
+  Accuracy mean        0.7684        0.7847        0.6596
+  Accuracy std         0.0448        0.0972        0.2221
+  Accuracy min         0.7076        0.6545        0.3000
+  Accuracy max         0.8405        0.8970        0.8571
+  Accuracy median      0.7807        0.7608        0.7724
+
+  F1 macro mean        0.7534        0.7342        0.6275
+  F1 macro std         0.0466        0.1181        0.2706
+
+  Kappa mean           0.6366        0.6625        0.4935
+  Kappa std            0.0612        0.1496        0.3201
+
+  Obserwacje:
+  - PIOTR: najstabilniejsze wyniki (std accuracy=0.045), z wąskim zakresem
+    0.708-0.841. Brak wyraźnych outlierów — konsystentna jakość.
+  - IWO: umiarkowana zmienność (std=0.097). Widoczna poprawa chronologiczna
+    od najstarszego nagrania (acc=0.655) do najnowszego (acc=0.897).
+  - TOMASZ: ekstremalnie duża zmienność (std=0.222). Pliki "bad" (acc=0.30
+    i 0.47) drastycznie obniżają średnią. Po ich wyłączeniu mediana=0.772
+    lepiej reprezentuje typowe wyniki. Pliki "good" osiągają acc>0.77.
+
+
+7. NAJGORSZE I NAJLEPSZE NAGRANIA
+================================================================================
+
+  TOP 3 najlepsze pliki (accuracy):
+    1. Iwo_nose_medium_...21-56-21       acc=0.897  F1m=0.890  κ=0.842
+    2. Tomasz_nose_good_regular_...       acc=0.857  F1m=0.861  κ=0.777
+    3. Piotr_nose_medium_...23-14-47     acc=0.841  F1m=0.827  κ=0.729
+
+  TOP 3 najgorsze pliki (accuracy):
+    1. Tomasz_nose_bad_...15-39-03       acc=0.300  F1m=0.154  κ=0.000
+    2. Tomasz_nose_bad_both_...          acc=0.468  F1m=0.455  κ=0.182
+    3. Iwo_nose_medium_...20-41-19       acc=0.655  F1m=0.614  κ=0.468
+
+  Pliki "bad" Tomasza to celowe nagrania w trudnych warunkach. Plik
+  Tomasz_nose_bad (40 chunków) jest zbyt krótki dla wiarygodnej oceny.
+  Najgorszy plik Iwo (acc=0.655) jest pierwszym chronologicznie nagraniem —
+  sugeruje efekt uczenia się techniki oddychania przez osobę badaną.
+
+  Trend chronologiczny u Iwo:
+    20:41 → 20:45 → 21:01 → 21:52 → 21:56
+    0.655 → 0.761 → 0.748 → 0.864 → 0.897
+    Wyraźna poprawa w drugiej sesji (po przerwie).
+
+
+8. PODSUMOWANIE ZBIORCZE
+================================================================================
+
+  Zagregowane metryki (Piotr + Iwo + Tomasz, 5157 chunków):
+
+    Metryka                     Wartość
+    ────────────────────────────────────
+    Accuracy (śr. ważona)        0.757
+    F1 weighted (śr. ważona)     0.758
+    F1 macro (śr. ważona)        0.740
+    Cohen's Kappa (śr. ważona)   0.628
+    MCC (śr. ważona)             0.636
+    ROC-AUC (mean of means)      0.917
+
+  Model CNN-Transformer wykazuje niższe wyniki na tej grupie osób
+  w porównaniu do grupy Kinga/Ela/Adam (accuracy 0.757 vs 0.830).
+  Kluczowe wnioski:
+
+  1. ZRÓŻNICOWANIE WZORCÓW BŁĘDÓW: Każda osoba ma inny dominujący typ
+     pomyłki (Piotr: inhale→exhale, Iwo: exhale→silence, Tomasz:
+     silence→inhale). Sugeruje to, że cechy spektralne oddychania
+     są silnie osobnicze.
+
+  2. WPŁYW JAKOŚCI NAGRANIA: Pliki oznaczone jako "bad" (Tomasz)
+     drastycznie obniżają metryki. Na danych "good/medium" model
+     osiąga accuracy 0.77-0.90, co jest spójne z grupą Kinga/Ela/Adam.
+
+  3. EFEKT ADAPTACJI: U Iwo widoczna poprawa chronologiczna (0.655→0.897),
+     sugerująca, że stabilność oddychania osoby badanej ma kluczowe
+     znaczenie dla jakości klasyfikacji.
+
+  4. KLASA INHALE — NAJWIĘKSZY PROBLEM: W tej grupie inhale jest słabszą
+     klasą (F1: 0.657-0.862) w porównaniu z grupą Kinga/Ela/Adam
+     (F1: 0.857-0.909). Tomasz i Piotr mają wyraźnie niższe F1 inhale.
+
+  5. SILENCE — DWOISTOŚĆ WZORCÓW: U Piotra/Tomasza model jest
+     konserwatywny (wysoka precyzja, niski recall ciszy), u Iwo
+     liberalny (niska precyzja, wysoki recall) — identyczny podział
+     jak w grupie Kinga/Ela vs Adam.
+
+================================================================================
+  Koniec raportu
+================================================================================
